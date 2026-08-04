@@ -13,6 +13,7 @@ const nextProcess = spawn(process.execPath, [nextBinary, "dev"], {
   env: environment,
   stdio: "inherit"
 });
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 let cronRunning = false;
 
@@ -42,7 +43,7 @@ async function triggerScheduledPublications() {
 }
 
 const startupTimer = setTimeout(() => void triggerScheduledPublications(), 2_000);
-const cronTimer = setInterval(() => void triggerScheduledPublications(), 15_000);
+const cronTimer = setInterval(() => void triggerScheduledPublications(), DAY_IN_MS);
 
 function stop(signal) {
   clearTimeout(startupTimer);
