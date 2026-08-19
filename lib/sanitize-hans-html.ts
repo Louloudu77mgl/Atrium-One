@@ -26,3 +26,18 @@ export function sanitizeHansHtml(value: string) {
     return closing ? `</${normalizedTag}>` : `<${normalizedTag}>`;
   });
 }
+
+export function hansHtmlToPlainText(value: string) {
+  return value
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/p\s*>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#039;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
