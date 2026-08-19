@@ -631,6 +631,34 @@ export function ReviewsPageClient({
     await validateReview(selectedReview, { replyId: replyDraftId, replyText: replyDraft });
   }
 
+  async function publishReviewFromList(review: Review) {
+    if (publishingReviewId === review.id) {
+      return;
+    }
+
+    setPublishingReviewId(review.id);
+    showToast("Publication sur Google...", "saving");
+
+    try {
+      const data = await requestReplyPublish(review, {
+        replyId: review.generatedReplyId,
+        replyText: review.generatedReply,
+        mode: "manual"
+      });
+
+      updateReview(review.id, (current) => ({
+        ...current,
+        status: (data.review_status as Review["status"]) ?? current.status,
+        generatedReplyStatus: (data.reply_status as Review["generatedReplyStatus"]) ?? current.generatedReplyStatus
+      }));
+      showToast("Réponse publiée sur Google.", "success");
+    } catch (error) {
+      showToast(getUserErrorMessage(error, "Impossible de publier la réponse."), "error");
+    } finally {
+      setPublishingReviewId(null);
+    }
+  }
+
   async function toggleAutoReply(nextValue: boolean) {
     const previous = autoReplyEnabled;
     setAutoReplyEnabled(nextValue);
@@ -842,6 +870,7 @@ export function ReviewsPageClient({
                     {filteredReviews.map((review) => {
                       const busy = loadingReviewId === review.id || publishingReviewId === review.id;
                       const hasReply = Boolean(review.generatedReply || review.generatedReplyId);
+                      const replyReadyToPublish = ["approved", "selected", "validation_required"].includes(review.generatedReplyStatus ?? "");
                       const readyForReview = ["generated", "ready_to_publish", "validation_required", "blocked_by_safety"].includes(normalizeStatus(review.status)) || hasReply;
 
                       return (
@@ -892,7 +921,16 @@ export function ReviewsPageClient({
                               </button>
                             )}
 
-                            {readyForReview ? (
+                            {replyReadyToPublish ? (
+                              <button
+                                type="button"
+                                onClick={() => void publishReviewFromList(review)}
+                                disabled={busy}
+                                className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[14px] py-[8px] text-[12.6px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {busy ? "Publication..." : "Publier sur Google"}
+                              </button>
+                            ) : readyForReview ? (
                               <button
                                 type="button"
                                 onClick={() => {
