@@ -48,6 +48,14 @@ export function mapUserFacingError(message?: string | null, fallback = DEFAULT_E
     return "La connexion Google a expiré. Reconnectez votre compte puis réessayez.";
   }
 
+  if (
+    lower.includes("mybusiness.googleapis.com") && lower.includes("désactiv") ||
+    lower.includes("google my business api has not been used") ||
+    lower.includes("service_disabled")
+  ) {
+    return "L’API nécessaire à la lecture des avis Google est désactivée dans votre projet Google Cloud.";
+  }
+
   if (lower.includes("quota exceeded") || lower.includes("requests per minute")) {
     return "Google a temporairement bloqué l’import car trop de requêtes ont été envoyées en peu de temps. Attendez 1 à 2 minutes puis relancez la synchronisation.";
   }

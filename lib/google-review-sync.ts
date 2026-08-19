@@ -13,7 +13,19 @@ type GoogleReview = {
   reviewReply?: { comment?: string };
 };
 
-type ReviewsResponse = { reviews?: GoogleReview[]; nextPageToken?: string };
+type ReviewsResponse = {
+  reviews?: GoogleReview[];
+  nextPageToken?: string;
+  error?: {
+    message?: string;
+    details?: Array<{
+      reason?: string;
+      metadata?: {
+        service?: string;
+      };
+    }>;
+  };
+};
 
 const ratings: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
@@ -35,10 +47,18 @@ export async function syncGoogleBusinessReviews(connection: GoogleConnectionRow,
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store"
     });
-    const data = (await response.json()) as ReviewsResponse & { error?: { message?: string } };
+    const data = (await response.json()) as ReviewsResponse;
 
     if (!response.ok) {
       const message = data.error?.message ?? "Impossible d’importer les avis Google Business.";
+      const serviceDisabled = data.error?.details?.some((detail) =>
+        detail.reason === "SERVICE_DISABLED" || detail.metadata?.service === "mybusiness.googleapis.com"
+      );
+
+      if (serviceDisabled) {
+        throw new Error("L’API des avis Google Business (mybusiness.googleapis.com) est désactivée dans le projet Google Cloud 650116804104.");
+      }
+
       if (response.status === 429 || message.toLowerCase().includes("quota exceeded") || message.toLowerCase().includes("requests per minute")) {
         throw new Error("Google limite temporairement l’import des avis. Attendez 1 à 2 minutes puis relancez la synchronisation.");
       }

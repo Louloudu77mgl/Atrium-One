@@ -27,6 +27,13 @@ export default async function IntegrationsPage({
   const makeInstagramConfigured = hasMakeInstagramWebhookConfig();
   const googleConnected = googleConnection?.status === "connected";
   const googleLocationConnected = Boolean(googleConnection?.google_location_id);
+  const googleReviewsApiDisabled = Boolean(
+    params?.sync_error && (
+      params.sync_error.toLowerCase().includes("mybusiness.googleapis.com") ||
+      params.sync_error.toLowerCase().includes("service_disabled") ||
+      params.sync_error.toLowerCase().includes("google my business api has not been used")
+    )
+  );
 
   return (
     <div className="min-h-screen bg-[#F8F7F4]">
@@ -48,7 +55,21 @@ export default async function IntegrationsPage({
             ) : params?.saved ? (
               <div className="rounded-lg border border-[#DDD6FE] bg-[#F3E8FF] px-3.5 py-2.5 text-sm text-[#7C3AED]">Fiche Google Business connectée.{params.imported ? ` ${params.imported} avis Google synchronisé${params.imported === "1" ? "" : "s"}.` : ""}</div>
             ) : null}
-            {params?.sync_error ? <div className="rounded-lg border border-[#FED7AA] bg-[#FFF7ED] px-3.5 py-2.5 text-sm text-[#C2410C]">Google est connecté, mais l’import des avis n’a pas abouti : {mapUserFacingError(params.sync_error)}</div> : null}
+            {params?.sync_error ? (
+              <div className="rounded-lg border border-[#FED7AA] bg-[#FFF7ED] px-3.5 py-2.5 text-sm text-[#C2410C]">
+                Google est connecté, mais l’import des avis n’a pas abouti : {mapUserFacingError(params.sync_error)}
+                {googleReviewsApiDisabled ? (
+                  <a
+                    href="https://console.developers.google.com/apis/api/mybusiness.googleapis.com/overview?project=650116804104"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-2 font-bold underline"
+                  >
+                    Activer l’API des avis
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
             {params?.error ? <div className="rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-sm text-[#DC2626]">{mapUserFacingError(params.error)}</div> : null}
 
             <div className="grid gap-6 lg:grid-cols-2">
