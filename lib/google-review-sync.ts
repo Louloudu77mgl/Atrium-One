@@ -131,7 +131,7 @@ async function findExistingGoogleReview({
     return bySourceReviewId.data;
   }
 
-  if (!isSchemaCacheError(bySourceReviewId.error.message) || !createdAt) {
+  if (!isMissingColumnError(bySourceReviewId.error.message) || !createdAt) {
     throw new Error(bySourceReviewId.error.message);
   }
 
@@ -161,20 +161,28 @@ async function writeGoogleReview({
     ? await reviewsTable.update(payload).eq("id", reviewId)
     : await reviewsTable.insert(payload);
 
-  if (!result.error || !isSchemaCacheError(result.error.message)) {
+  if (!result.error || !isMissingColumnError(result.error.message)) {
     return result;
   }
 
-  const { source_review_id: _sourceReviewId, ...fallbackPayload } = payload;
+  const {
+    content: _content,
+    source: _source,
+    source_review_id: _sourceReviewId,
+    updated_at: _updatedAt,
+    ...fallbackPayload
+  } = payload;
 
   return reviewId
     ? await reviewsTable.update(fallbackPayload).eq("id", reviewId)
     : await reviewsTable.insert(fallbackPayload);
 }
 
-function isSchemaCacheError(message: string) {
+function isMissingColumnError(message: string) {
   const lower = message.toLowerCase();
-  return lower.includes("schema cache") || lower.includes("could not find") && lower.includes("column");
+  return lower.includes("schema cache") ||
+    lower.includes("could not find") && lower.includes("column") ||
+    lower.includes("column") && lower.includes("does not exist");
 }
 
 type ReviewInsertPayload = Pick<ReviewRow, "merchant_id" | "author_name" | "rating" | "review_text" | "sentiment"> &
