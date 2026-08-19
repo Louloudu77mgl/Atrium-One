@@ -4,6 +4,10 @@ alter table public.reviews
   add column if not exists source_review_id text,
   add column if not exists updated_at timestamptz not null default now();
 
+alter table public.google_connections
+  add column if not exists granted_scopes text[] not null default '{}',
+  add column if not exists last_error text;
+
 create unique index if not exists reviews_google_source_id_idx
   on public.reviews (merchant_id, source, source_review_id)
   where source = 'google' and source_review_id is not null;
