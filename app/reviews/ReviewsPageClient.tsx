@@ -604,7 +604,9 @@ export function ReviewsPageClient({
       return;
     }
 
-    if (["validation_required", "ready_to_publish", "blocked_by_safety"].includes(normalizeStatus(selectedReview.status))) {
+    const replyReadyToPublish = ["approved", "selected", "validation_required"].includes(replyStatus ?? "");
+
+    if (["validation_required", "ready_to_publish", "blocked_by_safety"].includes(normalizeStatus(selectedReview.status)) || replyReadyToPublish) {
       setPublishingReviewId(selectedReview.id);
 
       try {

@@ -145,10 +145,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: reviewError } = await supabase
+  let { error: reviewError } = await supabase
     .from("reviews")
     .update({ status: "validation_required" })
     .eq("id", payload.review_id);
+
+  if (isStatusConstraintError(reviewError)) {
+    const fallbackUpdate = await supabase
+      .from("reviews")
+      .update({ status: "generated" })
+      .eq("id", payload.review_id);
+
+    reviewError = fallbackUpdate.error;
+  }
 
   if (reviewError) {
     console.error("Hans validate review update error", reviewError);
