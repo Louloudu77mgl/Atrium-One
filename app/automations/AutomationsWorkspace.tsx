@@ -304,12 +304,50 @@ export function AutomationsWorkspace({
     replaceCurrentAutomation(next);
   }
 
-  function activateCurrentFlow() {
+  async function activateCurrentFlow() {
     if (!currentAutomation) return;
     const next = cloneFlow(currentAutomation);
     next.validationIssues = validateFlow(currentAutomation, capabilities);
     next.status = next.validationIssues.some((issue) => issue.level === "error") ? "incomplete" : "active";
     replaceCurrentAutomation(next);
+
+    if (next.status !== "active" || !next.nodes.some((node) => node.type === "google_review")) {
+      return;
+    }
+
+    const hasReplyGeneration = next.nodes.some((node) => node.type === "generate_review_reply");
+    const automaticPublish = next.nodes.some((node) => node.type === "publish_review_reply" && node.mode === "automatic");
+
+    if (!hasReplyGeneration) {
+      return;
+    }
+
+    setAutosaveLabel("Activation serveur en cours...");
+
+    try {
+      const response = await fetch("/api/settings/automation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reviews_auto_reply_enabled: true,
+          review_automation_mode: automaticPublish ? "automatic_guarded" : "semi_automatic",
+          reviews_five_star_action: automaticPublish ? "automatic" : "validation",
+          reviews_four_star_action: automaticPublish ? "automatic" : "validation",
+          reviews_three_star_action: "validation",
+          reviews_one_two_star_action: "disabled",
+          always_validate_negative_reviews: true,
+          block_sensitive_reviews: true
+        })
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error ?? "Activation serveur impossible.");
+      }
+      setAutosaveLabel("Automatisation active côté serveur");
+    } catch (error) {
+      setAutomations((items) => items.map((automation) => automation.id === next.id ? { ...automation, status: "error" } : automation));
+      setAutosaveLabel(error instanceof Error ? error.message : "Activation serveur impossible");
+    }
   }
 
   function validateCurrentFlow() {

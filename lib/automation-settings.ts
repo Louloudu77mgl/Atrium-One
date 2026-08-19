@@ -187,7 +187,32 @@ export async function upsertAutomationSettings(partial: UpsertPayload, merchant?
         .insert(payload);
 
   if (error) {
-    throw new Error(error.message);
+    if (!isMissingColumnError(error.message)) {
+      throw new Error(error.message);
+    }
+
+    const legacyPayload = {
+      merchant_id: currentMerchant.id,
+      reviews_auto_reply_enabled: payload.reviews_auto_reply_enabled,
+      social_auto_publish_enabled: payload.social_auto_publish_enabled,
+      social_auto_publish_live: payload.social_auto_publish_live,
+      social_posts_per_week: payload.social_posts_per_week,
+      social_posts_per_cycle: payload.social_posts_per_cycle,
+      social_cycle_weeks: payload.social_cycle_weeks,
+      updated_at: payload.updated_at
+    };
+    const legacyResult = existing
+      ? await supabase
+          .from("merchant_automation_settings")
+          .update(legacyPayload)
+          .eq("merchant_id", currentMerchant.id)
+      : await supabase
+          .from("merchant_automation_settings")
+          .insert(legacyPayload);
+
+    if (legacyResult.error) {
+      throw new Error(legacyResult.error.message);
+    }
   }
 
   revalidatePath("/settings");
@@ -210,6 +235,13 @@ export async function upsertAutomationSettings(partial: UpsertPayload, merchant?
     ...existing,
     ...payload
   } satisfies Partial<MerchantAutomationSettingsRow>;
+}
+
+function isMissingColumnError(message: string) {
+  const lower = message.toLowerCase();
+  return lower.includes("schema cache") ||
+    lower.includes("could not find") && lower.includes("column") ||
+    lower.includes("column") && lower.includes("does not exist");
 }
 
 export async function updateAutomationSettings(formData: FormData) {
