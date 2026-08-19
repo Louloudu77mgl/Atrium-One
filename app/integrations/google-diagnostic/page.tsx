@@ -17,7 +17,13 @@ export default async function GoogleDiagnosticPage() {
   const rows = [
     { label: "Google OAuth configuré", value: diagnostic.oauthConfigured ? "Oui" : "Non" },
     { label: "URI de retour configurée", value: diagnostic.redirectUri ?? "Manquante" },
-    { label: "Client OAuth utilisé", value: diagnostic.clientIdSuffix ? `…${diagnostic.clientIdSuffix}` : "Manquant" },
+    { label: "Client OAuth réellement chargé", value: diagnostic.clientId ?? "Manquant" },
+    {
+      label: "Secret réellement chargé",
+      value: diagnostic.clientSecretSuffix
+        ? `se termine par …${diagnostic.clientSecretSuffix} · ${diagnostic.clientSecretLength} caractères${diagnostic.clientSecretHasWhitespace ? " · contient un espace ou retour à la ligne" : ""}`
+        : "Manquant"
+    },
     { label: "Token disponible", value: diagnostic.tokenAvailable ? "Oui" : "Non" },
     { label: "Fiche Google connectée", value: diagnostic.locationConnected ? "Oui" : "Non" },
     { label: "Nombre d’établissements récupérés", value: diagnostic.locationsCount === null ? "Non testé" : String(diagnostic.locationsCount) },

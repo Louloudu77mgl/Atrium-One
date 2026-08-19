@@ -5,7 +5,10 @@ import type { GoogleConnectionRow } from "@/lib/supabase/types";
 export type GoogleDiagnosticState = {
   oauthConfigured: boolean;
   redirectUri: string | null;
-  clientIdSuffix: string | null;
+  clientId: string | null;
+  clientSecretSuffix: string | null;
+  clientSecretLength: number | null;
+  clientSecretHasWhitespace: boolean;
   tokenAvailable: boolean;
   googleConnected: boolean;
   locationConnected: boolean;
@@ -23,6 +26,7 @@ export async function getGoogleDiagnosticState(connection?: GoogleConnectionRow 
       process.env.GOOGLE_REDIRECT_URI
   );
   const clientId = process.env.GOOGLE_CLIENT_ID ?? null;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? null;
   const redirectUri = process.env.GOOGLE_REDIRECT_URI ?? null;
 
   const temporaryTokens = await getTemporaryGoogleTokens();
@@ -49,7 +53,10 @@ export async function getGoogleDiagnosticState(connection?: GoogleConnectionRow 
   return {
     oauthConfigured,
     redirectUri,
-    clientIdSuffix: clientId ? clientId.slice(-32) : null,
+    clientId,
+    clientSecretSuffix: clientSecret ? clientSecret.slice(-4) : null,
+    clientSecretLength: clientSecret?.length ?? null,
+    clientSecretHasWhitespace: Boolean(clientSecret && /\s/.test(clientSecret)),
     tokenAvailable,
     googleConnected: connection?.status === "connected",
     locationConnected: Boolean(connection?.google_location_id),

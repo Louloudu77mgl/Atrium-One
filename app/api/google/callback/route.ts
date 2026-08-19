@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
+import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { connectGoogleBusinessLocation } from "@/lib/google-business-connect";
 import { getGoogleBusinessLocations } from "@/lib/google-business-profile";
 import { upsertGoogleConnection } from "@/lib/google-connections";
@@ -25,7 +26,7 @@ type GoogleUserInfo = {
 };
 
 export async function GET(request: Request) {
-  const origin = getAppOrigin();
+  const origin = getAppOriginFromRequest(request);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -184,10 +185,6 @@ export async function GET(request: Request) {
 
   revalidateGooglePages();
   return redirectToIntegrations(origin, { saved: "google", imported: "0" });
-}
-
-function getAppOrigin() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 
 function revalidateGooglePages() {

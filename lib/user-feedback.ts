@@ -53,7 +53,7 @@ export function mapUserFacingError(message?: string | null, fallback = DEFAULT_E
   }
 
   if (lower.includes("client secret") && lower.includes("invalid")) {
-    return "Le secret OAuth Google Business configuré côté serveur est invalide. Vérifiez GOOGLE_CLIENT_SECRET dans .env.local, puis redémarrez le serveur dev.";
+    return "La connexion OAuth Google Business a été refusée. Vérifiez GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET et l’URL de redirection autorisée dans Google Cloud, puis redéployez.";
   }
 
   if (lower.includes("tables sms absentes")) {

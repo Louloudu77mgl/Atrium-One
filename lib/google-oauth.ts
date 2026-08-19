@@ -7,9 +7,9 @@ export const googleRefreshTokenCookie = "atrium_google_refresh_token";
 export const googleAccountEmailCookie = "atrium_google_account_email";
 
 export function getGoogleOAuthConfig() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+  const clientId = normalizeGoogleOAuthValue(process.env.GOOGLE_CLIENT_ID);
+  const clientSecret = normalizeGoogleOAuthValue(process.env.GOOGLE_CLIENT_SECRET);
+  const redirectUri = normalizeGoogleOAuthValue(process.env.GOOGLE_REDIRECT_URI);
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error("Configuration Google OAuth manquante.");
@@ -20,6 +20,20 @@ export function getGoogleOAuthConfig() {
     clientSecret,
     redirectUri
   };
+}
+
+function normalizeGoogleOAuthValue(value: string | undefined) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  const hasMatchingQuotes =
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"));
+
+  return hasMatchingQuotes ? normalized.slice(1, -1).trim() : normalized;
 }
 
 export async function setGoogleOAuthState(state: string) {

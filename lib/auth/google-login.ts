@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { getConfiguredAppOrigin } from "@/lib/app-origin";
 
 export function mapGoogleLoginErrorMessage(error?: string | null) {
   const normalized = (error ?? "").toLowerCase();
@@ -19,8 +20,16 @@ export function mapGoogleLoginErrorMessage(error?: string | null) {
     return "La connexion Google a échoué. Réessayez dans quelques secondes.";
   }
 
+  if (normalized.includes("invalid_client") || normalized.includes("client secret is invalid")) {
+    return "Le secret OAuth Google enregistré dans Supabase est invalide. Remplacez-le dans Authentication → Providers → Google.";
+  }
+
   if (normalized.includes("provider is not enabled")) {
     return "La connexion Google n’est pas encore activée sur ce projet.";
+  }
+
+  if (normalized.includes("unable to exchange external code")) {
+    return "Supabase n’a pas pu échanger le code de connexion Google. Relancez la connexion dans une nouvelle fenêtre ; si l’erreur persiste, consultez le journal Auth Supabase.";
   }
 
   return "Impossible de finaliser la connexion Google. Réessayez.";
@@ -78,7 +87,7 @@ export async function getAppOriginFromHeaders() {
     return `${protocol}://${host}`;
   }
 
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return getConfiguredAppOrigin();
 }
 
 export function logGoogleLoginEvent(event: string, details: Record<string, unknown> = {}) {

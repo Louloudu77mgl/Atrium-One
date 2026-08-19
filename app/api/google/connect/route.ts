@@ -1,25 +1,28 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { getMerchant } from "@/lib/merchants";
 import { getGoogleOAuthConfig, googleBusinessScope, setGoogleOAuthState } from "@/lib/google-oauth";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
+  const origin = getAppOriginFromRequest(request);
+
   if (!hasSupabaseEnv()) {
-    return NextResponse.redirect(new URL("/login?error=Configuration%20Supabase%20manquante", getAppOrigin()));
+    return NextResponse.redirect(new URL("/login?error=Configuration%20Supabase%20manquante", origin));
   }
 
   const user = await getCurrentUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL("/login", getAppOrigin()));
+    return NextResponse.redirect(new URL("/login", origin));
   }
 
   const merchant = await getMerchant();
 
   if (!merchant) {
-    return NextResponse.redirect(new URL("/onboarding", getAppOrigin()));
+    return NextResponse.redirect(new URL("/onboarding", origin));
   }
 
   let config: ReturnType<typeof getGoogleOAuthConfig>;
@@ -27,7 +30,7 @@ export async function GET(request: Request) {
   try {
     config = getGoogleOAuthConfig();
   } catch {
-    return NextResponse.redirect(new URL("/settings/google-business?error=Configuration%20Google%20OAuth%20manquante", getAppOrigin()));
+    return NextResponse.redirect(new URL("/settings/google-business?error=Configuration%20Google%20OAuth%20manquante", origin));
   }
 
   const state = randomUUID();
@@ -51,10 +54,6 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.redirect(url);
-}
-
-function getAppOrigin() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 
 function createTopLevelRedirectHtml(destination: string) {
