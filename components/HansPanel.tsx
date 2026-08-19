@@ -43,9 +43,11 @@ export function HansPanel({
   const statusLabel =
     replyStatus === "approved" || replyStatus === "selected" ? "Prêt à publier" :
     replyStatus === "generated" ? "Générée" :
-    replyStatus === "published" ? "Répondu" :
+    replyStatus === "published" || replyStatus === "published_auto" || replyStatus === "published_manual" ? "Répondu" :
     replyStatus === "superseded" ? "Remplacée" :
     replyStatus;
+  const readyToPublish = validated || ["approved", "selected", "validation_required"].includes(replyStatus ?? "");
+  const alreadyPublished = ["published", "published_auto", "published_manual"].includes(replyStatus ?? "");
 
   useEffect(() => {
     setValidated(false);
@@ -152,9 +154,14 @@ export function HansPanel({
               </>
             ) : (
               <>
-                {replyStatus !== "approved" && replyStatus !== "selected" && !validated ? (
+                {!readyToPublish && !alreadyPublished ? (
                   <button type="button" onClick={publishReply} disabled={isPublishing} className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-3 py-1.5 text-xs font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#6D28D9] disabled:cursor-not-allowed disabled:opacity-60">
                     {isPublishing ? "Validation..." : "Valider la réponse"}
+                  </button>
+                ) : null}
+                {readyToPublish && !alreadyPublished ? (
+                  <button type="button" onClick={publishReply} disabled={isPublishing} className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-3 py-1.5 text-xs font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#6D28D9] disabled:cursor-not-allowed disabled:opacity-60">
+                    {isPublishing ? "Publication..." : "Publier sur Google"}
                   </button>
                 ) : null}
                 <button type="button" onClick={() => setIsEditing(true)} className="inline-flex items-center justify-center rounded-lg border border-[#E9D5FF] px-3 py-1.5 text-xs font-semibold text-[#6B617F] transition hover:border-[#4C1D95] hover:bg-[#F3F0FF] hover:text-[#4C1D95]">
