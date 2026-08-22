@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { dispatchInstagramPostToMake, hasMakeInstagramWebhookConfig } from "@/lib/make-instagram";
 import { publishPostToInstagram } from "@/lib/social-publish";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 
@@ -85,22 +84,17 @@ async function runScheduledPublications(request: Request) {
         .eq("merchant_id", queuedPost.merchant_id)
         .maybeSingle();
 
-      if (connection?.status === "connected") {
-        const post = await publishPostToInstagram({
-          merchant,
-          post: queuedPost,
-          instagramConnection: connection,
-          supabaseClient: supabase
-        });
-        return { id: row.id, status: "published", postId: post.id };
+      if (connection?.status !== "connected") {
+        throw new Error("Connectez le compte Instagram de cet établissement avant de publier.");
       }
 
-      if (hasMakeInstagramWebhookConfig()) {
-        const event = await dispatchInstagramPostToMake({ merchant, post: queuedPost });
-        return { id: row.id, status: "queued", eventId: event.event_id };
-      }
-
-      throw new Error("Connectez le compte Instagram de cet établissement avant de publier.");
+      const post = await publishPostToInstagram({
+        merchant,
+        post: queuedPost,
+        instagramConnection: connection,
+        supabaseClient: supabase
+      });
+      return { id: row.id, status: "published", postId: post.id };
     } catch (publishError) {
       const message = publishError instanceof Error ? publishError.message : "Publication planifiée impossible.";
       const retryAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();

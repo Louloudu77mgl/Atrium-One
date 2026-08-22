@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   const oauthError = url.searchParams.get("error");
 
   if (oauthError) {
-    return NextResponse.redirect(new URL(`/integrations/instagram?error=${encodeURIComponent(oauthError)}`, origin));
+    return NextResponse.redirect(new URL(`/social?error=${encodeURIComponent(oauthError)}`, origin));
   }
 
   if (!hasSupabaseEnv()) {
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
   const expectedState = await consumeInstagramOAuthState();
 
   if (!code || !state || !expectedState || state !== expectedState) {
-    return NextResponse.redirect(new URL("/integrations/instagram?error=Connexion%20Instagram%20invalide", origin));
+    return NextResponse.redirect(new URL("/social?error=Connexion%20Instagram%20invalide", origin));
   }
 
   const user = await getCurrentUser();
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
 
     return NextResponse.redirect(
       new URL(
-        `/integrations/instagram?error=${encodeURIComponent(tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram.")}`,
+        `/social?error=${encodeURIComponent(tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram.")}`,
         origin
       )
     );
@@ -108,12 +108,12 @@ export async function GET(request: Request) {
   }).toString()}`, { cache: "no-store" });
 
   let username: string | null = null;
-  let accountId: string | null = null;
+  let accountId = tokenData.user_id ? String(tokenData.user_id) : null;
 
   if (profileResponse.ok) {
     const profileData = (await profileResponse.json()) as InstagramProfileResponse;
     username = profileData.username ?? null;
-    accountId = String(profileData.user_id ?? profileData.id ?? tokenData.user_id ?? "");
+    accountId = String(profileData.user_id ?? profileData.id ?? accountId ?? "") || null;
   }
 
   await upsertInstagramConnection({
@@ -126,5 +126,5 @@ export async function GET(request: Request) {
     last_error: accountId ? null : "Impossible de récupérer le compte Instagram professionnel après la connexion."
   }, merchant);
 
-  return NextResponse.redirect(new URL("/integrations/instagram?saved=instagram", origin));
+  return NextResponse.redirect(new URL("/social?saved=instagram", origin));
 }

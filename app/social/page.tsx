@@ -5,7 +5,6 @@ import { getAutomationSettings, getSocialAutomationCadence } from "@/lib/automat
 import { isDemoMode } from "@/lib/demo-mode";
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
-import { hasMakeInstagramWebhookConfig } from "@/lib/make-instagram";
 import { getAppNotifications } from "@/lib/notifications";
 import { getFallbackReviewInsights } from "@/lib/review-insights";
 import { getFreshReviewInsights } from "@/lib/review-insights-server";
@@ -61,7 +60,6 @@ export default async function SocialPage({
               automationSettings={automationSettings}
               instagramConnection={instagramConnection}
               instagramConfigured={instagramConfigured}
-              makePublishingConfigured={hasMakeInstagramWebhookConfig()}
               schedulingConfigured={hasSupabaseAdminEnv() && Boolean(process.env.CRON_SECRET)}
               isInstagramUnavailable={isInstagramUnavailable}
               instagramError={params?.error ?? null}

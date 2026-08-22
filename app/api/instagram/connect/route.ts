@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   if (!hasInstagramOAuthConfig()) {
     console.error("Instagram OAuth non configuré: variables Meta manquantes.");
     return NextResponse.redirect(
-      new URL("/integrations/instagram?error=instagram_unavailable", origin)
+      new URL("/social?error=instagram_unavailable", origin)
     );
   }
 

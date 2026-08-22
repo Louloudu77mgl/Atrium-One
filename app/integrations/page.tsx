@@ -5,7 +5,6 @@ import { getAppShellData } from "@/lib/app-shell-data";
 import { getGoogleDiagnosticState } from "@/lib/google-diagnostics";
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
-import { hasMakeInstagramWebhookConfig } from "@/lib/make-instagram";
 import { getAppNotifications } from "@/lib/notifications";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import { mapUserFacingError } from "@/lib/user-feedback";
@@ -24,7 +23,6 @@ export default async function IntegrationsPage({
   const notifications = getAppNotifications(reviews, googleConnection);
   const googleDiagnostic = await getGoogleDiagnosticState(googleConnection);
   const instagramConfigured = hasInstagramOAuthConfig();
-  const makeInstagramConfigured = hasMakeInstagramWebhookConfig();
   const googleConnected = googleConnection?.status === "connected";
   const googleLocationConnected = Boolean(googleConnection?.google_location_id);
   const googleReviewsApiDisabled = Boolean(
@@ -127,12 +125,7 @@ export default async function IntegrationsPage({
                 </p>
                 {!instagramConfigured ? (
                   <div className="mt-4 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] p-4 text-sm text-[#B91C1C]">
-                    La configuration Meta du serveur est manquante. Le webhook Make ne remplace pas la connexion Instagram propre à ce client.
-                  </div>
-                ) : null}
-                {makeInstagramConfigured && instagramConnection?.status !== "connected" ? (
-                  <div className="mt-3 rounded-2xl border border-[#DDD6FE] bg-[#FBFAFF] p-4 text-sm text-[#625873]">
-                    La passerelle technique Make est configurée, mais aucun compte Instagram client n’est encore connecté.
+                    La connexion Instagram est temporairement indisponible.
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-3">

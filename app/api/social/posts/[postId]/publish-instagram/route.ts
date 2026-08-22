@@ -2,7 +2,6 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getMerchant } from "@/lib/merchants";
 import { getInstagramConnection } from "@/lib/instagram-connections";
-import { dispatchInstagramPostToMake, hasMakeInstagramWebhookConfig } from "@/lib/make-instagram";
 import { publishPostToInstagram } from "@/lib/social-publish";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -37,46 +36,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ po
   try {
     const instagramConnection = await getInstagramConnection(merchant);
 
-    if (instagramConnection?.status === "connected") {
-      const updatedPost = await publishPostToInstagram({ merchant, post, instagramConnection });
-      revalidatePath("/social");
-      return NextResponse.json({ post: updatedPost });
+    if (instagramConnection?.status !== "connected") {
+      throw new Error("Connectez le compte Instagram de cet établissement avant de publier.");
     }
 
-    if (hasMakeInstagramWebhookConfig()) {
-      const now = new Date().toISOString();
-      const confirmationAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      const { data: queuedPost, error: queueError } = await supabase
-        .from("social_posts")
-        .update({
-          status: "ready",
-          published_at: confirmationAt,
-          error_message: null,
-          updated_at: now,
-          last_saved_at: now
-        })
-        .eq("id", post.id)
-        .eq("merchant_id", merchant.id)
-        .select("*")
-        .single();
-
-      if (queueError) {
-        throw new Error(queueError.message);
-      }
-
-      const event = await dispatchInstagramPostToMake({ merchant, post: queuedPost });
-      const { data: currentPost } = await supabase
-        .from("social_posts")
-        .select("*")
-        .eq("id", post.id)
-        .eq("merchant_id", merchant.id)
-        .single();
-
-      revalidatePath("/social");
-      return NextResponse.json({ post: currentPost ?? queuedPost, queued: true, eventId: event.event_id });
-    }
-
-    throw new Error("Connectez le compte Instagram de cet établissement avant de publier.");
+    const updatedPost = await publishPostToInstagram({ merchant, post, instagramConnection });
+    revalidatePath("/social");
+    return NextResponse.json({ post: updatedPost });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Publication Instagram impossible.";
     await supabase

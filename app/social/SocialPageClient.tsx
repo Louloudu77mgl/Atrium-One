@@ -33,7 +33,6 @@ export function SocialPageClient({
   automationSettings,
   instagramConnection,
   instagramConfigured,
-  makePublishingConfigured,
   schedulingConfigured,
   isInstagramUnavailable,
   instagramError,
@@ -48,7 +47,6 @@ export function SocialPageClient({
   automationSettings: MerchantAutomationSettingsRow | null;
   instagramConnection: InstagramConnectionLike;
   instagramConfigured: boolean;
-  makePublishingConfigured: boolean;
   schedulingConfigured: boolean;
   isInstagramUnavailable: boolean;
   instagramError: string | null;
@@ -81,7 +79,7 @@ export function SocialPageClient({
   }, []);
 
   const instagramConnected = instagramConnection?.status === "connected" && instagramConfigured;
-  const publishingConfigured = instagramConnected || makePublishingConfigured;
+  const publishingConfigured = instagramConnected;
   const instagramUiState = useMemo<InstagramOnboardingState>(() => {
     if (instagramActionState) return instagramActionState;
     if (instagramConnected) return "connected";
