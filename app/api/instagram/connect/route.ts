@@ -32,9 +32,15 @@ export async function GET(request: Request) {
     );
   }
 
-  const config = getInstagramOAuthConfig();
+  const redirectUri = new URL("/api/instagram/callback", origin).toString();
+  const config = getInstagramOAuthConfig(redirectUri);
   const state = randomUUID();
   await setInstagramOAuthState(state);
+
+  console.info("[instagram/connect] oauth_started", {
+    merchantId: merchant.id,
+    redirectUri
+  });
 
   const url = new URL("https://www.instagram.com/oauth/authorize");
   url.searchParams.set("force_reauth", "true");

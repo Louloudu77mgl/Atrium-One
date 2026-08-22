@@ -266,48 +266,10 @@ export function SocialPageClient({
   function continueToInstagram() {
     if (instagramActionBusy) return;
 
-    const popup = window.open("about:blank", "_blank");
-    if (!popup) {
-      setInstagramCardMessage("Autorisez les fenêtres pop-up pour connecter Instagram.");
-      showToast("Autorisez les fenêtres pop-up pour AtriumOne puis réessayez.", "error");
-      return;
-    }
-
     setInstagramActionBusy("redirect");
     setInstagramActionState("connecting");
-    setInstagramCardMessage("Ouverture sécurisée d’Instagram…");
-    popup.location.href = "/api/instagram/connect";
-
-    const startedAt = Date.now();
-    const connectionWatcher = window.setInterval(async () => {
-      try {
-        const response = await fetch("/api/instagram/status", {
-          method: "GET",
-          cache: "no-store"
-        });
-        const data = (await response.json()) as { status?: string; username?: string | null };
-
-        if (response.ok && data.status === "connected") {
-          window.clearInterval(connectionWatcher);
-          if (!popup.closed) popup.close();
-          window.location.replace("/social?saved=instagram");
-          return;
-        }
-      } catch {}
-
-      if (popup.closed) {
-        window.clearInterval(connectionWatcher);
-        window.location.replace("/social");
-        return;
-      }
-
-      if (Date.now() - startedAt > 2 * 60 * 1000) {
-        window.clearInterval(connectionWatcher);
-        setInstagramActionBusy(null);
-        setInstagramActionState(null);
-        setInstagramCardMessage("La connexion prend plus de temps que prévu. Vous pouvez réessayer.");
-      }
-    }, 1_200);
+    setInstagramCardMessage("Redirection sécurisée vers Instagram…");
+    window.location.assign("/api/instagram/connect");
   }
 
   async function testInstagramConnection() {

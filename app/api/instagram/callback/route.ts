@@ -75,7 +75,8 @@ export async function GET(request: Request) {
     });
   }
 
-  const config = getInstagramOAuthConfig();
+  const redirectUri = new URL("/api/instagram/callback", origin).toString();
+  const config = getInstagramOAuthConfig(redirectUri);
   const tokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
     method: "POST",
     headers: {
@@ -85,7 +86,7 @@ export async function GET(request: Request) {
       client_id: config.clientId,
       client_secret: config.clientSecret,
       grant_type: "authorization_code",
-      redirect_uri: config.redirectUri,
+      redirect_uri: redirectUri,
       code
     }),
     cache: "no-store"
@@ -188,9 +189,11 @@ function createOAuthCompletionResponse(
       const payload = ${payload};
       if (window.opener && !window.opener.closed) {
         window.opener.postMessage(payload, ${JSON.stringify(targetOrigin)});
+        window.close();
+        window.setTimeout(() => window.location.replace(${JSON.stringify(destination)}), 500);
+      } else {
+        window.location.replace(${JSON.stringify(destination)});
       }
-      window.close();
-      window.setTimeout(() => window.location.replace(${JSON.stringify(destination)}), 700);
     </script>
   </body>
 </html>`, {
