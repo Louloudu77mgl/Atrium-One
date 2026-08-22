@@ -129,15 +129,26 @@ export async function GET(request: Request) {
     accountId = String(profileData.user_id ?? profileData.id ?? accountId ?? "") || null;
   }
 
-  await upsertInstagramConnection({
-    merchant_id: merchant.id,
-    instagram_account_id: accountId || null,
-    instagram_username: username,
-    access_token_encrypted: userAccessToken,
-    status: accountId ? "connected" : "pending_configuration",
-    connected_at: new Date().toISOString(),
-    last_error: accountId ? null : "Impossible de récupérer le compte Instagram professionnel après la connexion."
-  }, merchant);
+  try {
+    await upsertInstagramConnection({
+      merchant_id: merchant.id,
+      instagram_account_id: accountId || null,
+      instagram_username: username,
+      access_token_encrypted: userAccessToken,
+      status: accountId ? "connected" : "pending_configuration",
+      connected_at: new Date().toISOString(),
+      last_error: accountId ? null : "Impossible de récupérer le compte Instagram professionnel après la connexion."
+    }, merchant);
+  } catch (error) {
+    console.error("[instagram/callback] connection_persist_failed", {
+      merchantId: merchant.id,
+      message: error instanceof Error ? error.message : "unknown_error"
+    });
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "AtriumOne n’a pas pu enregistrer la connexion Instagram. Réessayez après quelques instants."
+    });
+  }
 
   return createOAuthCompletionResponse(origin, {
     status: accountId ? "connected" : "action_required",
