@@ -220,7 +220,7 @@ export function SocialPageClient({
       return;
     }
     if (!publishingConfigured) {
-      showToast("Configurez Instagram ou Make avant de planifier.", "error");
+      showToast("Connectez Instagram avant de planifier.", "error");
       return;
     }
     if (!schedulingConfigured) {
@@ -263,11 +263,32 @@ export function SocialPageClient({
     }
   }
 
-  async function continueToInstagram() {
+  function continueToInstagram() {
     setInstagramActionBusy("redirect");
     setInstagramActionState("connecting");
-    setInstagramCardMessage("Redirection sécurisée vers Instagram…");
-    window.location.href = "/api/instagram/connect";
+    setInstagramCardMessage("Ouverture sécurisée d’Instagram…");
+
+    const popupWidth = 560;
+    const popupHeight = 760;
+    const popupLeft = Math.max(0, window.screenX + (window.outerWidth - popupWidth) / 2);
+    const popupTop = Math.max(0, window.screenY + (window.outerHeight - popupHeight) / 2);
+    const popup = window.open(
+      "/api/instagram/connect",
+      "atrium-instagram-connect",
+      `popup=yes,width=${popupWidth},height=${popupHeight},left=${popupLeft},top=${popupTop}`
+    );
+
+    if (!popup) {
+      window.location.href = "/api/instagram/connect";
+      return;
+    }
+
+    popup.focus();
+    const popupWatcher = window.setInterval(() => {
+      if (!popup.closed) return;
+      window.clearInterval(popupWatcher);
+      window.location.replace("/social");
+    }, 500);
   }
 
   async function testInstagramConnection() {

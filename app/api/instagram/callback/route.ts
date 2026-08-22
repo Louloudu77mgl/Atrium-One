@@ -35,29 +35,44 @@ export async function GET(request: Request) {
   const oauthError = url.searchParams.get("error");
 
   if (oauthError) {
-    return NextResponse.redirect(new URL(`/social?error=${encodeURIComponent(oauthError)}`, origin));
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "La connexion Instagram n’a pas été autorisée."
+    });
   }
 
   if (!hasSupabaseEnv()) {
-    return NextResponse.redirect(new URL("/login?error=Configuration%20Supabase%20manquante", origin));
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "La connexion Instagram est temporairement indisponible."
+    });
   }
 
   const expectedState = await consumeInstagramOAuthState();
 
   if (!code || !state || !expectedState || state !== expectedState) {
-    return NextResponse.redirect(new URL("/social?error=Connexion%20Instagram%20invalide", origin));
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "La connexion Instagram n’a pas pu être confirmée."
+    });
   }
 
   const user = await getCurrentUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL("/login", origin));
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "Votre session AtriumOne a expiré. Reconnectez-vous puis réessayez."
+    });
   }
 
   const merchant = await getMerchant();
 
   if (!merchant) {
-    return NextResponse.redirect(new URL("/onboarding", origin));
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "Terminez la configuration de votre commerce avant de connecter Instagram."
+    });
   }
 
   const config = getInstagramOAuthConfig();
@@ -84,12 +99,10 @@ export async function GET(request: Request) {
       last_error: tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram."
     }, merchant);
 
-    return NextResponse.redirect(
-      new URL(
-        `/social?error=${encodeURIComponent(tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram.")}`,
-        origin
-      )
-    );
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "Instagram n’a pas pu finaliser la connexion. Réessayez dans quelques instants."
+    });
   }
 
   const longLivedResponse = await fetch(`https://graph.instagram.com/access_token?${new URLSearchParams({
@@ -126,5 +139,53 @@ export async function GET(request: Request) {
     last_error: accountId ? null : "Impossible de récupérer le compte Instagram professionnel après la connexion."
   }, merchant);
 
-  return NextResponse.redirect(new URL("/social?saved=instagram", origin));
+  return createOAuthCompletionResponse(origin, {
+    status: accountId ? "connected" : "action_required",
+    message: accountId
+      ? "Votre compte Instagram est connecté."
+      : "Instagram est autorisé, mais le compte professionnel doit encore être vérifié."
+  });
+}
+
+function createOAuthCompletionResponse(
+  origin: string,
+  result: { status: "connected" | "action_required" | "error"; message: string }
+) {
+  const targetOrigin = new URL(origin).origin;
+  const destination = new URL(
+    result.status === "connected"
+      ? "/social?saved=instagram"
+      : `/social?error=${encodeURIComponent(result.message)}`,
+    targetOrigin
+  ).toString();
+  const payload = JSON.stringify({
+    type: "atrium:instagram-oauth-complete",
+    status: result.status,
+    message: result.message
+  }).replace(/</g, "\\u003c");
+
+  return new NextResponse(`<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connexion Instagram terminée</title>
+  </head>
+  <body>
+    <p>${result.status === "connected" ? "Compte Instagram connecté. Cette fenêtre va se fermer…" : "Retour vers AtriumOne…"}</p>
+    <script>
+      const payload = ${payload};
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(payload, ${JSON.stringify(targetOrigin)});
+      }
+      window.close();
+      window.setTimeout(() => window.location.replace(${JSON.stringify(destination)}), 700);
+    </script>
+  </body>
+</html>`, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
 }
