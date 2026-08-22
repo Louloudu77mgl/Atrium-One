@@ -270,10 +270,82 @@ export function SocialPageClient({
   function continueToInstagram() {
     if (instagramActionBusy) return;
 
+    const popupWidth = 520;
+    const popupHeight = 760;
+    const popupLeft = Math.max(0, window.screenX + (window.outerWidth - popupWidth) / 2);
+    const popupTop = Math.max(0, window.screenY + (window.outerHeight - popupHeight) / 2);
+    const popup = window.open(
+      "/api/instagram/connect",
+      "atrium-instagram-connection",
+      `popup=yes,width=${popupWidth},height=${popupHeight},left=${popupLeft},top=${popupTop}`
+    );
+
     setInstagramActionBusy("redirect");
     setInstagramActionState("connecting");
-    setInstagramCardMessage("Redirection sécurisée vers Instagram…");
-    window.location.assign("/api/instagram/connect");
+    setInstagramCardMessage("Connexion Instagram ouverte. Terminez l’autorisation dans la fenêtre dédiée.");
+    setInstagramModalOpen(false);
+
+    if (!popup) {
+      window.location.assign("/api/instagram/connect");
+      return;
+    }
+
+    let connectionWatcher: number | null = null;
+    const startedAt = Date.now();
+
+    const cleanup = () => {
+      if (connectionWatcher !== null) window.clearInterval(connectionWatcher);
+      window.removeEventListener("message", handleOAuthMessage);
+    };
+
+    const finishConnection = (status: string, message?: string) => {
+      cleanup();
+      if (!popup.closed) popup.close();
+
+      if (status === "connected") {
+        window.location.replace("/social?saved=instagram");
+        return;
+      }
+
+      setInstagramActionBusy(null);
+      setInstagramActionState(status === "error" ? "error" : "pending_configuration");
+      setInstagramCardMessage(message ?? "Instagram n’a pas encore confirmé la connexion.");
+    };
+
+    function handleOAuthMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { type?: string; status?: string; message?: string };
+      if (data?.type !== "atrium:instagram-oauth-complete") return;
+      finishConnection(data.status ?? "error", data.message);
+    }
+
+    window.addEventListener("message", handleOAuthMessage);
+
+    connectionWatcher = window.setInterval(async () => {
+      try {
+        const response = await fetch("/api/instagram/status", { cache: "no-store" });
+        const data = await response.json() as { status?: string };
+
+        if (response.ok && data.status === "connected") {
+          finishConnection("connected");
+          return;
+        }
+
+        if (response.ok && data.status === "error") {
+          finishConnection("error", "Instagram n’a pas pu finaliser la connexion. Vérifiez les autorisations puis réessayez.");
+          return;
+        }
+      } catch {}
+
+      if (popup.closed) {
+        finishConnection("pending_configuration", "La fenêtre Instagram a été fermée avant la confirmation de la connexion.");
+        return;
+      }
+
+      if (Date.now() - startedAt > 5 * 60 * 1000) {
+        finishConnection("pending_configuration", "Instagram n’a pas renvoyé de confirmation. Vérifiez la configuration de l’application Meta.");
+      }
+    }, 1_200);
   }
 
   async function testInstagramConnection() {

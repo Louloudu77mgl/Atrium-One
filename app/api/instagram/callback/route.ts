@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { getMerchant } from "@/lib/merchants";
-import { getInstagramOAuthConfig, consumeInstagramOAuthState } from "@/lib/instagram-oauth";
+import { getInstagramOAuthConfig, getInstagramRedirectUri, consumeInstagramOAuthState } from "@/lib/instagram-oauth";
 import { upsertInstagramConnection } from "@/lib/instagram-connections";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
     });
   }
 
-  const redirectUri = new URL("/api/instagram/callback", origin).toString();
+  const redirectUri = getInstagramRedirectUri(origin);
   const config = getInstagramOAuthConfig(redirectUri);
   let tokenResponse: Response;
   let tokenData: InstagramTokenResponse;
@@ -192,13 +192,45 @@ function createOAuthCompletionResponse(
   origin: string,
   result: { status: "connected" | "action_required" | "error"; message: string }
 ) {
+  const targetOrigin = new URL(origin).origin;
   const destination = new URL(
     result.status === "connected"
       ? "/social?saved=instagram"
       : `/social?error=${encodeURIComponent(result.message)}`,
     origin
   ).toString();
-  return NextResponse.redirect(destination);
+  const payload = JSON.stringify({
+    type: "atrium:instagram-oauth-complete",
+    status: result.status,
+    message: result.message
+  }).replace(/</g, "\\u003c");
+
+  return new NextResponse(`<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connexion Instagram terminée</title>
+  </head>
+  <body>
+    <p>Retour sécurisé vers AtriumOne…</p>
+    <script>
+      const payload = ${payload};
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(payload, ${JSON.stringify(targetOrigin)});
+        window.close();
+        window.setTimeout(() => window.location.replace(${JSON.stringify(destination)}), 500);
+      } else {
+        window.location.replace(${JSON.stringify(destination)});
+      }
+    </script>
+  </body>
+</html>`, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store"
+    }
+  });
 }
 
 async function recordInstagramError(merchant: MerchantRow, message: string) {

@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { getMerchant } from "@/lib/merchants";
-import { getInstagramOAuthConfig, hasInstagramOAuthConfig, setInstagramOAuthState } from "@/lib/instagram-oauth";
+import { getInstagramOAuthConfig, getInstagramRedirectUri, hasInstagramOAuthConfig, setInstagramOAuthState } from "@/lib/instagram-oauth";
 import { upsertInstagramConnection } from "@/lib/instagram-connections";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const redirectUri = new URL("/api/instagram/callback", origin).toString();
+  const redirectUri = getInstagramRedirectUri(origin);
   const config = getInstagramOAuthConfig(redirectUri);
   const state = randomUUID();
   await setInstagramOAuthState(state);
