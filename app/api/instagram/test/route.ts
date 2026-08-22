@@ -6,7 +6,8 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 type MetaProfileResponse = {
-  id?: string;
+  id?: string | number;
+  user_id?: string | number;
   username?: string;
   error?: {
     message?: string;
@@ -38,8 +39,8 @@ export async function POST() {
   }
 
   const version = process.env.INSTAGRAM_GRAPH_API_VERSION ?? "v23.0";
-  const response = await fetch(`https://graph.facebook.com/${version}/${connection.instagram_account_id}?${new URLSearchParams({
-    fields: "id,username",
+  const response = await fetch(`https://graph.instagram.com/${version}/me?${new URLSearchParams({
+    fields: "user_id,username",
     access_token: connection.access_token_encrypted
   }).toString()}`, {
     cache: "no-store"
@@ -61,6 +62,7 @@ export async function POST() {
   const now = new Date().toISOString();
   await upsertInstagramConnection({
     merchant_id: merchant.id,
+    instagram_account_id: String(data.user_id ?? data.id ?? connection.instagram_account_id),
     instagram_username: data.username ?? connection.instagram_username,
     status: "connected",
     last_error: null,

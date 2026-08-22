@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import { getConfiguredAppOrigin } from "@/lib/app-origin";
 import { validateDesignDocumentLayout } from "@/lib/social-editor/layout-safety";
 import { isEditorDocument } from "@/lib/social-editor/types";
 import type { MerchantRow, SocialPostRow } from "@/lib/supabase/types";
@@ -117,5 +118,5 @@ function safeCompare(left: string, right: string) {
 }
 
 function getAppOrigin() {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  return getConfiguredAppOrigin();
 }

@@ -1,12 +1,13 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { getMerchant } from "@/lib/merchants";
 import { getInstagramOAuthConfig, hasInstagramOAuthConfig, setInstagramOAuthState } from "@/lib/instagram-oauth";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
-  const origin = getAppOrigin();
+  const origin = getAppOriginFromRequest(request);
 
   if (!hasSupabaseEnv()) {
     return NextResponse.redirect(new URL("/login?error=Configuration%20Supabase%20manquante", origin));
@@ -35,12 +36,22 @@ export async function GET(request: Request) {
   const state = randomUUID();
   await setInstagramOAuthState(state);
 
-  const url = new URL(`https://www.facebook.com/${config.apiVersion}/dialog/oauth`);
+  const url = new URL("https://www.instagram.com/oauth/authorize");
+  url.searchParams.set("force_reauth", "true");
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("redirect_uri", config.redirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,business_management");
+  url.searchParams.set(
+    "scope",
+    [
+      "instagram_business_basic",
+      "instagram_business_content_publish",
+      "instagram_business_manage_comments",
+      "instagram_business_manage_messages",
+      "instagram_business_manage_insights"
+    ].join(",")
+  );
 
   if (request.headers.get("sec-fetch-dest") === "iframe") {
     return new NextResponse(createTopLevelRedirectHtml(url.toString()), {
@@ -51,10 +62,6 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.redirect(url);
-}
-
-function getAppOrigin() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 
 function createTopLevelRedirectHtml(destination: string) {

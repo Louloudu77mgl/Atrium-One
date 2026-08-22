@@ -48,7 +48,7 @@ export async function publishPostToInstagram({
   const version = process.env.INSTAGRAM_GRAPH_API_VERSION ?? "v23.0";
   const caption = [post.caption, post.hashtags.map((tag) => tag.startsWith("#") ? tag : `#${tag}`).join(" ")].filter(Boolean).join("\n\n");
 
-  const createResponse = await fetch(`https://graph.facebook.com/${version}/${connection.instagram_account_id}/media`, {
+  const createResponse = await fetch(`https://graph.instagram.com/${version}/${connection.instagram_account_id}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ image_url: imageUrl, caption, access_token: connection.access_token_encrypted }),
@@ -60,7 +60,7 @@ export async function publishPostToInstagram({
     throw new Error(createData.error?.message ?? "Instagram n’a pas accepté ce média.");
   }
 
-  const publishResponse = await fetch(`https://graph.facebook.com/${version}/${connection.instagram_account_id}/media_publish`, {
+  const publishResponse = await fetch(`https://graph.instagram.com/${version}/${connection.instagram_account_id}/media_publish`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ creation_id: createData.id, access_token: connection.access_token_encrypted }),

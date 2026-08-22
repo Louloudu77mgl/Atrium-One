@@ -65,7 +65,7 @@ export default async function InstagramIntegrationPage({
                   <div className="rounded-2xl border border-[#FED7AA] bg-[#FFF7ED] p-4 text-sm leading-6 text-[#9A3412]">
                     <strong>La connexion Meta n’est pas encore configurée sur ce serveur.</strong>
                     <p className="mt-1">
-                      L’administrateur AtriumOne doit ajouter les variables <code>META_CLIENT_ID</code>, <code>META_CLIENT_SECRET</code> et <code>META_REDIRECT_URI</code>, puis redéployer l’application.
+                      L’administrateur AtriumOne doit configurer la connexion Instagram, puis redéployer l’application.
                     </p>
                   </div>
                 ) : null}

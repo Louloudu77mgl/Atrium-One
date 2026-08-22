@@ -3,13 +3,17 @@ import { cookies } from "next/headers";
 export const instagramOAuthStateCookie = "atrium_instagram_oauth_state";
 
 export function getInstagramOAuthConfig() {
-  const clientId = process.env.META_CLIENT_ID;
-  const clientSecret = process.env.META_CLIENT_SECRET;
-  const redirectUri = process.env.META_REDIRECT_URI;
+  const clientId = process.env.INSTAGRAM_APP_ID ?? process.env.META_CLIENT_ID;
+  const clientSecret = process.env.INSTAGRAM_APP_SECRET ?? process.env.META_CLIENT_SECRET;
+  const redirectUri = process.env.INSTAGRAM_REDIRECT_URI ?? process.env.META_REDIRECT_URI;
   const apiVersion = process.env.INSTAGRAM_GRAPH_API_VERSION ?? "v23.0";
 
   if (!clientId || !clientSecret || !redirectUri) {
     throw new Error("Configuration Instagram non disponible.");
+  }
+
+  if (!/^\d+$/.test(clientId)) {
+    throw new Error("L’identifiant de l’application Instagram est invalide.");
   }
 
   return {
@@ -43,8 +47,8 @@ export async function consumeInstagramOAuthState() {
 
 export function hasInstagramOAuthConfig() {
   return Boolean(
-    process.env.META_CLIENT_ID &&
-      process.env.META_CLIENT_SECRET &&
-      process.env.META_REDIRECT_URI
+    (process.env.INSTAGRAM_APP_ID ?? process.env.META_CLIENT_ID) &&
+      (process.env.INSTAGRAM_APP_SECRET ?? process.env.META_CLIENT_SECRET) &&
+      (process.env.INSTAGRAM_REDIRECT_URI ?? process.env.META_REDIRECT_URI)
   );
 }

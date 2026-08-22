@@ -1,35 +1,34 @@
 import { NextResponse } from "next/server";
+import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { getMerchant } from "@/lib/merchants";
 import { getInstagramOAuthConfig, consumeInstagramOAuthState } from "@/lib/instagram-oauth";
 import { upsertInstagramConnection } from "@/lib/instagram-connections";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
 
-type MetaTokenResponse = {
+type InstagramTokenResponse = {
   access_token?: string;
   token_type?: string;
+  expires_in?: number;
+  user_id?: number | string;
+  error_type?: string;
+  error_message?: string;
   error?: {
     message?: string;
   };
 };
 
 type InstagramProfileResponse = {
-  id?: string;
+  id?: string | number;
+  user_id?: string | number;
   username?: string;
   error?: {
     message?: string;
   };
 };
 
-type MetaPage = {
-  id?: string;
-  name?: string;
-  access_token?: string;
-  instagram_business_account?: InstagramProfileResponse;
-};
-
 export async function GET(request: Request) {
-  const origin = getAppOrigin();
+  const origin = getAppOriginFromRequest(request);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -62,67 +61,70 @@ export async function GET(request: Request) {
   }
 
   const config = getInstagramOAuthConfig();
-  const tokenResponse = await fetch(`https://graph.facebook.com/${config.apiVersion}/oauth/access_token?${new URLSearchParams({
-    client_id: config.clientId,
-    client_secret: config.clientSecret,
-    redirect_uri: config.redirectUri,
-    code
-  }).toString()}`, {
+  const tokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      grant_type: "authorization_code",
+      redirect_uri: config.redirectUri,
+      code
+    }),
     cache: "no-store"
   });
-  const tokenData = (await tokenResponse.json()) as MetaTokenResponse;
+  const tokenData = (await tokenResponse.json()) as InstagramTokenResponse;
 
   if (!tokenResponse.ok || !tokenData.access_token) {
     await upsertInstagramConnection({
       merchant_id: merchant.id,
       status: "error",
-      last_error: tokenData.error?.message ?? "Impossible de connecter Instagram."
+      last_error: tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram."
     }, merchant);
 
-    return NextResponse.redirect(new URL(`/integrations/instagram?error=${encodeURIComponent(tokenData.error?.message ?? "Impossible de connecter Instagram.")}`, origin));
+    return NextResponse.redirect(
+      new URL(
+        `/integrations/instagram?error=${encodeURIComponent(tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram.")}`,
+        origin
+      )
+    );
   }
 
-  const longLivedResponse = await fetch(`https://graph.facebook.com/${config.apiVersion}/oauth/access_token?${new URLSearchParams({
-    grant_type: "fb_exchange_token",
-    client_id: config.clientId,
+  const longLivedResponse = await fetch(`https://graph.instagram.com/access_token?${new URLSearchParams({
+    grant_type: "ig_exchange_token",
     client_secret: config.clientSecret,
-    fb_exchange_token: tokenData.access_token
+    access_token: tokenData.access_token
   }).toString()}`, {
     cache: "no-store"
   });
-  const longLivedData = (await longLivedResponse.json()) as MetaTokenResponse;
+  const longLivedData = (await longLivedResponse.json()) as InstagramTokenResponse;
   const userAccessToken = longLivedData.access_token ?? tokenData.access_token;
 
-  const profileResponse = await fetch(`https://graph.facebook.com/${config.apiVersion}/me/accounts?${new URLSearchParams({
-    fields: "id,name,access_token,instagram_business_account{id,username}",
+  const profileResponse = await fetch(`https://graph.instagram.com/${config.apiVersion}/me?${new URLSearchParams({
+    fields: "user_id,username",
     access_token: userAccessToken
   }).toString()}`, { cache: "no-store" });
 
   let username: string | null = null;
   let accountId: string | null = null;
-  let pageAccessToken: string | null = null;
 
   if (profileResponse.ok) {
-    const profileData = (await profileResponse.json()) as { data?: MetaPage[] };
-    const page = profileData.data?.find((candidate) => candidate.instagram_business_account?.id);
-    username = page?.instagram_business_account?.username ?? null;
-    accountId = page?.instagram_business_account?.id ?? null;
-    pageAccessToken = page?.access_token ?? null;
+    const profileData = (await profileResponse.json()) as InstagramProfileResponse;
+    username = profileData.username ?? null;
+    accountId = String(profileData.user_id ?? profileData.id ?? tokenData.user_id ?? "");
   }
 
   await upsertInstagramConnection({
     merchant_id: merchant.id,
-    instagram_account_id: accountId,
+    instagram_account_id: accountId || null,
     instagram_username: username,
-    access_token_encrypted: pageAccessToken ?? userAccessToken,
+    access_token_encrypted: userAccessToken,
     status: accountId ? "connected" : "pending_configuration",
     connected_at: new Date().toISOString(),
-    last_error: accountId ? null : "Aucun compte Instagram professionnel relié à une Page Facebook n’a été trouvé."
+    last_error: accountId ? null : "Impossible de récupérer le compte Instagram professionnel après la connexion."
   }, merchant);
 
   return NextResponse.redirect(new URL("/integrations/instagram?saved=instagram", origin));
-}
-
-function getAppOrigin() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
