@@ -129,7 +129,7 @@ export default async function IntegrationsPage({
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <Link href="/integrations/instagram" className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]">
+                  <Link href={instagramConnection?.status === "connected" ? "/social#instagram-connection" : "/social?connect=instagram"} className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]">
                     {instagramConnection?.status === "connected" ? "Gérer la connexion Instagram" : "Configurer Instagram"}
                   </Link>
                   <Link href="/social" className="inline-flex items-center justify-center rounded-lg bg-[#F3E8FF] px-4 py-2.5 text-sm font-semibold text-[#4C1D95] transition hover:bg-[#E9D5FF]">

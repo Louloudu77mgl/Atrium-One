@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function SocialPage({
   searchParams
 }: {
-  searchParams?: Promise<{ error?: string; saved?: string }>;
+  searchParams?: Promise<{ connect?: string; error?: string; saved?: string }>;
 }) {
   const params = await searchParams;
   const { reviews, merchant, googleConnection } = await getAppShellData();
@@ -64,6 +64,7 @@ export default async function SocialPage({
               isInstagramUnavailable={isInstagramUnavailable}
               instagramError={params?.error ?? null}
               instagramSaved={params?.saved === "instagram"}
+              instagramConnectRequested={params?.connect === "instagram"}
               cadence={cadence}
               posts={posts}
               ideas={ideas}

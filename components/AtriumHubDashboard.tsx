@@ -321,7 +321,7 @@ function buildDashboardRecommendations({
       description: "Reliez Google Business pour importer vos avis automatiquement dans AtriumOne.",
       priority: "Haute",
       ctaLabel: "Connecter Google",
-      href: "/integrations"
+      href: "/social?connect=instagram"
     });
   }
 

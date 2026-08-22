@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { getMerchant } from "@/lib/merchants";
 import { getInstagramOAuthConfig, hasInstagramOAuthConfig, setInstagramOAuthState } from "@/lib/instagram-oauth";
+import { upsertInstagramConnection } from "@/lib/instagram-connections";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -36,6 +37,13 @@ export async function GET(request: Request) {
   const config = getInstagramOAuthConfig(redirectUri);
   const state = randomUUID();
   await setInstagramOAuthState(state);
+
+  await upsertInstagramConnection({
+    merchant_id: merchant.id,
+    status: "pending_configuration",
+    connected_at: new Date().toISOString(),
+    last_error: null
+  }, merchant);
 
   console.info("[instagram/connect] oauth_started", {
     merchantId: merchant.id,

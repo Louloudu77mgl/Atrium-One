@@ -37,7 +37,7 @@ export function validateFlow(
     }
 
     if (node.type === "publish_instagram" && !capabilities.instagramConnected) {
-      issues.push({ id: `instagram-${node.id}`, level: "error", message: "Instagram doit être connecté avant d’activer ce bloc.", nodeId: node.id, actionLabel: "Connecter Instagram", actionHref: "/integrations" });
+      issues.push({ id: `instagram-${node.id}`, level: "error", message: "Instagram doit être connecté avant d’activer ce bloc.", nodeId: node.id, actionLabel: "Connecter Instagram", actionHref: "/social?connect=instagram" });
     }
 
     if ((node.type === "google_review" || node.type === "publish_review_reply") && !capabilities.googleConnected) {
@@ -234,4 +234,3 @@ function hasCycle(nodes: AutomationNodeData[], edges: AutomationEdge[]) {
 
   return nodes.some((node) => visit(node.id));
 }
-

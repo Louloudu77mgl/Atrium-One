@@ -37,6 +37,7 @@ export function SocialPageClient({
   isInstagramUnavailable,
   instagramError,
   instagramSaved,
+  instagramConnectRequested,
   cadence,
   posts: initialPosts,
   ideas,
@@ -51,6 +52,7 @@ export function SocialPageClient({
   isInstagramUnavailable: boolean;
   instagramError: string | null;
   instagramSaved: boolean;
+  instagramConnectRequested: boolean;
   cadence: { postsPerCycle: number; cycleWeeks: number };
   posts: SocialPostRow[];
   ideas: ReviewSocialPostIdea[];
@@ -66,7 +68,9 @@ export function SocialPageClient({
   const [visibleIdeasCount, setVisibleIdeasCount] = useState(Math.min(3, Math.max(ideas.length, 3)));
   const [postCategory, setPostCategory] = useState<PostCategory>("draft");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
-  const [instagramModalOpen, setInstagramModalOpen] = useState(false);
+  const [instagramModalOpen, setInstagramModalOpen] = useState(
+    instagramConnectRequested && instagramConnection?.status !== "connected"
+  );
   const [instagramAnswer, setInstagramAnswer] = useState<InstagramProfessionalAnswer>(null);
   const [instagramActionState, setInstagramActionState] = useState<InstagramOnboardingState | null>(null);
   const [instagramCardMessage, setInstagramCardMessage] = useState<string | null>(instagramSaved ? "Votre compte Instagram est prêt. Vous pouvez créer votre premier post." : null);
@@ -661,7 +665,7 @@ function InstagramConnectionCard({
       : "border-[#E9D5FF] bg-[#FBFAFF]";
 
   return (
-    <section className={`mt-[18px] rounded-[18px] border px-5 py-5 ${cardTone}`}>
+    <section id="instagram-connection" className={`mt-[18px] rounded-[18px] border px-5 py-5 ${cardTone}`}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 flex-1 gap-4">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/80 bg-[linear-gradient(135deg,#4B2E83,#A855F7)] text-lg font-black text-white shadow-[0_12px_30px_rgba(76,29,149,0.18)]">

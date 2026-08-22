@@ -5,6 +5,7 @@ import { getInstagramOAuthConfig, consumeInstagramOAuthState } from "@/lib/insta
 import { upsertInstagramConnection } from "@/lib/instagram-connections";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
+import type { MerchantRow } from "@/lib/supabase/types";
 
 type InstagramTokenResponse = {
   access_token?: string;
@@ -34,12 +35,12 @@ export async function GET(request: Request) {
   const state = url.searchParams.get("state");
   const oauthError = url.searchParams.get("error");
 
-  if (oauthError) {
-    return createOAuthCompletionResponse(origin, {
-      status: "error",
-      message: "La connexion Instagram n’a pas été autorisée."
-    });
-  }
+  console.info("[instagram/callback] oauth_returned", {
+    origin,
+    hasCode: Boolean(code),
+    hasState: Boolean(state),
+    oauthError: oauthError ?? null
+  });
 
   if (!hasSupabaseEnv()) {
     return createOAuthCompletionResponse(origin, {
@@ -49,13 +50,6 @@ export async function GET(request: Request) {
   }
 
   const expectedState = await consumeInstagramOAuthState();
-
-  if (!code || !state || !expectedState || state !== expectedState) {
-    return createOAuthCompletionResponse(origin, {
-      status: "error",
-      message: "La connexion Instagram n’a pas pu être confirmée."
-    });
-  }
 
   const user = await getCurrentUser();
 
@@ -75,30 +69,61 @@ export async function GET(request: Request) {
     });
   }
 
+  if (oauthError) {
+    await recordInstagramError(merchant, "La connexion Instagram n’a pas été autorisée.");
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "La connexion Instagram n’a pas été autorisée."
+    });
+  }
+
+  if (!code || !state || !expectedState || state !== expectedState) {
+    await recordInstagramError(merchant, "Le retour sécurisé Instagram n’a pas pu être confirmé.");
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "La connexion Instagram n’a pas pu être confirmée."
+    });
+  }
+
   const redirectUri = new URL("/api/instagram/callback", origin).toString();
   const config = getInstagramOAuthConfig(redirectUri);
-  const tokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: new URLSearchParams({
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-      grant_type: "authorization_code",
-      redirect_uri: redirectUri,
-      code
-    }),
-    cache: "no-store"
-  });
-  const tokenData = (await tokenResponse.json()) as InstagramTokenResponse;
+  let tokenResponse: Response;
+  let tokenData: InstagramTokenResponse;
+
+  try {
+    tokenResponse = await fetch("https://api.instagram.com/oauth/access_token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        grant_type: "authorization_code",
+        redirect_uri: redirectUri,
+        code
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000)
+    });
+    tokenData = await tokenResponse.json() as InstagramTokenResponse;
+  } catch (error) {
+    console.error("[instagram/callback] token_exchange_failed", {
+      merchantId: merchant.id,
+      message: error instanceof Error ? error.message : "unknown_error"
+    });
+    await recordInstagramError(merchant, "Instagram n’a pas répondu pendant la connexion.");
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "Instagram n’a pas pu finaliser la connexion. Réessayez dans quelques instants."
+    });
+  }
 
   if (!tokenResponse.ok || !tokenData.access_token) {
-    await upsertInstagramConnection({
-      merchant_id: merchant.id,
-      status: "error",
-      last_error: tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram."
-    }, merchant);
+    await recordInstagramError(
+      merchant,
+      tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram."
+    );
 
     return createOAuthCompletionResponse(origin, {
       status: "error",
@@ -106,25 +131,29 @@ export async function GET(request: Request) {
     });
   }
 
-  const longLivedResponse = await fetch(`https://graph.instagram.com/access_token?${new URLSearchParams({
+  const longLivedData = await fetch(`https://graph.instagram.com/access_token?${new URLSearchParams({
     grant_type: "ig_exchange_token",
     client_secret: config.clientSecret,
     access_token: tokenData.access_token
   }).toString()}`, {
-    cache: "no-store"
-  });
-  const longLivedData = (await longLivedResponse.json()) as InstagramTokenResponse;
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000)
+  }).then(async (response) => response.ok ? await response.json() as InstagramTokenResponse : {})
+    .catch(() => ({} as InstagramTokenResponse));
   const userAccessToken = longLivedData.access_token ?? tokenData.access_token;
 
   const profileResponse = await fetch(`https://graph.instagram.com/${config.apiVersion}/me?${new URLSearchParams({
     fields: "user_id,username",
     access_token: userAccessToken
-  }).toString()}`, { cache: "no-store" });
+  }).toString()}`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000)
+  }).catch(() => null);
 
   let username: string | null = null;
   let accountId = tokenData.user_id ? String(tokenData.user_id) : null;
 
-  if (profileResponse.ok) {
+  if (profileResponse?.ok) {
     const profileData = (await profileResponse.json()) as InstagramProfileResponse;
     username = profileData.username ?? null;
     accountId = String(profileData.user_id ?? profileData.id ?? accountId ?? "") || null;
@@ -163,43 +192,26 @@ function createOAuthCompletionResponse(
   origin: string,
   result: { status: "connected" | "action_required" | "error"; message: string }
 ) {
-  const targetOrigin = new URL(origin).origin;
   const destination = new URL(
     result.status === "connected"
       ? "/social?saved=instagram"
       : `/social?error=${encodeURIComponent(result.message)}`,
-    targetOrigin
+    origin
   ).toString();
-  const payload = JSON.stringify({
-    type: "atrium:instagram-oauth-complete",
-    status: result.status,
-    message: result.message
-  }).replace(/</g, "\\u003c");
+  return NextResponse.redirect(destination);
+}
 
-  return new NextResponse(`<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Connexion Instagram terminée</title>
-  </head>
-  <body>
-    <p>${result.status === "connected" ? "Compte Instagram connecté. Cette fenêtre va se fermer…" : "Retour vers AtriumOne…"}</p>
-    <script>
-      const payload = ${payload};
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage(payload, ${JSON.stringify(targetOrigin)});
-        window.close();
-        window.setTimeout(() => window.location.replace(${JSON.stringify(destination)}), 500);
-      } else {
-        window.location.replace(${JSON.stringify(destination)});
-      }
-    </script>
-  </body>
-</html>`, {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store"
-    }
-  });
+async function recordInstagramError(merchant: MerchantRow, message: string) {
+  try {
+    await upsertInstagramConnection({
+      merchant_id: merchant.id,
+      status: "error",
+      last_error: message
+    }, merchant);
+  } catch (error) {
+    console.error("[instagram/callback] error_persist_failed", {
+      merchantId: merchant.id,
+      message: error instanceof Error ? error.message : "unknown_error"
+    });
+  }
 }
