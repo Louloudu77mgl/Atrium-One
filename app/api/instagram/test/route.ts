@@ -48,7 +48,7 @@ export async function POST() {
 
   const data = (await response.json()) as MetaProfileResponse;
 
-  if (!response.ok || !data.id) {
+  if (!response.ok || (!data.user_id && !data.id)) {
     const message = mapInstagramTestError(data.error?.message);
     await upsertInstagramConnection({
       merchant_id: merchant.id,
