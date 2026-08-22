@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Header } from "@/components/Header";
+import { InstagramConnectButton } from "@/components/InstagramConnectButton";
 import { Sidebar } from "@/components/Sidebar";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { getInstagramConnection } from "@/lib/instagram-connections";
@@ -82,7 +83,7 @@ export default async function InstagramIntegrationPage({
                 <div className="rounded-2xl bg-[#FBFAFF] p-5">
                   <h2 className="text-lg font-black text-[#211432]">Ce qui va se passer</h2>
                   <ol className="mt-3 space-y-3 text-sm leading-6 text-[#625873]">
-                    <li><strong className="text-[#4C1D95]">1.</strong> Meta s’ouvre dans une page sécurisée.</li>
+                    <li><strong className="text-[#4C1D95]">1.</strong> Instagram s’ouvre dans un nouvel onglet sécurisé.</li>
                     <li><strong className="text-[#4C1D95]">2.</strong> Vous choisissez la Page et le compte Instagram de votre établissement.</li>
                     <li><strong className="text-[#4C1D95]">3.</strong> Vous autorisez la publication de contenus.</li>
                     <li><strong className="text-[#4C1D95]">4.</strong> Vous revenez automatiquement dans AtriumOne avec le compte connecté.</li>
@@ -91,9 +92,10 @@ export default async function InstagramIntegrationPage({
 
                 <div className="flex flex-wrap items-center gap-3">
                   {configured ? (
-                    <a href="/api/instagram/connect" className="inline-flex items-center justify-center rounded-full bg-[#4C1D95] px-6 py-3 text-sm font-bold text-white shadow-[0_8px_22px_rgba(76,29,149,0.24)] transition hover:bg-[#6D28D9]">
-                      {connected ? "Reconnecter un compte Instagram" : "Continuer avec Meta"}
-                    </a>
+                    <InstagramConnectButton
+                      label={connected ? "Reconnecter un compte Instagram" : "Continuer avec Instagram"}
+                      className="inline-flex items-center justify-center rounded-full bg-[#4C1D95] px-6 py-3 text-sm font-bold text-white shadow-[0_8px_22px_rgba(76,29,149,0.24)] transition hover:bg-[#6D28D9] disabled:cursor-not-allowed disabled:opacity-60"
+                    />
                   ) : (
                     <span className="inline-flex cursor-not-allowed items-center justify-center rounded-full bg-[#D8D2E2] px-6 py-3 text-sm font-bold text-white">
                       Connexion Meta indisponible
