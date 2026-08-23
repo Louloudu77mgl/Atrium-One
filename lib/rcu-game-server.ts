@@ -1,7 +1,6 @@
 import { randomBytes, randomInt, randomUUID } from "crypto";
 import type { RcuGameResult, RcuProgram, RcuReward } from "@/lib/rcu";
 import {
-  getRcuCustomerKey,
   getStoredRcuGameRecordForDay,
   listStoredRcuGameRecords,
   listStoredRcuRewardRedemptions,
@@ -174,6 +173,7 @@ function buildHansResult(form: RcuProgram, previous: RcuGameRecord[], allPreviou
 
 export async function playRcuGame({
   form,
+  customerKey,
   phone,
   firstName,
   lastName,
@@ -181,6 +181,7 @@ export async function playRcuGame({
   now = new Date()
 }: {
   form: RcuProgram;
+  customerKey: string;
   phone: string;
   firstName: string;
   lastName: string;
@@ -188,7 +189,6 @@ export async function playRcuGame({
   now?: Date;
 }) {
   const { day: visitDay, weekday } = parisDateParts(now);
-  const customerKey = getRcuCustomerKey(form.merchant_id, phone);
   const existing = await getStoredRcuGameRecordForDay({
     merchantId: form.merchant_id,
     programId: form.id,

@@ -137,6 +137,7 @@ export function RcuGameExperience({
   wallet,
   alreadyPlayedToday,
   walletHref,
+  newCustomerHref,
   errorMessage,
   submitAction
 }: {
@@ -149,6 +150,7 @@ export function RcuGameExperience({
   wallet: RcuWalletRecord | null;
   alreadyPlayedToday: boolean;
   walletHref: string | null;
+  newCustomerHref: string;
   errorMessage?: string;
   submitAction: (formData: FormData) => Promise<void>;
 }) {
@@ -192,17 +194,16 @@ export function RcuGameExperience({
         ) : (
           <form action={submitAction} className="mt-5 space-y-4 rounded-[28px] border border-white bg-white p-5 shadow-lg sm:p-6">
             <div><div className="text-xs font-black uppercase tracking-[0.14em] text-[var(--rcu-primary)]">Valider ma visite</div><h2 className="mt-1 text-2xl font-black">Quelques secondes suffisent</h2></div>
-            {wallet ? <div className="rounded-2xl bg-[var(--rcu-secondary)] px-4 py-3 text-sm font-bold text-[var(--rcu-primary)]">Bonjour {wallet.first_name}, votre portefeuille est reconnu sur ce téléphone.</div> : null}
+            {wallet ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[var(--rcu-secondary)] px-4 py-3 text-sm font-bold text-[var(--rcu-primary)]"><span>Bonjour {wallet.first_name}, votre portefeuille est reconnu sur ce téléphone.</span><Link href={newCustomerHref} className="rounded-full bg-white px-3 py-1.5 text-xs font-black shadow-sm">Ce n’est pas moi</Link></div> : null}
             <div className="grid gap-3 sm:grid-cols-2"><input name="first_name" required defaultValue={wallet?.first_name ?? ""} placeholder="Prénom" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[var(--rcu-primary)]" /><input name="last_name" defaultValue={wallet?.last_name ?? ""} placeholder="Nom" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[var(--rcu-primary)]" /></div>
             <input name="phone" required inputMode="tel" defaultValue={wallet?.phone ?? ""} placeholder="Téléphone" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[var(--rcu-primary)]" />
-            <input name="email" required inputMode="email" defaultValue={wallet?.email ?? ""} placeholder="Email" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[var(--rcu-primary)]" />
+            <input name="email" type="email" inputMode="email" defaultValue={wallet?.email ?? ""} placeholder="Email (optionnel)" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[var(--rcu-primary)]" />
             <label className="grid gap-1.5 text-xs font-bold text-slate-600">Date de naissance (optionnelle)<input name="birthday" type="date" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-normal outline-none transition focus:border-[var(--rcu-primary)]" /></label>
             <input name="favorite_products" placeholder="Produit préféré (optionnel)" className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[var(--rcu-primary)]" />
             {program.game_config.visitValidationEnabled !== false ? <div className="rounded-2xl border-2 border-dashed border-[var(--rcu-accent)]/40 bg-[var(--rcu-secondary)] p-4"><label className="text-xs font-black uppercase tracking-[0.12em] text-[var(--rcu-primary)]">Validation par le commerçant<input type="password" name="visit_code" required minLength={2} maxLength={4} autoComplete="off" autoCapitalize="characters" spellCheck={false} className="mt-2 w-full rounded-xl border border-white bg-white px-4 py-3 text-center font-mono text-2xl font-black uppercase tracking-[0.3em] outline-none" placeholder="••••" /></label><p className="mt-2 text-xs font-semibold text-slate-600">Présentez votre téléphone au commerçant pour qu’il valide votre visite.</p></div> : null}
             {program.form_type === "points" && program.target_url ? <div className="rounded-2xl border border-[var(--rcu-accent)]/30 bg-[var(--rcu-secondary)] p-4"><a href={program.target_url} target="_blank" rel="noreferrer" className="font-black text-[var(--rcu-primary)] underline underline-offset-4">Laisser un avis (+{program.game_config.reviewBonus ?? 100} points)</a><label className="mt-3 flex items-start gap-3 text-sm font-semibold text-slate-700"><input name="review_confirmed" type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--rcu-primary)]" /><span>Le commerçant confirme que l’avis a bien été publié.</span></label></div> : null}
             <label className="flex items-start gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-medium leading-5 text-slate-600"><input name="privacy_consent" type="checkbox" required className="mt-0.5 h-4 w-4 accent-[var(--rcu-primary)]" /><span>J’accepte que {merchant?.business_name ?? "la boutique"} utilise ces informations pour gérer ma participation et mon programme de fidélité.</span></label>
-            <label className="flex items-start gap-3 px-1 text-xs font-medium leading-5 text-slate-600"><input name="consent_sms" type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--rcu-primary)]" /><span>Je souhaite recevoir les offres et actualités de la boutique par SMS (facultatif).</span></label>
-            <label className="flex items-start gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-medium leading-5 text-slate-600"><input name="consent_email" type="checkbox" required className="mt-0.5 h-4 w-4 accent-[var(--rcu-primary)]" /><span>Je souhaite recevoir les offres et actualités de la boutique par e-mail. Cette case est obligatoire pour participer au jeu RCU.</span></label>
+            <fieldset className="space-y-3 rounded-2xl border border-slate-200 p-4"><legend className="px-2 text-xs font-black uppercase tracking-[0.1em] text-slate-700">Mes autorisations de communication</legend><p className="text-xs font-medium leading-5 text-slate-500">Ces choix sont facultatifs et peuvent être retirés à tout moment.</p><label className="flex items-start gap-3 text-xs font-medium leading-5 text-slate-600"><input name="consent_sms" type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--rcu-primary)]" /><span>J’accepte de recevoir les offres de {merchant?.business_name ?? "la boutique"} par SMS.</span></label><label className="flex items-start gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-medium leading-5 text-slate-600"><input name="consent_email" type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--rcu-primary)]" /><span>J’accepte de recevoir les offres de {merchant?.business_name ?? "la boutique"} par e-mail.</span></label></fieldset>
             <SubmitButton label={program.cta_label ?? type.defaultCtaLabel} />
           </form>
         )}

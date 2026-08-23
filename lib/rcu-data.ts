@@ -1,12 +1,12 @@
 import { getMerchant } from "@/lib/merchants";
 import { LEGACY_RCU_TYPE_MAP, isRcuFormType, normalizeRcuGameConfig, type RcuGameConfig, type RcuProgram } from "@/lib/rcu";
-import { listStoredRcuCustomers, listStoredRcuForms } from "@/lib/rcu-store";
+import { listStoredRcuCustomers, listStoredRcuForms, type RcuCustomerRow } from "@/lib/rcu-store";
 import { getSmsModuleData } from "@/lib/sms";
 import { hasSupabaseAdminEnv } from "@/lib/supabase/admin";
-import type { CustomerRow, Json, MerchantRow, RcuFormRow } from "@/lib/supabase/types";
+import type { Json, MerchantRow, RcuFormRow } from "@/lib/supabase/types";
 
 export type RcuDashboardData = {
-  customers: CustomerRow[];
+  customers: RcuCustomerRow[];
   forms: RcuProgram[];
 };
 
@@ -49,7 +49,7 @@ async function getDatabaseFallback(merchant: MerchantRow): Promise<RcuDashboardD
     const data = await getSmsModuleData(merchant);
 
     return {
-      customers: data.customers,
+      customers: data.customers.map((customer) => ({ ...customer, opt_in_email: false })),
       forms: data.forms.map(normalizeDatabaseForm).filter((form): form is RcuProgram => Boolean(form))
     };
   } catch (error) {

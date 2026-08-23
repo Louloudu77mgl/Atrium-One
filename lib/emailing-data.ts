@@ -3,7 +3,7 @@ import { listEmailCampaigns, listSuppressedEmailAddresses } from "@/lib/emailing
 import type { EmailSubscriberProfile, EmailingDashboardData } from "@/lib/emailing-types";
 import { getGmailConnection, isGmailConnectionReady } from "@/lib/gmail-connections";
 import type { Review } from "@/lib/mock-data";
-import { listStoredRcuGameRecords, listStoredRcuLeads, listStoredRcuRaffleDraws, listStoredRcuRewardRedemptions } from "@/lib/rcu-store";
+import { getRcuCustomerKey, listStoredRcuGameRecords, listStoredRcuLeads, listStoredRcuRaffleDraws, listStoredRcuRewardRedemptions } from "@/lib/rcu-store";
 import { hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 import type { MerchantRow } from "@/lib/supabase/types";
 
@@ -63,7 +63,7 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
   const [leads, plays, redemptions, raffleDraws, campaigns, suppressedEmails, brand, gmailConnection] = dashboardData;
   const latestByCustomer = new Map<string, (typeof leads)[number]>();
   leads.forEach((lead) => {
-    const key = lead.customer_key ?? lead.phone;
+    const key = getRcuCustomerKey(merchant.id, lead.phone, lead.email);
     if (!latestByCustomer.has(key)) latestByCustomer.set(key, lead);
   });
   const reviewByName = new Map<string, Review>();
@@ -77,8 +77,9 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
   latestByCustomer.forEach((lead) => {
     const email = lead.email?.trim().toLocaleLowerCase("fr-FR") ?? "";
     if (!lead.consent_email || suppressedEmails.has(email) || !/^\S+@\S+\.\S+$/.test(email)) return;
-    const customerKey = lead.customer_key ?? "";
-    const customerPlays = plays.filter((play) => play.customer_key === customerKey);
+    const customerKey = getRcuCustomerKey(merchant.id, lead.phone, lead.email);
+    const customerName = normalizeName(`${lead.first_name} ${lead.last_name}`);
+    const customerPlays = plays.filter((play) => play.customer_key === customerKey || (play.customer_key === lead.customer_key && normalizeName(`${play.first_name} ${play.last_name}`) === customerName));
     const customerRedemptions = redemptions.filter((redemption) => redemption.customer_key === customerKey);
     const customerDraws = raffleDraws.filter((draw) => draw.customer_key === customerKey);
     const review = reviewByName.get(normalizeName(`${lead.first_name}${lead.last_name}`))

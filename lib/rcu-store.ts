@@ -107,11 +107,15 @@ export type RcuWalletRecord = {
 type RcuJournalRecord = RcuGameRecord | RcuRewardRedemptionRecord | RcuRaffleDrawRecord;
 
 export type RcuCustomerDetail = {
-  customer: CustomerRow;
+  customer: RcuCustomerRow;
   plays: RcuGameRecord[];
   redemptions: RcuRewardRedemptionRecord[];
   raffleDraws: RcuRaffleDrawRecord[];
   wallet: RcuWalletRecord | null;
+};
+
+export type RcuCustomerRow = CustomerRow & {
+  opt_in_email: boolean;
 };
 
 let bucketPromise: Promise<void> | null = null;
@@ -165,8 +169,18 @@ function withVisitValidation(program: RcuProgram): RcuProgram {
   };
 }
 
-export function getRcuCustomerKey(merchantId: string, phone: string) {
-  return createHash("sha256").update(`${merchantId}:${phone}`).digest("hex").slice(0, 24);
+export function getRcuCustomerKey(merchantId: string, phone: string, email?: string | null) {
+  const normalizedEmail = normalizeRcuEmail(email);
+  const identity = normalizedEmail ? `email:${normalizedEmail}` : `phone:${phone}`;
+  return createHash("sha256").update(`${merchantId}:${identity}`).digest("hex").slice(0, 24);
+}
+
+function normalizeRcuEmail(email?: string | null) {
+  return String(email ?? "").trim().toLocaleLowerCase("fr-FR");
+}
+
+function normalizeRcuName(firstName: string, lastName: string) {
+  return `${firstName} ${lastName}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr-FR").replace(/[^a-z0-9]/g, "");
 }
 
 function isRcuGameRecord(value: unknown): value is RcuGameRecord {
@@ -674,18 +688,16 @@ export async function listStoredRcuLeads(merchantId: string): Promise<RcuLeadRec
     .sort((left, right) => right.submitted_at.localeCompare(left.submitted_at));
 }
 
-export async function listStoredRcuCustomers(merchantId: string): Promise<CustomerRow[]> {
-  const records = await listStoredRcuLeads(merchantId);
-  const latestByPhone = new Map<string, RcuLeadRecord>();
+function buildStoredRcuCustomers(merchantId: string, records: RcuLeadRecord[]): RcuCustomerRow[] {
+  const latestByIdentity = new Map<string, RcuLeadRecord>();
 
   records.forEach((lead) => {
-    if (!latestByPhone.has(lead.phone)) {
-      latestByPhone.set(lead.phone, lead);
-    }
+    const customerKey = getRcuCustomerKey(merchantId, lead.phone, lead.email);
+    if (!latestByIdentity.has(customerKey)) latestByIdentity.set(customerKey, lead);
   });
 
-  return Array.from(latestByPhone.values()).map((lead) => ({
-    id: getRcuCustomerKey(merchantId, lead.phone),
+  return Array.from(latestByIdentity.entries()).map(([customerKey, lead]) => ({
+    id: customerKey,
     merchant_id: lead.merchant_id,
     first_name: lead.first_name,
     last_name: lead.last_name,
@@ -693,6 +705,7 @@ export async function listStoredRcuCustomers(merchantId: string): Promise<Custom
     email: lead.email,
     gender_guess: null,
     opt_in_sms: lead.consent_sms,
+    opt_in_email: lead.consent_email === true,
     sms_unsubscribed: false,
     favorite_products: lead.favorite_products ? [lead.favorite_products] : [],
     last_purchase_date: lead.last_purchase_date ?? null,
@@ -702,14 +715,50 @@ export async function listStoredRcuCustomers(merchantId: string): Promise<Custom
   }));
 }
 
+export async function listStoredRcuCustomers(merchantId: string): Promise<RcuCustomerRow[]> {
+  const records = await listStoredRcuLeads(merchantId);
+  return buildStoredRcuCustomers(merchantId, records);
+}
+
 export async function getStoredRcuCustomerDetail(merchantId: string, customerKey: string): Promise<RcuCustomerDetail | null> {
-  const [customers, plays, redemptions, raffleDraws, wallet] = await Promise.all([
-    listStoredRcuCustomers(merchantId),
-    listStoredRcuGameRecords(merchantId, { customerKey }),
-    listStoredRcuRewardRedemptions(merchantId, { customerKey }),
-    listStoredRcuRaffleDraws(merchantId, { customerKey }),
+  const [leads, allPlays, allRedemptions, allRaffleDraws, directWallet] = await Promise.all([
+    listStoredRcuLeads(merchantId),
+    listStoredRcuGameRecords(merchantId),
+    listStoredRcuRewardRedemptions(merchantId),
+    listStoredRcuRaffleDraws(merchantId),
     getStoredRcuWalletForCustomer(merchantId, customerKey)
   ]);
+  const customers = buildStoredRcuCustomers(merchantId, leads);
   const customer = customers.find((item) => item.id === customerKey);
-  return customer ? { customer, plays, redemptions, raffleDraws, wallet } : null;
+  if (!customer) return null;
+
+  const customerLeads = leads.filter((lead) => getRcuCustomerKey(merchantId, lead.phone, lead.email) === customerKey);
+  const legacyKeys = new Set(customerLeads.map((lead) => lead.customer_key).filter((key): key is string => Boolean(key)));
+  const identitiesByLegacyKey = new Map<string, Set<string>>();
+  leads.forEach((lead) => {
+    if (!lead.customer_key) return;
+    const identities = identitiesByLegacyKey.get(lead.customer_key) ?? new Set<string>();
+    identities.add(getRcuCustomerKey(merchantId, lead.phone, lead.email));
+    identitiesByLegacyKey.set(lead.customer_key, identities);
+  });
+  const targetName = normalizeRcuName(customer.first_name, customer.last_name);
+  const isUnambiguousLegacyKey = (key: string) => identitiesByLegacyKey.get(key)?.size === 1;
+  const matchesLegacyIdentity = (key: string, firstName: string, lastName: string) => legacyKeys.has(key)
+    && (isUnambiguousLegacyKey(key) || normalizeRcuName(firstName, lastName) === targetName);
+  const plays = allPlays.filter((record) => record.customer_key === customerKey || matchesLegacyIdentity(record.customer_key, record.first_name, record.last_name));
+  const redemptions = allRedemptions.filter((record) => record.customer_key === customerKey || (legacyKeys.has(record.customer_key) && isUnambiguousLegacyKey(record.customer_key)));
+  const raffleDraws = allRaffleDraws.filter((record) => record.customer_key === customerKey || matchesLegacyIdentity(record.customer_key, record.winner_name, ""));
+  let wallet = directWallet;
+  if (!wallet) {
+    for (const legacyKey of legacyKeys) {
+      const legacyWallet = await getStoredRcuWalletForCustomer(merchantId, legacyKey);
+      const walletMatchesEmail = normalizeRcuEmail(legacyWallet?.email) === normalizeRcuEmail(customer.email);
+      const walletMatchesName = legacyWallet ? normalizeRcuName(legacyWallet.first_name, legacyWallet.last_name) === targetName : false;
+      if (legacyWallet && (walletMatchesEmail || walletMatchesName)) {
+        wallet = legacyWallet;
+        break;
+      }
+    }
+  }
+  return { customer, plays, redemptions, raffleDraws, wallet };
 }

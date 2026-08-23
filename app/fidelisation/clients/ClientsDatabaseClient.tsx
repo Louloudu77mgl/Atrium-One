@@ -8,14 +8,14 @@ import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import { buttonStyles } from "@/lib/design-system";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import type { CustomerRow } from "@/lib/supabase/types";
+import type { RcuCustomerRow } from "@/lib/rcu-store";
 import { getUserErrorMessage } from "@/lib/user-feedback";
 
 type SourceFilter = "all" | "rcu" | "import";
 type StatusFilter = "all" | "ready" | "no-consent" | "unsubscribed" | "incomplete";
 type SortKey = "recent" | "name" | "source" | "status";
 
-export function ClientsDatabaseClient({ customers }: { customers: CustomerRow[] }) {
+export function ClientsDatabaseClient({ customers }: { customers: RcuCustomerRow[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -228,7 +228,7 @@ export function ClientsDatabaseClient({ customers }: { customers: CustomerRow[] 
   );
 }
 
-function CustomerTableRow({ customer, onCopyPhone }: { customer: CustomerRow; onCopyPhone: (phone: string) => Promise<void> }) {
+function CustomerTableRow({ customer, onCopyPhone }: { customer: RcuCustomerRow; onCopyPhone: (phone: string) => Promise<void> }) {
   const source = getCustomerSource(customer);
   const status = getCustomerStatus(customer);
   const displayName = `${customer.first_name} ${customer.last_name}`.trim() || "Client sans nom";
@@ -247,6 +247,8 @@ function CustomerTableRow({ customer, onCopyPhone }: { customer: CustomerRow; on
         <div className="mt-3 flex flex-wrap gap-2">
           {customer.phone ? <span className="rounded-full bg-[#F3E8FF] px-3 py-1 text-xs font-black text-[#6D28D9]">{customer.phone}</span> : null}
           {customer.email ? <span className="rounded-full bg-[#F8F5FF] px-3 py-1 text-xs font-bold text-[#7B6A92]">{customer.email}</span> : null}
+          {customer.opt_in_email ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">E-mail accepté</span> : null}
+          {customer.opt_in_sms ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">SMS accepté</span> : null}
         </div>
       </Link>
 
@@ -298,11 +300,11 @@ function RoundLink({ label, icon, href }: { label: string; icon: "document"; hre
   );
 }
 
-function getCustomerSource(customer: CustomerRow): "rcu" | "import" {
+function getCustomerSource(customer: RcuCustomerRow): "rcu" | "import" {
   return customer.notes?.startsWith("Import clients") ? "import" : "rcu";
 }
 
-function getCustomerStatus(customer: CustomerRow): { key: StatusFilter; label: string; className: string } {
+function getCustomerStatus(customer: RcuCustomerRow): { key: StatusFilter; label: string; className: string } {
   if (!customer.phone) {
     return { key: "incomplete", label: "Incomplet", className: "rounded-full bg-[#F6F1FF] px-4 py-2 text-sm font-black text-[#7B6A92]" };
   }
@@ -311,14 +313,14 @@ function getCustomerStatus(customer: CustomerRow): { key: StatusFilter; label: s
     return { key: "unsubscribed", label: "Désinscrit", className: "rounded-full bg-[#FFF1F2] px-4 py-2 text-sm font-black text-[#E11D48]" };
   }
 
-  if (!customer.opt_in_sms) {
+  if (!customer.opt_in_sms && !customer.opt_in_email) {
     return { key: "no-consent", label: "Sans consentement", className: "rounded-full bg-[#FFF7ED] px-4 py-2 text-sm font-black text-[#C2410C]" };
   }
 
   return { key: "ready", label: "Activable", className: "rounded-full bg-[#EFE7FF] px-4 py-2 text-sm font-black text-[#5B21B6]" };
 }
 
-function getCustomerDescription(customer: CustomerRow) {
+function getCustomerDescription(customer: RcuCustomerRow) {
   const products = customer.favorite_products.length > 0 ? customer.favorite_products.join(", ") : null;
   const note = customer.notes?.replace(/^Import clients\s*[-–—:]?\s*/i, "").trim();
 
@@ -328,7 +330,7 @@ function getCustomerDescription(customer: CustomerRow) {
   return customer.email ? "Contact client enregistré." : "Client sans information complémentaire.";
 }
 
-function sortCustomers(left: CustomerRow, right: CustomerRow, sortKey: SortKey) {
+function sortCustomers(left: RcuCustomerRow, right: RcuCustomerRow, sortKey: SortKey) {
   if (sortKey === "name") {
     return `${left.first_name} ${left.last_name}`.localeCompare(`${right.first_name} ${right.last_name}`, "fr");
   }

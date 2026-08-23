@@ -20,7 +20,8 @@ import {
 } from "@/lib/rcu";
 import { appShellStyles, badgeStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import type { CustomerRow, MerchantRow } from "@/lib/supabase/types";
+import type { RcuCustomerRow } from "@/lib/rcu-store";
+import type { MerchantRow } from "@/lib/supabase/types";
 import { getUserErrorMessage } from "@/lib/user-feedback";
 import { RcuGameConfigFields } from "./RcuGameConfigFields";
 import { RcuRaffleControl } from "./RcuRaffleControl";
@@ -38,7 +39,7 @@ export function RcuClient({
   forms: initialForms
 }: {
   merchant?: MerchantRow | null;
-  customers: CustomerRow[];
+  customers: RcuCustomerRow[];
   forms: RcuProgram[];
 }) {
   const router = useRouter();
@@ -216,9 +217,9 @@ export function RcuClient({
         <article className={surfaceStyles.kpi}>
           <div className={typographyStyles.kicker}>Contacts consentis</div>
           <div className="mt-3 text-[30px] font-black tracking-[-0.04em] text-[var(--color-text)]">
-            {initialCustomers.filter((customer) => customer.opt_in_sms && !customer.sms_unsubscribed).length}
+            {initialCustomers.filter((customer) => customer.opt_in_email || (customer.opt_in_sms && !customer.sms_unsubscribed)).length}
           </div>
-          <p className={`${typographyStyles.body} mt-2`}>Contacts ayant validé le formulaire de la boutique.</p>
+          <p className={`${typographyStyles.body} mt-2`}>Contacts ayant accepté les e-mails ou les SMS.</p>
         </article>
       </section>
 

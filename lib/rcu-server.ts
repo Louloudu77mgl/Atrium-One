@@ -80,8 +80,8 @@ export async function submitRcuLead({
   const consentEmail = payload.consent_email === true;
   const privacyConsent = payload.privacy_consent === true;
 
-  if (!firstName || !phone || !privacyConsent || !consentEmail) {
-    throw new Error("Prénom, téléphone valide, accord de participation et inscription newsletter obligatoires.");
+  if (!firstName || !phone || !privacyConsent) {
+    throw new Error("Prénom, téléphone valide et accord de participation obligatoires.");
   }
   validateVisitCode(form, payload.visit_code, payload.validation_key);
 
@@ -89,10 +89,13 @@ export async function submitRcuLead({
   const favoriteProducts = String(payload.favorite_products ?? "").trim();
   const email = String(payload.email ?? "").trim();
   const birthday = /^\d{4}-\d{2}-\d{2}$/.test(String(payload.birthday ?? "")) ? String(payload.birthday) : null;
-  if (!email) {
-    throw new Error("Ajoutez une adresse e-mail et acceptez la newsletter pour participer au jeu RCU.");
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+    throw new Error("Vérifiez l’adresse e-mail saisie.");
   }
-  const customerKey = getRcuCustomerKey(form.merchant_id, phone);
+  if (consentEmail && !email) {
+    throw new Error("Ajoutez une adresse e-mail pour accepter les offres par e-mail.");
+  }
+  const customerKey = getRcuCustomerKey(form.merchant_id, phone, email);
   const submittedAt = new Date().toISOString();
   const leadPromise = saveStoredRcuLead({
     id: randomUUID(),
@@ -132,6 +135,7 @@ export async function submitRcuLead({
 
   const game = await playRcuGame({
     form,
+    customerKey,
     phone,
     firstName,
     lastName,

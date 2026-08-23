@@ -23,7 +23,7 @@ export default async function RcuFormPage({
   searchParams
 }: {
   params: Promise<{ slug: string }>;
-  searchParams?: Promise<{ sent?: string; play?: string; wallet?: string; error?: string }>;
+  searchParams?: Promise<{ sent?: string; play?: string; wallet?: string; error?: string; new?: string }>;
 }) {
   const { slug } = await params;
   const query = await searchParams;
@@ -35,7 +35,7 @@ export default async function RcuFormPage({
   const walletCookieName = `rcu_wallet_${activeForm.merchant_id}`;
   const cookieStore = await cookies();
   const requestedToken = query?.play ?? cookieStore.get(submissionCookieName)?.value;
-  const requestedWalletToken = query?.wallet ?? cookieStore.get(walletCookieName)?.value;
+  const requestedWalletToken = query?.new === "1" ? undefined : query?.wallet ?? cookieStore.get(walletCookieName)?.value;
   const [brand, requestedPlay, requestedWallet] = await Promise.all([
     getRcuPublicBrand(activeForm.merchant_id),
     requestedToken ? getStoredRcuGameRecordByToken(requestedToken) : Promise.resolve(null),
@@ -118,6 +118,7 @@ export default async function RcuFormPage({
         wallet={wallet}
         alreadyPlayedToday={alreadyPlayedToday}
         walletHref={wallet ? `/fidelite/${wallet.token}` : null}
+        newCustomerHref={`/rcu/${slug}?new=1`}
         errorMessage={query?.error}
         submitAction={submitLead}
       />
