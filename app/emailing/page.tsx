@@ -9,7 +9,12 @@ import { EmailingClient } from "./EmailingClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function EmailingPage() {
+export default async function EmailingPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ saved?: string; gmail_error?: string }>;
+}) {
+  const params = await searchParams;
   const { reviews, merchant, googleConnection } = await getAppShellData();
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
@@ -19,7 +24,7 @@ export default async function EmailingPage() {
       <Sidebar active="emailing" merchant={merchant} counters={counters} />
       <div className={appShellStyles.pageInner}>
         <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
-        <main className={appShellStyles.content}><EmailingClient merchant={merchant} brand={data.brand} subscribers={data.subscribers} initialCampaigns={data.campaigns} providerReady={data.providerReady} /></main>
+        <main className={appShellStyles.content}><EmailingClient merchant={merchant} brand={data.brand} subscribers={data.subscribers} initialCampaigns={data.campaigns} providerReady={data.providerReady} providerAddress={data.providerAddress} providerStatus={data.providerStatus} providerError={params?.gmail_error ?? data.providerError} gmailConnectedNotice={params?.saved === "gmail"} /></main>
       </div>
     </div>
   );

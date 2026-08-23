@@ -23,7 +23,7 @@ async function run(request: Request) {
     const { data: merchant } = await supabase.from("merchants").select("*").eq("id", campaign.merchant_id).maybeSingle();
     if (!merchant) { results.push({ id: campaign.id, status: "error", error: "Commerce introuvable." }); continue; }
     try {
-      const sent = await dispatchEmailCampaign({ campaign: claimed, merchant, origin });
+      const sent = await dispatchEmailCampaign({ campaign: claimed, merchant, origin, supabaseClient: supabase });
       results.push({ id: campaign.id, status: sent.status, sent: sent.sent_count });
     } catch (error) {
       results.push({ id: campaign.id, status: "error", error: error instanceof Error ? error.message : "Envoi impossible." });

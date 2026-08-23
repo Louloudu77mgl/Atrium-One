@@ -6,19 +6,18 @@
 - `lib/emailing-data.ts` construit les abonnés depuis les consentements RCU et enrichit les profils avec visites, points, récompenses et avis.
 - `lib/emailing-store.ts` stocke campagnes, événements et désabonnements dans le bucket Supabase privé `emailing-data`.
 - `lib/emailing-hans.ts` génère l’objet, le pré-header, le contenu, le CTA et la signature avec OpenAI, avec un repli local.
-- `lib/emailing-provider.ts` envoie les campagnes par lots avec Resend.
+- `lib/emailing-provider.ts` envoie les campagnes depuis le Gmail connecté du commerçant.
 - `app/api/cron/emailing-send/route.ts` traite les campagnes programmées.
+- `app/api/gmail/` gère la connexion Google, le callback, le test et la déconnexion Gmail.
 
 ## Configuration d’envoi
 
-```env
-RESEND_API_KEY=re_xxxxxxxxx
-EMAIL_FROM=AtriumOne <contact@domaine-verifie.fr>
-CRON_SECRET=une-valeur-secrete
-NEXT_PUBLIC_APP_URL=https://app.atriumone.fr
-```
+1. Activer Gmail API dans le projet Google Cloud AtriumOne.
+2. Ajouter le scope `https://www.googleapis.com/auth/gmail.send` à l’écran de consentement.
+3. Ajouter `https://atrium-one-self.vercel.app/api/gmail/callback` aux URI de redirection du client OAuth Web.
+4. Exécuter `supabase/gmail-connections.sql` dans Supabase.
 
-Le domaine utilisé dans `EMAIL_FROM` doit être validé chez le fournisseur. Sans ces variables, le module reste utilisable pour créer et enregistrer des brouillons, mais bloque explicitement l’envoi réel.
+Le flux réutilise `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET`. `GMAIL_REDIRECT_URI` est facultative lorsque `NEXT_PUBLIC_APP_URL` pointe déjà sur la production. Gmail ne donne à AtriumOne aucun droit de lecture sur la boîte du commerçant.
 
 ## Consentement et mesure
 

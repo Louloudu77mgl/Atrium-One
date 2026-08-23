@@ -1,6 +1,7 @@
 import { getBrandSettings } from "@/lib/brand-settings";
 import { listEmailCampaigns, listSuppressedEmailAddresses } from "@/lib/emailing-store";
 import type { EmailSubscriberProfile, EmailingDashboardData } from "@/lib/emailing-types";
+import { getGmailConnection, isGmailConnectionReady } from "@/lib/gmail-connections";
 import type { Review } from "@/lib/mock-data";
 import { listStoredRcuGameRecords, listStoredRcuLeads, listStoredRcuRaffleDraws, listStoredRcuRewardRedemptions } from "@/lib/rcu-store";
 import { hasSupabaseAdminEnv } from "@/lib/supabase/admin";
@@ -19,17 +20,18 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
   brand: Awaited<ReturnType<typeof getBrandSettings>>;
 }> {
   if (!merchant || !hasSupabaseAdminEnv()) {
-    return { subscribers: [], campaigns: [], providerReady: hasEmailProviderConfig(), brand: null };
+    return { subscribers: [], campaigns: [], providerReady: false, providerAddress: null, providerStatus: "disconnected", providerError: null, brand: null };
   }
 
-  const [leads, plays, redemptions, raffleDraws, campaigns, suppressedEmails, brand] = await Promise.all([
+  const [leads, plays, redemptions, raffleDraws, campaigns, suppressedEmails, brand, gmailConnection] = await Promise.all([
     listStoredRcuLeads(merchant.id),
     listStoredRcuGameRecords(merchant.id),
     listStoredRcuRewardRedemptions(merchant.id),
     listStoredRcuRaffleDraws(merchant.id),
     listEmailCampaigns(merchant.id),
     listSuppressedEmailAddresses(merchant.id),
-    getBrandSettings(merchant)
+    getBrandSettings(merchant),
+    getGmailConnection(merchant)
   ]);
   const latestByCustomer = new Map<string, (typeof leads)[number]>();
   leads.forEach((lead) => {
@@ -79,11 +81,10 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
   return {
     subscribers: Array.from(profilesByEmail.values()).sort((left, right) => right.registeredAt.localeCompare(left.registeredAt)),
     campaigns,
-    providerReady: hasEmailProviderConfig(),
+    providerReady: isGmailConnectionReady(gmailConnection),
+    providerAddress: gmailConnection?.gmail_address ?? null,
+    providerStatus: gmailConnection?.status ?? "disconnected",
+    providerError: gmailConnection?.last_error ?? null,
     brand
   };
-}
-
-export function hasEmailProviderConfig() {
-  return Boolean(process.env.RESEND_API_KEY && (process.env.EMAIL_FROM || process.env.RESEND_FROM));
 }

@@ -1141,6 +1141,65 @@ export type Database = {
           }
         ];
       };
+      gmail_connections: {
+        Row: {
+          id: string;
+          merchant_id: string;
+          google_account_id: string | null;
+          gmail_address: string | null;
+          access_token_encrypted: string | null;
+          refresh_token_encrypted: string | null;
+          granted_scopes: string[];
+          token_expires_at: string | null;
+          connected_at: string;
+          last_checked_at: string | null;
+          last_error: string | null;
+          status: "connected" | "disconnected" | "error";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          merchant_id: string;
+          google_account_id?: string | null;
+          gmail_address?: string | null;
+          access_token_encrypted?: string | null;
+          refresh_token_encrypted?: string | null;
+          granted_scopes?: string[];
+          token_expires_at?: string | null;
+          connected_at?: string;
+          last_checked_at?: string | null;
+          last_error?: string | null;
+          status?: "connected" | "disconnected" | "error";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          merchant_id?: string;
+          google_account_id?: string | null;
+          gmail_address?: string | null;
+          access_token_encrypted?: string | null;
+          refresh_token_encrypted?: string | null;
+          granted_scopes?: string[];
+          token_expires_at?: string | null;
+          connected_at?: string;
+          last_checked_at?: string | null;
+          last_error?: string | null;
+          status?: "connected" | "disconnected" | "error";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "gmail_connections_merchant_id_fkey";
+            columns: ["merchant_id"];
+            isOneToOne: false;
+            referencedRelation: "merchants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       hans_recommendations: {
         Row: {
           id: string;
@@ -1247,5 +1306,6 @@ export type SmsLeadFormRow = Database["public"]["Tables"]["sms_leads_forms"]["Ro
 export type GeneratedVisualRow = Database["public"]["Tables"]["generated_visuals"]["Row"];
 export type GoogleConnectionRow = Database["public"]["Tables"]["google_connections"]["Row"];
 export type InstagramConnectionRow = Database["public"]["Tables"]["instagram_connections"]["Row"];
+export type GmailConnectionRow = Database["public"]["Tables"]["gmail_connections"]["Row"];
 export type HansRecommendationRow = Database["public"]["Tables"]["hans_recommendations"]["Row"];
 export type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"];

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { GmailConnectionActions } from "@/components/GmailConnectionActions";
 import { HansAvatar } from "@/components/hans-avatar";
 import { Icon } from "@/components/icons";
 import { badgeStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
@@ -16,7 +17,7 @@ function formatDate(value: string | null) {
 
 const statusLabels = { draft: "Brouillon", scheduled: "Programmée", sending: "Envoi en cours", sent: "Envoyée", failed: "À vérifier" } as const;
 
-export function EmailingClient({ merchant, brand, subscribers, initialCampaigns, providerReady }: { merchant: MerchantRow | null; brand: MerchantBrandSettingsRow | null; subscribers: EmailSubscriberProfile[]; initialCampaigns: EmailCampaignRecord[]; providerReady: boolean }) {
+export function EmailingClient({ merchant, brand, subscribers, initialCampaigns, providerReady, providerAddress, providerStatus, providerError, gmailConnectedNotice }: { merchant: MerchantRow | null; brand: MerchantBrandSettingsRow | null; subscribers: EmailSubscriberProfile[]; initialCampaigns: EmailCampaignRecord[]; providerReady: boolean; providerAddress: string | null; providerStatus: "connected" | "disconnected" | "error"; providerError: string | null; gmailConnectedNotice: boolean }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [editingCampaign, setEditingCampaign] = useState<EmailCampaignRecord | null>(null);
@@ -57,8 +58,15 @@ export function EmailingClient({ merchant, brand, subscribers, initialCampaigns,
           <div className="flex min-w-[280px] items-center gap-4 rounded-[22px] border border-[#DCCEF2] bg-white/75 p-4"><HansAvatar size={62} /><div><div className="text-sm font-black text-[#211432]">Hans s’occupe du marketing</div><div className="mt-1 text-xs font-medium leading-5 text-[#6B617F]">Audience, objet, message et optimisation — sans jargon.</div></div></div>
         </div>
       </section>
+      {gmailConnectedNotice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">✓ Gmail est connecté. Vos campagnes partiront depuis {providerAddress ?? "l’adresse choisie"}.</div> : null}
       {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">✓ {notice}</div> : null}
-      {!providerReady ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3"><div><div className="text-sm font-black text-amber-900">Expéditeur à connecter</div><div className="mt-0.5 text-xs font-medium text-amber-800">Vous pouvez créer et enregistrer les campagnes. L’envoi réel s’active avec Resend.</div></div><span className={badgeStyles.warning}>Mode préparation</span></div> : null}
+      <div className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border px-4 py-4 ${providerReady ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+        <div>
+          <div className={`text-sm font-black ${providerReady ? "text-emerald-900" : "text-amber-900"}`}>{providerReady ? "Gmail connecté" : providerStatus === "error" ? "Connexion Gmail à renouveler" : "Connectez votre adresse Gmail"}</div>
+          <div className={`mt-0.5 text-xs font-medium ${providerReady ? "text-emerald-800" : "text-amber-800"}`}>{providerReady ? `Les campagnes sont envoyées directement depuis ${providerAddress}.` : providerError || "Chaque campagne partira depuis votre propre adresse Gmail."}</div>
+        </div>
+        <div className="flex items-center gap-3"><span className={providerReady ? badgeStyles.hans : badgeStyles.warning}>{providerReady ? "Prêt à envoyer" : "À connecter"}</span><GmailConnectionActions connected={providerReady} /></div>
+      </div>
       {subscribers.length === 0 ? <div className="flex flex-wrap items-center justify-between gap-4 rounded-[22px] border border-[#DCCEF2] bg-[#F8F5FF] p-5"><div><div className="text-sm font-black text-[#211432]">Votre liste e-mail démarre avec le RCU</div><p className="mt-1 text-xs font-medium leading-5 text-[#6B617F]">Le formulaire RCU propose désormais un consentement e-mail facultatif. Seuls ces contacts seront ajoutés aux abonnés.</p></div><Link href="/rcu" className={buttonStyles.secondary}>Configurer un RCU</Link></div> : null}
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">{kpis.map((kpi) => <article key={kpi.label} className={`${surfaceStyles.kpi} min-w-0`}><div className="flex items-start justify-between gap-2"><div className={typographyStyles.kicker}>{kpi.label}</div><Icon name={kpi.icon} className="h-4 w-4 text-[#7C3AED]" /></div><div className="mt-3 truncate text-2xl font-black text-[#211432]">{kpi.value}</div><div className="mt-1 truncate text-[11px] font-medium text-[#83778F]">{kpi.detail}</div></article>)}</section>
       <section className={`${surfaceStyles.section} overflow-hidden`}>

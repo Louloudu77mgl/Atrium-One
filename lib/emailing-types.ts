@@ -102,6 +102,9 @@ export type EmailingDashboardData = {
   subscribers: EmailSubscriberProfile[];
   campaigns: EmailCampaignRecord[];
   providerReady: boolean;
+  providerAddress: string | null;
+  providerStatus: "connected" | "disconnected" | "error";
+  providerError: string | null;
 };
 
 export const EMAIL_CAMPAIGN_TYPE_OPTIONS: Array<{

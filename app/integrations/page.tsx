@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { Header } from "@/components/Header";
+import { GmailConnectionActions } from "@/components/GmailConnectionActions";
 import { Sidebar } from "@/components/Sidebar";
 import { getAppShellData } from "@/lib/app-shell-data";
+import { getGmailConnection, isGmailConnectionReady } from "@/lib/gmail-connections";
+import { hasGmailOAuthConfig } from "@/lib/gmail-oauth";
 import { getGoogleDiagnosticState } from "@/lib/google-diagnostics";
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
@@ -18,11 +21,15 @@ export default async function IntegrationsPage({
 }) {
   const params = await searchParams;
   const { reviews, merchant, googleConnection } = await getAppShellData();
-  const instagramConnection = merchant ? await getInstagramConnection(merchant) : null;
+  const [instagramConnection, gmailConnection] = merchant
+    ? await Promise.all([getInstagramConnection(merchant), getGmailConnection(merchant)])
+    : [null, null];
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
   const googleDiagnostic = await getGoogleDiagnosticState(googleConnection);
   const instagramConfigured = hasInstagramOAuthConfig();
+  const gmailConfigured = hasGmailOAuthConfig();
+  const gmailConnected = isGmailConnectionReady(gmailConnection);
   const googleConnected = googleConnection?.status === "connected";
   const googleLocationConnected = Boolean(googleConnection?.google_location_id);
   const googleReviewsApiDisabled = Boolean(
@@ -44,12 +51,14 @@ export default async function IntegrationsPage({
               <p className="mb-1 text-xs font-semibold uppercase tracking-[0.9px] text-[#8B7AA8]">Intégrations</p>
               <h1 className="text-3xl font-black tracking-[-0.05em] text-[#211432]">Quels comptes sont connectés&nbsp;?</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#6B617F]">
-                Connectez vos comptes pour importer les avis Google et publier vos posts Instagram dès que la configuration serveur est prête.
+                Connectez vos comptes pour importer les avis Google, publier sur Instagram et envoyer vos campagnes depuis votre propre Gmail.
               </p>
             </section>
 
             {params?.saved === "instagram" ? (
               <div className="rounded-lg border border-[#BFE4CA] bg-[#EAF7EE] px-3.5 py-2.5 text-sm text-[#237A44]">Compte Instagram connecté.</div>
+            ) : params?.saved === "gmail" ? (
+              <div className="rounded-lg border border-[#BFE4CA] bg-[#EAF7EE] px-3.5 py-2.5 text-sm text-[#237A44]">Compte Gmail connecté.</div>
             ) : params?.saved ? (
               <div className="rounded-lg border border-[#DDD6FE] bg-[#F3E8FF] px-3.5 py-2.5 text-sm text-[#7C3AED]">Fiche Google Business connectée.{params.imported ? ` ${params.imported} avis Google synchronisé${params.imported === "1" ? "" : "s"}.` : ""}</div>
             ) : null}
@@ -136,6 +145,19 @@ export default async function IntegrationsPage({
                     Ouvrir Instagram
                   </Link>
                 </div>
+              </section>
+
+              <section className="rounded-[22px] border border-[#E9D5FF] bg-white p-5 shadow-[0_10px_30px_rgba(76,29,149,0.07)] lg:col-span-2">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.9px] text-[#8B7AA8]">Gmail</p>
+                <h2 className="text-xl font-black text-[#211432]">{gmailConnected ? "Gmail connecté" : "Gmail non connecté"}</h2>
+                <p className="mt-2 text-sm leading-6 text-[#6B617F]">
+                  {gmailConnected
+                    ? `Les campagnes e-mail partent directement depuis ${gmailConnection?.gmail_address}.`
+                    : "Connectez l’adresse Gmail du commerce. AtriumOne pourra uniquement envoyer des e-mails, jamais lire la boîte de réception."}
+                </p>
+                {!gmailConfigured ? <div className="mt-4 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] p-4 text-sm text-[#B91C1C]">La connexion Gmail est temporairement indisponible.</div> : null}
+                {gmailConnection?.last_error ? <div className="mt-4 rounded-2xl border border-[#FED7AA] bg-[#FFF7ED] p-4 text-sm text-[#9A3412]">{gmailConnection.last_error}</div> : null}
+                <div className="mt-4"><GmailConnectionActions connected={gmailConnected} /></div>
               </section>
             </div>
           </div>

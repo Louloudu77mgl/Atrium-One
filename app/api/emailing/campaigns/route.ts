@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEmailingDashboardData } from "@/lib/emailing-data";
-import { dispatchEmailCampaign, getEmailProviderStatus } from "@/lib/emailing-provider";
+import { dispatchEmailCampaign } from "@/lib/emailing-provider";
 import { filterEmailSubscribers, getEmailSegmentLabel } from "@/lib/emailing-segments";
 import { createEmailCampaign, createEmailRecipients, getEmailCampaign, updateEmailCampaign } from "@/lib/emailing-store";
 import { DEFAULT_EMAIL_CONTENT, EMAIL_CAMPAIGN_TYPES, type EmailCampaignContent, type EmailCampaignRecord, type EmailCampaignType, type EmailSegmentMode, type EmailSegmentRule } from "@/lib/emailing-types";
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
   const audience = filterEmailSubscribers(data.subscribers, rules, mode);
   const action = payload.action ?? "draft";
   if (action !== "draft" && audience.length === 0) return NextResponse.json({ error: "Aucun abonné consenti ne correspond à ce segment." }, { status: 400 });
-  if (action === "send" && !getEmailProviderStatus().ready) return NextResponse.json({ error: "Ajoutez RESEND_API_KEY et EMAIL_FROM pour activer l’envoi réel. Le brouillon peut déjà être enregistré." }, { status: 409 });
+  if (action !== "draft" && !data.providerReady) return NextResponse.json({ error: "Connectez Gmail pour envoyer ou programmer cette campagne." }, { status: 409 });
   const scheduledAt = action === "scheduled" && payload.scheduledAt ? new Date(payload.scheduledAt) : null;
   if (action === "scheduled" && (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date())) return NextResponse.json({ error: "Choisissez une date future pour programmer la campagne." }, { status: 400 });
   const content = normalizeContent(payload.content);

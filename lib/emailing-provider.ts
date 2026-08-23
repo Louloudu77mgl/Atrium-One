@@ -1,66 +1,104 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getEmailCampaign, saveEmailCampaign } from "@/lib/emailing-store";
 import { personalizeEmailText, renderEmailHtml } from "@/lib/emailing-template";
+import { getGmailConnection, isGmailConnectionReady, upsertGmailConnection } from "@/lib/gmail-connections";
+import { sendGmailMessage } from "@/lib/gmail-messages";
+import { getFreshGmailAccessToken } from "@/lib/gmail-tokens";
 import type { EmailCampaignRecord } from "@/lib/emailing-types";
-import type { MerchantRow } from "@/lib/supabase/types";
+import type { Database, GmailConnectionRow, MerchantRow } from "@/lib/supabase/types";
 
-type ResendBatchResponse = { data?: Array<{ id?: string }> | { id?: string }[]; error?: { message?: string }; message?: string } | Array<{ id?: string }>;
-
-export function getEmailProviderStatus() {
-  const from = process.env.EMAIL_FROM || process.env.RESEND_FROM || "";
-  return { ready: Boolean(process.env.RESEND_API_KEY && from), provider: "Resend", from };
+export function getEmailProviderStatus(connection?: GmailConnectionRow | null) {
+  return {
+    ready: isGmailConnectionReady(connection),
+    provider: "Gmail",
+    from: connection?.gmail_address ?? ""
+  };
 }
 
 export async function dispatchEmailCampaign({
   campaign,
   merchant,
-  origin
+  origin,
+  gmailConnection,
+  supabaseClient
 }: {
   campaign: EmailCampaignRecord;
   merchant: MerchantRow;
   origin: string;
+  gmailConnection?: GmailConnectionRow | null;
+  supabaseClient?: SupabaseClient<Database>;
 }) {
-  const provider = getEmailProviderStatus();
-  if (!provider.ready) throw new Error("Connectez un expéditeur e-mail avec RESEND_API_KEY et EMAIL_FROM avant l’envoi.");
-  if (campaign.recipients.length === 0) throw new Error("Aucun abonné ne correspond à ce segment.");
+  const connection = gmailConnection ?? await getGmailConnection(merchant, supabaseClient);
+  const provider = getEmailProviderStatus(connection);
+  if (!provider.ready || !connection?.gmail_address) {
+    throw new Error("Connectez Gmail pour envoyer vos campagnes depuis votre propre adresse.");
+  }
+  if (campaign.recipients.length === 0) throw new Error("Aucun abonné ne correspond à ce groupe de clients.");
   if (campaign.status === "sent") return campaign;
 
+  const accessToken = await getFreshGmailAccessToken(connection, merchant, supabaseClient);
   let current = await saveEmailCampaign({ ...campaign, status: "sending", error_message: null, updated_at: new Date().toISOString() });
   const providerIds = [...current.provider_message_ids];
   let sentCount = current.sent_count;
 
   try {
-    for (let index = sentCount; index < current.recipients.length; index += 100) {
-      const recipients = current.recipients.slice(index, index + 100);
-      const response = await fetch("https://api.resend.com/emails/batch", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-          "Idempotency-Key": `${current.id}-${index}`
-        },
-        body: JSON.stringify(recipients.map((recipient) => ({
-          from: provider.from,
-          to: [recipient.email],
-          subject: personalizeEmailText(current.content.subject, recipient),
-          html: renderEmailHtml({ campaign: current, merchant, recipient, origin }),
-          tags: [{ name: "campaign_id", value: current.id }]
-        })))
+    for (let index = sentCount; index < current.recipients.length; index += 1) {
+      const recipient = current.recipients[index];
+      const unsubscribeUrl = `${origin.replace(/\/$/, "")}/api/emailing/unsubscribe?campaign=${encodeURIComponent(current.id)}&recipient=${encodeURIComponent(recipient.token)}`;
+      const messageId = await sendGmailMessage({
+        accessToken,
+        fromEmail: connection.gmail_address,
+        fromName: merchant.business_name,
+        to: recipient.email,
+        subject: personalizeEmailText(current.content.subject, recipient),
+        html: renderEmailHtml({ campaign: current, merchant, recipient, origin }),
+        unsubscribeUrl,
+        campaignId: current.id
       });
-      const payload = await response.json() as ResendBatchResponse;
-      if (!response.ok) {
-        const message = !Array.isArray(payload) ? payload.error?.message || payload.message : null;
-        throw new Error(message || `Envoi refusé par Resend (${response.status}).`);
+      providerIds.push(messageId);
+      sentCount += 1;
+
+      if (sentCount % 10 === 0 || sentCount === current.recipients.length) {
+        current = await saveEmailCampaign({
+          ...current,
+          sent_count: sentCount,
+          provider_message_ids: providerIds,
+          updated_at: new Date().toISOString()
+        });
       }
-      const resultRows = Array.isArray(payload) ? payload : payload.data ?? [];
-      providerIds.push(...resultRows.map((row) => row.id).filter((id): id is string => Boolean(id)));
-      sentCount += recipients.length;
-      current = await saveEmailCampaign({ ...current, sent_count: sentCount, provider_message_ids: providerIds, updated_at: new Date().toISOString() });
     }
 
-    return saveEmailCampaign({ ...current, status: "sent", sent_at: new Date().toISOString(), scheduled_at: null, error_message: null, updated_at: new Date().toISOString() });
+    const now = new Date().toISOString();
+    await upsertGmailConnection({
+      merchant_id: merchant.id,
+      status: "connected",
+      last_checked_at: now,
+      last_error: null
+    }, merchant, supabaseClient);
+    return saveEmailCampaign({
+      ...current,
+      status: "sent",
+      sent_at: now,
+      scheduled_at: null,
+      error_message: null,
+      updated_at: now
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Envoi impossible.";
-    await saveEmailCampaign({ ...current, status: "failed", sent_count: sentCount, provider_message_ids: providerIds, error_message: message, updated_at: new Date().toISOString() });
+    await saveEmailCampaign({
+      ...current,
+      status: "failed",
+      sent_count: sentCount,
+      provider_message_ids: providerIds,
+      error_message: message,
+      updated_at: new Date().toISOString()
+    });
+    await upsertGmailConnection({
+      merchant_id: merchant.id,
+      last_checked_at: new Date().toISOString(),
+      last_error: message,
+      ...(message.includes("renouvelée") ? { status: "error" as const } : {})
+    }, merchant, supabaseClient).catch(() => null);
     throw new Error(message);
   }
 }
