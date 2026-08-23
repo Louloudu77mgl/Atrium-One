@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/review-insights",
-      "schedule": "0 6,7 * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/cron/emailing-send",
