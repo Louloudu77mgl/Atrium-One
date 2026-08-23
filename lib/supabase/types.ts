@@ -837,6 +837,7 @@ export type Database = {
           poster_headline: string | null;
           poster_body: string | null;
           poster_theme: string | null;
+          game_config: Json;
           created_at: string;
         };
         Insert: {
@@ -857,6 +858,7 @@ export type Database = {
           poster_headline?: string | null;
           poster_body?: string | null;
           poster_theme?: string | null;
+          game_config?: Json;
           created_at?: string;
         };
         Update: {
@@ -877,6 +879,7 @@ export type Database = {
           poster_headline?: string | null;
           poster_body?: string | null;
           poster_theme?: string | null;
+          game_config?: Json;
           created_at?: string;
         };
         Relationships: [

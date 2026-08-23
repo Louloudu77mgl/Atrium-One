@@ -23,16 +23,44 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
     return { subscribers: [], campaigns: [], providerReady: false, providerAddress: null, providerStatus: "disconnected", providerError: null, brand: null };
   }
 
-  const [leads, plays, redemptions, raffleDraws, campaigns, suppressedEmails, brand, gmailConnection] = await Promise.all([
-    listStoredRcuLeads(merchant.id),
-    listStoredRcuGameRecords(merchant.id),
-    listStoredRcuRewardRedemptions(merchant.id),
-    listStoredRcuRaffleDraws(merchant.id),
-    listEmailCampaigns(merchant.id),
-    listSuppressedEmailAddresses(merchant.id),
-    getBrandSettings(merchant),
-    getGmailConnection(merchant)
-  ]);
+  let dashboardData;
+
+  try {
+    dashboardData = await Promise.all([
+      listStoredRcuLeads(merchant.id),
+      listStoredRcuGameRecords(merchant.id),
+      listStoredRcuRewardRedemptions(merchant.id),
+      listStoredRcuRaffleDraws(merchant.id),
+      listEmailCampaigns(merchant.id),
+      listSuppressedEmailAddresses(merchant.id),
+      getBrandSettings(merchant),
+      getGmailConnection(merchant)
+    ]);
+  } catch (error) {
+    console.error("[emailing/dashboard] storage_unavailable", {
+      merchantId: merchant.id,
+      message: error instanceof Error ? error.message : "Erreur inconnue"
+    });
+
+    const [brandResult, gmailResult] = await Promise.allSettled([
+      getBrandSettings(merchant),
+      getGmailConnection(merchant)
+    ]);
+    const brand = brandResult.status === "fulfilled" ? brandResult.value : null;
+    const gmailConnection = gmailResult.status === "fulfilled" ? gmailResult.value : null;
+
+    return {
+      subscribers: [],
+      campaigns: [],
+      providerReady: isGmailConnectionReady(gmailConnection),
+      providerAddress: gmailConnection?.gmail_address ?? null,
+      providerStatus: gmailConnection?.status ?? "disconnected",
+      providerError: "Les données clients sont momentanément indisponibles.",
+      brand
+    };
+  }
+
+  const [leads, plays, redemptions, raffleDraws, campaigns, suppressedEmails, brand, gmailConnection] = dashboardData;
   const latestByCustomer = new Map<string, (typeof leads)[number]>();
   leads.forEach((lead) => {
     const key = lead.customer_key ?? lead.phone;

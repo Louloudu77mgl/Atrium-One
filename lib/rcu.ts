@@ -33,7 +33,7 @@ export type RcuGameConfig = {
   visitValidationUpdatedAt?: string;
 };
 
-export type RcuProgram = Omit<RcuFormRow, "form_type"> & {
+export type RcuProgram = Omit<RcuFormRow, "form_type" | "game_config"> & {
   form_type: RcuFormType;
   game_config: RcuGameConfig;
 };
