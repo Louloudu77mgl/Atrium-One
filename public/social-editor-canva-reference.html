@@ -190,11 +190,6 @@
     padding:0 3px; border:2px solid var(--sidebar-bg);
   }
   .nav-spacer{flex:1;}
-  .nav-foot{
-    width:66px; padding:10px 4px; display:flex; flex-direction:column; align-items:center; gap:4px;
-    color:var(--text-soft); border-top:1px solid rgba(255,255,255,0.08); margin-top:6px; padding-top:14px;
-  }
-
   /* ---------- SIDE PANEL (light, content per tool) ---------- */
   .sidepanel{
     width:300px;
@@ -378,7 +373,8 @@
     cursor:text;
   }
   .el-shape{width:100%; height:100%;}
-  .el-img{width:100%; height:100%; object-fit:cover; -webkit-user-drag:none; pointer-events:none;}
+  .el-img-frame{position:absolute; inset:0; overflow:hidden; pointer-events:none;}
+  .el-img{position:absolute; max-width:none; max-height:none; -webkit-user-drag:none; pointer-events:none;}
 
   .handle{
     position:absolute; width:11px; height:11px; background:#fff; border:2px solid var(--accent);
@@ -398,15 +394,6 @@
     height:52px; background:#fff; border-top:1px solid var(--border-light);
     display:flex; align-items:center; justify-content:center; gap:14px; padding:0 20px; position:relative;
   }
-  .page-thumb{
-    width:36px; height:36px; border-radius:8px; background:#fff; border:2px solid var(--accent);
-    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:var(--accent);
-  }
-  .add-page-btn{
-    width:36px; height:36px; border-radius:8px; border:1.5px dashed var(--border-light);
-    display:flex; align-items:center; justify-content:center; color:var(--text-muted);
-  }
-  .add-page-btn:hover{border-color:var(--accent); color:var(--accent);}
   .bottombar-zoom{position:absolute; right:20px; display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); font-weight:600;}
   .bottombar-zoom input[type=range]{accent-color:var(--accent); width:100px;}
 
@@ -492,10 +479,6 @@
 
     <!-- SIDE NAV -->
     <div class="sidenav" id="sidenav">
-      <button class="nav-item active" data-panel="templates">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-        <span>Design</span>
-      </button>
       <button class="nav-item" data-panel="elements">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4.5"/><rect x="13" y="4" width="8" height="8" rx="1.5"/><path d="M4 20.5 12 14l4.5 4.5"/></svg>
         <span>Éléments</span>
@@ -504,7 +487,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 6h14"/><path d="M12 6v14"/><path d="M9 20h6"/></svg>
         <span>Texte</span>
       </button>
-      <button class="nav-item" data-panel="publication">
+      <button class="nav-item active" data-panel="publication">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
         <span>Publication</span>
       </button>
@@ -525,24 +508,10 @@
         <span>Calques</span>
       </button>
       <div class="nav-spacer"></div>
-      <div class="nav-foot">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-        <span>Réglages</span>
-      </div>
     </div>
 
     <!-- SIDE PANEL -->
     <div class="sidepanel" id="sidepanel">
-
-      <!-- TEMPLATES PANEL -->
-      <div class="panel-content" data-content="templates">
-        <div class="sp-head"><div class="sp-title">Modèles</div></div>
-        <div class="sp-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="Rechercher des modèles"></div>
-        <div class="sp-body">
-          <div class="sp-section-title">Fleuriste · Lyon</div>
-          <div class="grid-2" id="tplGrid"></div>
-        </div>
-      </div>
 
       <!-- ELEMENTS PANEL -->
       <div class="panel-content" data-content="elements" style="display:none">
@@ -577,7 +546,7 @@
       </div>
 
       <!-- PUBLICATION PANEL -->
-      <div class="panel-content" data-content="publication" style="display:none">
+      <div class="panel-content" data-content="publication">
         <div class="sp-head"><div class="sp-title">Publication</div></div>
         <div class="sp-body">
           <div class="publication-field">
@@ -624,7 +593,13 @@
             <div><strong>Glissez vos fichiers ici</strong><br>ou cliquez pour parcourir</div>
           </label>
           <input type="file" id="fileUpload" accept="image/*" multiple style="display:none">
-          <div class="sp-section-title">Vos imports</div>
+          <div class="sp-section-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <span>Galerie du commerce</span>
+            <span id="uploadCount" style="font-size:10px;color:var(--accent);">0 image</span>
+          </div>
+          <div id="uploadEmpty" style="border:1.5px dashed var(--border-panel);border-radius:12px;background:#fff;padding:14px;text-align:center;color:var(--text-muted);font-size:11.5px;line-height:1.45;">
+            Vos images importées resteront accessibles ici.
+          </div>
           <div class="grid-3" id="uploadGrid" style="min-height:20px;"></div>
         </div>
       </div>
@@ -658,10 +633,6 @@
       </div>
 
       <div class="bottombar">
-        <div class="page-thumb">1</div>
-        <button class="add-page-btn" id="addPageBtn" title="Ajouter une page">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
         <div class="bottombar-zoom">
           <span>Zoom</span>
           <input type="range" min="30" max="200" value="100" id="zoomSlider">
@@ -703,6 +674,7 @@ const initialScheduledAt = editorParams.get('scheduledAt');
 let currentPost = null;
 let currentMerchant = null;
 let currentBrandSettings = null;
+let currentGalleryAssets = [];
 let autoSaveTimer = null;
 let isHydrating = false;
 let designDirty = false;
@@ -857,14 +829,17 @@ function buildElNode(d){
   } else if(d.type==='shape'){
     el.appendChild(buildShapeSVG(d));
   } else if(d.type==='image'){
+    const frame = document.createElement('div');
+    frame.className='el-img-frame';
+    frame.style.borderRadius = (d.shape==='circle') ? '50%' : '0';
     const img = document.createElement('img');
     img.className='el-img';
     img.crossOrigin = 'anonymous';
+    img.addEventListener('load', ()=>applyImageLayout(img,d));
     img.src = d.src;
-    img.style.borderRadius = (d.shape==='circle') ? '50%' : '0';
-    img.style.objectFit = d.fit || 'cover';
-    img.style.objectPosition = `${d.cropX!=null?d.cropX:50}% ${d.cropY!=null?d.cropY:50}%`;
-    el.appendChild(img);
+    if(img.complete && img.naturalWidth>0) applyImageLayout(img,d);
+    frame.appendChild(img);
+    el.appendChild(frame);
   }
 
   // handles
@@ -883,6 +858,23 @@ function buildElNode(d){
   el.addEventListener('click', e=>{ e.stopPropagation(); selectEl(d.id); });
 
   return el;
+}
+
+function applyImageLayout(image,d){
+  const naturalWidth=image.naturalWidth||1;
+  const naturalHeight=image.naturalHeight||1;
+  const sourceRatio=naturalWidth/naturalHeight;
+  const frameRatio=d.w/d.h;
+  const fit=d.fit||'contain';
+  const sizeFromWidth=fit==='cover' ? sourceRatio<frameRatio : sourceRatio>=frameRatio;
+  const renderedWidth=sizeFromWidth ? d.w : d.h*sourceRatio;
+  const renderedHeight=sizeFromWidth ? d.w/sourceRatio : d.h;
+  const positionX=(d.cropX!=null?d.cropX:50)/100;
+  const positionY=(d.cropY!=null?d.cropY:50)/100;
+  image.style.width=renderedWidth+'px';
+  image.style.height=renderedHeight+'px';
+  image.style.left=((d.w-renderedWidth)*positionX)+'px';
+  image.style.top=((d.h-renderedHeight)*positionY)+'px';
 }
 
 function buildShapeSVG(d){
@@ -980,6 +972,18 @@ function startResize(e,d,pos){
   const startX=e.clientX, startY=e.clientY, ow=d.w, oh=d.h, ox=d.x, oy=d.y;
   function move(ev){
     const dx=(ev.clientX-startX)/zoom, dy=(ev.clientY-startY)/zoom;
+    if(d.type==='image'){
+      const horizontalScale = (ow + (pos.includes('e') ? dx : -dx))/ow;
+      const verticalScale = (oh + (pos.includes('s') ? dy : -dy))/oh;
+      const requestedScale = Math.abs(horizontalScale-1) >= Math.abs(verticalScale-1) ? horizontalScale : verticalScale;
+      const safeScale = Math.max(20/ow, 20/oh, requestedScale);
+      d.w = ow*safeScale;
+      d.h = oh*safeScale;
+      if(pos.includes('w')) d.x=ox+(ow-d.w);
+      if(pos.includes('n')) d.y=oy+(oh-d.h);
+      render(); selectEl(d.id);
+      return;
+    }
     if(pos==='se'){ d.w=Math.max(20,ow+dx); d.h=Math.max(20,oh+dy); }
     if(pos==='ne'){ d.w=Math.max(20,ow+dx); d.h=Math.max(20,oh-dy); d.y=oy+(oh-d.h); }
     if(pos==='sw'){ d.w=Math.max(20,ow-dx); d.h=Math.max(20,oh+dy); d.x=ox+(ow-d.w); }
@@ -1034,11 +1038,30 @@ function addShape(shape){
   selectedId = d.id;
   render(); snapshot();
 }
-function addImage(src){
-  const d = { id:idCounter++, type:'image', x:120, y:120, w:280, h:280, z:maxZ()+1, rot:0, src, shape:'rect' };
+async function addImage(src){
+  const dimensions = await getImageDimensions(src);
+  const maxSize = 360;
+  const ratio = dimensions.width/dimensions.height;
+  const width = ratio >= 1 ? maxSize : maxSize*ratio;
+  const height = ratio >= 1 ? maxSize/ratio : maxSize;
+  const d = {
+    id:idCounter++, type:'image', x:(600-width)/2, y:(600-height)/2,
+    w:width, h:height, z:maxZ()+1, rot:0, src, shape:'rect', fit:'contain',
+    cropX:50, cropY:50, aspectRatio:ratio
+  };
   state.elements.push(d);
   selectedId = d.id;
   render(); snapshot();
+}
+
+function getImageDimensions(src){
+  return new Promise(resolve=>{
+    const image = new Image();
+    image.crossOrigin='anonymous';
+    image.onload=()=>resolve({width:image.naturalWidth||1,height:image.naturalHeight||1});
+    image.onerror=()=>resolve({width:1,height:1});
+    image.src=src;
+  });
 }
 
 function addBrandLogo(){
@@ -1358,6 +1381,7 @@ async function loadEditorData(){
     currentPost = data.post;
     currentMerchant = data.merchant;
     currentBrandSettings = data.brandSettings || null;
+    currentGalleryAssets = Array.isArray(data.galleryAssets) ? data.galleryAssets : [];
     document.getElementById('filenameInput').value = currentPost.title || 'Post Instagram';
     document.getElementById('postTitleInput').value = currentPost.title || '';
     document.getElementById('postCaptionInput').value = currentPost.caption || '';
@@ -1372,6 +1396,7 @@ async function loadEditorData(){
       });
     }
     renderBrandPanel();
+    renderUploadGallery();
     idCounter = Math.max(1, ...state.elements.map(el => Number(el.id) || 0)) + 1;
     render();
     history = [];
@@ -1579,7 +1604,7 @@ navItems.forEach(btn=>{
     document.querySelectorAll('.panel-content').forEach(p=>{ p.style.flexDirection='column'; p.style.height='100%'; });
   });
 });
-panelContents.forEach(p=>{ p.style.display = p.dataset.content==='templates' ? 'flex' : 'none'; p.style.flexDirection='column'; });
+panelContents.forEach(p=>{ p.style.display = p.dataset.content==='publication' ? 'flex' : 'none'; p.style.flexDirection='column'; });
 
 /* ============ POPULATE PANELS ============ */
 // Shapes
@@ -1602,41 +1627,44 @@ document.getElementById('addBrandLogoBtn').addEventListener('click', addBrandLog
 // Brand colors
 renderBrandPanel();
 
-// Templates (preset AtriumOne / Maison Lavigne layouts)
-const TEMPLATES = [
-  {name:'Avis Google', bg:'#F5F1E9', ph:'#5B3FE0'},
-  {name:'Promo printemps', bg:'linear-gradient(135deg,#F0B94B,#EE5C77)', ph:'#fff'},
-  {name:'Nouveau bouquet', bg:'#EFE9FE', ph:'#1C1140'},
-  {name:'Merci client', bg:'#1C1140', ph:'#8E77F5'},
-];
-document.getElementById('tplGrid').innerHTML = TEMPLATES.map((t,i)=>`
-  <button class="tpl-tile" data-i="${i}" style="background:${t.bg}">
-    <div style="width:60%;height:8px;border-radius:4px;background:${t.ph};opacity:.9;margin-top:auto;"></div>
-    <div style="width:40%;height:6px;border-radius:3px;background:${t.ph};opacity:.6;"></div>
-    <div style="font-size:10px;font-weight:700;color:${t.ph};margin-top:6px;">${t.name}</div>
-  </button>`).join('');
-document.getElementById('tplGrid').querySelectorAll('.tpl-tile').forEach(b=>{
-  b.addEventListener('click', ()=> applyTemplate(TEMPLATES[parseInt(b.dataset.i)]));
-});
-function applyTemplate(t){
-  state.elements = [];
-  state.bg = t.bg;
-  idCounter=1;
-  const brandFont = getBrandFontCss();
-  const title = {id:idCounter++,type:'text',x:70,y:220,w:460,h:70,z:1,rot:0,text:t.name,fontFamily:brandFont,fontSize:38,fontWeight:800,color: t.bg.includes('1C1140')||t.bg.includes('gradient') ? '#fff':getBrandColors()[0],align:'left'};
-  const sub = {id:idCounter++,type:'text',x:70,y:300,w:420,h:44,z:2,rot:0,text:`${currentMerchant?.business_name || 'Votre commerce'}${currentMerchant?.city ? ' — '+currentMerchant.city : ''}`,fontFamily:brandFont,fontSize:15,fontWeight:500,color: t.bg.includes('1C1140')||t.bg.includes('gradient') ? '#EFE9FE':'#8B87A0',align:'left'};
-  const shape = {id:idCounter++,type:'shape',x:420,y:60,w:140,h:140,z:0,rot:12,shape:'blob',fill: t.ph, stroke:'none'};
-  state.elements = [title,sub,shape];
-  selectedId = null;
-  render(); snapshot();
-  toast('Modèle appliqué');
-}
-
 // Background colors reused in bg panel (rendered lazily in renderBgSwatches)
 
 /* ============ UPLOADS ============ */
 const fileUpload = document.getElementById('fileUpload');
 const uploadGrid = document.getElementById('uploadGrid');
+const uploadEmpty = document.getElementById('uploadEmpty');
+const uploadCount = document.getElementById('uploadCount');
+
+function renderUploadGallery(){
+  uploadGrid.innerHTML='';
+  uploadCount.textContent=`${currentGalleryAssets.length} image${currentGalleryAssets.length>1?'s':''}`;
+  uploadEmpty.style.display=currentGalleryAssets.length>0?'none':'block';
+  currentGalleryAssets.forEach(asset=>{
+    const thumb=document.createElement('button');
+    thumb.type='button';
+    thumb.className='photo-tile';
+    thumb.title=asset.alt_text || 'Ajouter cette image au post';
+    const image=document.createElement('img');
+    image.src=asset.url;
+    image.alt=asset.alt_text || 'Image du commerce';
+    image.loading='lazy';
+    image.crossOrigin='anonymous';
+    image.style.width='100%';
+    image.style.height='100%';
+    image.style.objectFit='contain';
+    image.style.background='#fff';
+    thumb.appendChild(image);
+    thumb.addEventListener('click', ()=>{ void addImage(asset.url); });
+    uploadGrid.appendChild(thumb);
+  });
+}
+
+function rememberGalleryAsset(asset){
+  if(!asset?.url) return;
+  currentGalleryAssets=[asset,...currentGalleryAssets.filter(item=>item.url!==asset.url)];
+  renderUploadGallery();
+}
+
 fileUpload.addEventListener('change', async e=>{
   const files = [...e.target.files];
   for(const f of files){
@@ -1650,14 +1678,9 @@ fileUpload.addEventListener('change', async e=>{
           body: formData
         });
         const data = await response.json();
-        if(!response.ok || !data.imageUrl) throw new Error(data.error || 'Import impossible');
-        const thumb = document.createElement('button');
-        thumb.className='photo-tile';
-        thumb.dataset.url = data.imageUrl;
-        thumb.innerHTML = `<img src="${data.imageUrl}" style="width:100%;height:100%;object-fit:cover;">`;
-        thumb.addEventListener('click', ()=> addImage(data.imageUrl));
-        uploadGrid.prepend(thumb);
-        addImage(data.imageUrl);
+        if(!response.ok || !data.imageUrl || !data.asset) throw new Error(data.error || 'Import impossible');
+        rememberGalleryAsset(data.asset);
+        await addImage(data.imageUrl);
         setFileSub('Enregistré');
       }catch(error){
         console.error(error);
@@ -1669,15 +1692,11 @@ fileUpload.addEventListener('change', async e=>{
 
     const reader = new FileReader();
     reader.onload = ev=>{
-      const thumb = document.createElement('button');
-      thumb.className='photo-tile';
-      thumb.innerHTML = `<img src="${ev.target.result}" style="width:100%;height:100%;object-fit:cover;">`;
-      thumb.addEventListener('click', ()=> addImage(ev.target.result));
-      uploadGrid.appendChild(thumb);
-      addImage(ev.target.result);
+      void addImage(ev.target.result);
     };
     reader.readAsDataURL(f);
   }
+  e.target.value='';
 });
 
 /* ============ ZOOM ============ */
@@ -1811,8 +1830,6 @@ async function publishCurrentDesign({redirect=false}={}){
   }
 }
 shareInstagramBtn.addEventListener('click', ()=> void publishCurrentDesign());
-document.getElementById('addPageBtn').addEventListener('click', ()=> toast('Nouvelle page ajoutée'));
-
 async function scheduleCurrentDesign(){
   const scheduledAt = initialScheduledAt ? new Date(initialScheduledAt) : null;
   if(!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()){
@@ -1866,7 +1883,9 @@ async function init(){
     await runInitialAction();
     return;
   }
-  applyTemplate(TEMPLATES[0]);
+  renderUploadGallery();
+  render();
+  snapshot();
   updateUndoRedoBtns();
 }
 void init();

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMerchant } from "@/lib/merchants";
+import { buildAutomaticAltText } from "@/lib/social-gallery";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
@@ -36,7 +37,7 @@ export async function POST(
   }
 
   const extension = file.name.split(".").pop()?.toLowerCase() || "png";
-  const path = `${user.id}/${postId}/${Date.now()}.${extension}`;
+  const path = `${user.id}/gallery/${Date.now()}.${extension}`;
   const { error: uploadError } = await supabase.storage
     .from("social-post-images")
     .upload(path, file, { contentType: file.type, upsert: true });
@@ -46,6 +47,28 @@ export async function POST(
   }
 
   const { data: publicUrl } = supabase.storage.from("social-post-images").getPublicUrl(path);
+  const altText = buildAutomaticAltText({
+    merchantName: merchant.business_name,
+    businessType: merchant.business_type,
+    category: "Instagram",
+    filename: file.name
+  });
+  const { data: galleryAsset, error: galleryError } = await supabase
+    .from("merchant_media_assets")
+    .upsert({
+      merchant_id: merchant.id,
+      url: publicUrl.publicUrl,
+      alt_text: altText,
+      category: "Instagram",
+      source: "upload"
+    }, { onConflict: "merchant_id,url" })
+    .select("*")
+    .single();
+
+  if (galleryError) {
+    return NextResponse.json({ error: "Impossible d’ajouter l’image à la galerie du commerce." }, { status: 500 });
+  }
+
   const { data: existingPost } = await supabase
     .from("social_posts")
     .select("status,published_at")
@@ -69,5 +92,5 @@ export async function POST(
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ imageUrl: publicUrl.publicUrl });
+  return NextResponse.json({ imageUrl: publicUrl.publicUrl, asset: galleryAsset });
 }

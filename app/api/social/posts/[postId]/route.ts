@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { getMerchant } from "@/lib/merchants";
+import { getMerchantMediaAssets } from "@/lib/social-gallery";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SocialPostRow } from "@/lib/supabase/types";
 
@@ -25,19 +26,40 @@ export async function GET(
     return NextResponse.json({ error: "Commerce introuvable." }, { status: 404 });
   }
 
-  const [{ data, error }, brandSettings] = await Promise.all([
+  const [{ data, error }, brandSettings, galleryAssets, { data: postImages }] = await Promise.all([
     supabase
       .from("social_posts")
       .select("*")
       .eq("id", postId)
       .eq("merchant_id", merchant.id)
       .single(),
-    getBrandSettings(merchant)
+    getBrandSettings(merchant),
+    getMerchantMediaAssets(merchant),
+    supabase
+      .from("social_posts")
+      .select("id,image_url,updated_at")
+      .eq("merchant_id", merchant.id)
+      .not("image_url", "is", null)
   ]);
 
   if (error || !data) {
     return NextResponse.json({ error: "Post introuvable." }, { status: 404 });
   }
+
+  const storedUploads = galleryAssets.filter((asset) => asset.source === "upload");
+  const legacyUploads = (postImages ?? [])
+    .filter((postImage) => postImage.image_url?.includes("/storage/v1/object/public/social-post-images/"))
+    .map((postImage) => ({
+      id: `post-${postImage.id}`,
+      merchant_id: merchant.id,
+      url: postImage.image_url!,
+      alt_text: "Image précédemment importée pour Instagram",
+      category: "Instagram",
+      source: "upload" as const,
+      created_at: postImage.updated_at
+    }));
+  const allUploads = [...storedUploads, ...legacyUploads]
+    .filter((asset, index, assets) => assets.findIndex((candidate) => candidate.url === asset.url) === index);
 
   return NextResponse.json({
     post: data,
@@ -48,7 +70,8 @@ export async function GET(
       city: merchant.city,
       logo_url: merchant.logo_url
     },
-    brandSettings
+    brandSettings,
+    galleryAssets: allUploads
   });
 }
 
