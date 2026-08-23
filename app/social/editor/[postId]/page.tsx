@@ -1,7 +1,6 @@
 import { VisualPostEditor } from "./VisualPostEditor";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { getBrandSettings } from "@/lib/brand-settings";
-import { getMerchantMediaAssets } from "@/lib/social-gallery";
 import { getSocialPostById } from "@/lib/social-posts";
 
 export const dynamic = "force-dynamic";
@@ -18,14 +17,12 @@ export default async function SocialVisualEditorPage({
   const { merchant } = await getAppShellData();
   const post = await getSocialPostById(postId, merchant);
   const brandSettings = await getBrandSettings(merchant);
-  const galleryAssets = await getMerchantMediaAssets(merchant);
 
   return (
     <VisualPostEditor
       merchant={merchant}
       post={post}
       brandSettings={brandSettings}
-      galleryAssets={galleryAssets}
       initialAction={editorAction?.action}
       scheduledAt={editorAction?.scheduledAt}
     />

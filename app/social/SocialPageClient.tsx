@@ -4,16 +4,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Toast } from "@/components/Toast";
-import { CreatePostButton } from "@/components/CreatePostButton";
 import { useToast } from "@/hooks/useToast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { buildCreatePostHref } from "@/lib/social-recommendations";
 import { getPostStatusLabel } from "@/lib/social-post-utils";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
-import type { MerchantAutomationSettingsRow, MerchantMediaAssetRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
+import type { MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { getUserErrorMessage } from "@/lib/user-feedback";
-import { SocialCreateVisualCard } from "./SocialCreateVisualCard";
 
 type InstagramConnectionLike = {
   status: "connected" | "disconnected" | "error" | "pending_configuration";
@@ -40,8 +38,7 @@ export function SocialPageClient({
   instagramConnectRequested,
   cadence,
   posts: initialPosts,
-  ideas,
-  mediaAssets
+  ideas
 }: {
   merchant?: MerchantRow | null;
   reviews: Review[];
@@ -56,7 +53,6 @@ export function SocialPageClient({
   cadence: { postsPerCycle: number; cycleWeeks: number };
   posts: SocialPostRow[];
   ideas: ReviewSocialPostIdea[];
-  mediaAssets: MerchantMediaAssetRow[];
 }) {
   const router = useRouter();
   const [posts, setPosts] = useState(initialPosts);
@@ -65,7 +61,7 @@ export function SocialPageClient({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [shareMenuId, setShareMenuId] = useState<string | null>(null);
   const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
-  const [visibleIdeasCount, setVisibleIdeasCount] = useState(Math.min(3, Math.max(ideas.length, 3)));
+  const [recommendationStart, setRecommendationStart] = useState(0);
   const [postCategory, setPostCategory] = useState<PostCategory>("draft");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [instagramModalOpen, setInstagramModalOpen] = useState(
@@ -103,7 +99,6 @@ export function SocialPageClient({
     [instagramCardMessage, instagramUiState, instagramError, instagramConnection?.last_error, instagramConfigured]
   );
   const instagramDisplayName = instagramConnection?.instagram_username?.trim() || merchant?.business_name || "Instagram";
-  const instagramInitials = getInstagramInitials(instagramDisplayName);
   const instagramLastCheck = instagramConnection?.last_sync_at ?? instagramConnection?.connected_at ?? null;
   const orderedPosts = useMemo(
     () => posts.slice().sort((left, right) => new Date(right.scheduled_at ?? right.updated_at).getTime() - new Date(left.scheduled_at ?? left.updated_at).getTime()),
@@ -125,7 +120,11 @@ export function SocialPageClient({
   );
   const draftToResume = orderedPosts.find((post) => post.status !== "published");
   const recommendationCount = ideas.length;
-  const displayedIdeas = useMemo(() => ideas.slice(0, visibleIdeasCount), [ideas, visibleIdeasCount]);
+  const maxRecommendationStart = Math.max(0, Math.floor((recommendationCount - 1) / 2) * 2);
+  const displayedIdeas = useMemo(
+    () => ideas.slice(recommendationStart, recommendationStart + 2),
+    [ideas, recommendationStart]
+  );
 
   async function deletePost(postId: string) {
     if (busyId === postId) return;
@@ -407,9 +406,9 @@ export function SocialPageClient({
                   Choisissez une idée, créez un post, puis publiez-le quand votre compte est connecté.
                 </p>
                 <div className="hero-actions mb-[14px] flex flex-wrap items-center gap-4">
-                  <Link href="/social#create-with-hans" className="btn btn-primary inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[18px] py-[11px] text-[13.5px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)] transition hover:shadow-[0_8px_22px_rgba(75,46,131,0.36)]">
+                  <Link href="/social/create" className="btn btn-primary inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[18px] py-[11px] text-[13.5px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)] transition hover:shadow-[0_8px_22px_rgba(75,46,131,0.36)]">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Créer un post
+                    Créer un post +
                   </Link>
                   <a href="#recommendations" className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
                     Voir les idées de Hans
@@ -438,7 +437,6 @@ export function SocialPageClient({
               state={instagramUiState}
               username={instagramConnection?.instagram_username ?? null}
               displayName={instagramDisplayName}
-              initials={instagramInitials}
               message={instagramUiMessage}
               lastCheck={instagramLastCheck}
               busyAction={instagramActionBusy}
@@ -452,20 +450,16 @@ export function SocialPageClient({
                 setInstagramModalOpen(true);
               }}
               onDisconnect={() => void disconnectInstagram()}
-              onCreateFirstPost={() => router.push("/social#create-with-hans")}
+              onCreateFirstPost={() => router.push("/social/create")}
             />
           </div>
-        </div>
-
-        <div className="section-block">
-          <SocialCreateVisualCard galleryAssets={mediaAssets} />
         </div>
 
         <section id="recommendations" className="section-block">
           <div className="section-head mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="eyebrow mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Ce que Hans recommande</p>
-              <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Des idées construites à partir de vos avis et de vos images</h2>
+              <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Des idées construites à partir de vos avis et de votre activité</h2>
             </div>
             <Link href="/reviews/insights" className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
               Relancer l&apos;analyse
@@ -473,16 +467,13 @@ export function SocialPageClient({
             </Link>
           </div>
 
-          <div className="reco-toolbar mb-4 flex flex-wrap items-center gap-[10px]">
+          <div className="reco-toolbar mb-4 flex flex-wrap items-center justify-between gap-[10px]">
             <span className="count-chip text-[12.5px] text-[#6E6B80]"><b className="text-[#1E1B2E]">{recommendationCount}</b> recommandations disponibles</span>
-            <div className="segmented flex rounded-full bg-[#F2F1F6] p-[3px]">
-              <button type="button" onClick={() => setVisibleIdeasCount(3)} className={`rounded-full px-[13px] py-[6px] text-[12.5px] font-semibold ${visibleIdeasCount === 3 ? "bg-white text-[#4B2E83] shadow-[0_1px_2px_rgba(0,0,0,0.08)]" : "text-[#6E6B80]"}`}>
-                3 idées
-              </button>
-              <button type="button" onClick={() => setVisibleIdeasCount(Math.max(6, recommendationCount))} className={`rounded-full px-[13px] py-[6px] text-[12.5px] font-semibold ${visibleIdeasCount !== 3 ? "bg-white text-[#4B2E83] shadow-[0_1px_2px_rgba(0,0,0,0.08)]" : "text-[#6E6B80]"}`}>
-                Toutes ({recommendationCount})
-              </button>
-            </div>
+            {recommendationCount > 0 ? (
+              <span className="text-[12px] font-semibold text-[#8B87A0]">
+                {recommendationStart + 1}–{Math.min(recommendationStart + 2, recommendationCount)} sur {recommendationCount}
+              </span>
+            ) : null}
           </div>
 
           {ideas.length === 0 ? (
@@ -490,13 +481,24 @@ export function SocialPageClient({
               Aucune recommandation disponible pour le moment. Analysez davantage d’avis pour générer de nouvelles idées de posts.
             </div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                aria-label="Voir les recommandations précédentes"
+                disabled={recommendationStart === 0}
+                onClick={() => setRecommendationStart((current) => Math.max(0, current - 2))}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#E3DAF1] bg-white text-[#5B2A9E] shadow-[0_4px_14px_rgba(75,46,131,0.08)] transition hover:border-[#7C4DCB] disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+              </button>
+              <div className="grid min-w-0 flex-1 gap-4 md:grid-cols-2">
               {displayedIdeas.map((idea, index) => {
-                const revealKey = `idea-${index}`;
-                const sourceLabel = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? idea.assetAltText ?? "Avis clients";
+                const ideaIndex = recommendationStart + index;
+                const revealKey = `idea-${ideaIndex}`;
+                const sourceLabel = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? "Avis clients";
                 const sourceExample = findSourceExample(reviews, sourceLabel);
                 return (
-                  <div key={`${idea.title}-${index}`} className="reco-card flex flex-col gap-[10px] rounded-[20px] border border-[#ECE9F4] bg-white px-[18px] pb-4 pt-[18px] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)] transition hover:-translate-y-[2px] hover:shadow-[0_10px_28px_rgba(46,26,84,0.1)]">
+                  <div key={`${idea.title}-${ideaIndex}`} className="reco-card flex min-w-0 flex-col gap-[10px] rounded-[20px] border border-[#ECE9F4] bg-white px-[18px] pb-4 pt-[18px] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)] transition hover:-translate-y-[2px] hover:shadow-[0_10px_28px_rgba(46,26,84,0.1)]">
                     <div className="reco-top-row flex items-center justify-between">
                       <span className="pill pill-purple inline-flex rounded-full bg-[#F1EAFB] px-[10px] py-1 text-[11.5px] font-semibold text-[#4B2E83]">{idea.platform === "instagram" ? "Instagram" : "Facebook"}</span>
                       <span className="reco-by text-[11.5px] font-semibold text-[#9895A8]">Hans</span>
@@ -515,13 +517,25 @@ export function SocialPageClient({
                         {sourceExample ? <><b>{sourceExample.author} · {sourceExample.date}</b> — {sourceExample.text}</> : <><b>Source détectée</b> — Cette recommandation vient du thème “{sourceLabel}”.</>}
                       </div>
                     ) : null}
-                    <CreatePostButton
+                    <Link
                       href={buildCreatePostHref(idea)}
                       className="btn btn-primary sm inline-flex items-center justify-center rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[14px] py-[9px] text-[12.8px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)] transition hover:shadow-[0_8px_22px_rgba(75,46,131,0.36)]"
-                    />
+                    >
+                      Créer avec cette idée
+                    </Link>
                   </div>
                 );
               })}
+              </div>
+              <button
+                type="button"
+                aria-label="Voir les recommandations suivantes"
+                disabled={recommendationStart >= maxRecommendationStart}
+                onClick={() => setRecommendationStart((current) => Math.min(maxRecommendationStart, current + 2))}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#E3DAF1] bg-white text-[#5B2A9E] shadow-[0_4px_14px_rgba(75,46,131,0.08)] transition hover:border-[#7C4DCB] disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+              </button>
             </div>
           )}
         </section>
@@ -533,7 +547,7 @@ export function SocialPageClient({
               <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Mes posts</h2>
               <p className="desc mt-[6px] max-w-[520px] text-[13.5px] leading-[1.5] text-[#6E6B80]">Retrouvez vos brouillons, vos publications programmées et vos posts déjà prêts.</p>
             </div>
-            <button type="button" onClick={() => (draftToResume ? router.push(`/social/editor/${draftToResume.id}`) : router.push("/social#create-with-hans"))} className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
+            <button type="button" onClick={() => (draftToResume ? router.push(`/social/editor/${draftToResume.id}`) : router.push("/social/create"))} className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
               Reprendre un brouillon
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
             </button>
@@ -704,7 +718,6 @@ function InstagramConnectionCard({
   state,
   username,
   displayName,
-  initials,
   message,
   lastCheck,
   busyAction,
@@ -717,7 +730,6 @@ function InstagramConnectionCard({
   state: InstagramOnboardingState;
   username: string | null;
   displayName: string;
-  initials: string;
   message: string;
   lastCheck: string | null;
   busyAction: "redirect" | "test" | "disconnect" | null;
@@ -740,9 +752,7 @@ function InstagramConnectionCard({
     <section id="instagram-connection" className={`mt-[18px] rounded-[18px] border px-5 py-5 ${cardTone}`}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 flex-1 gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/80 bg-[linear-gradient(135deg,#4B2E83,#A855F7)] text-lg font-black text-white shadow-[0_12px_30px_rgba(76,29,149,0.18)]">
-            {initials}
-          </div>
+          {connected ? <InstagramAtriumConnectionVisual /> : <InstagramMark className="h-12 w-12 shrink-0 sm:h-16 sm:w-16" />}
           <div className="min-w-0">
             <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Instagram</p>
             <h3 className="text-[22px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">
@@ -806,6 +816,34 @@ function InstagramConnectionCard({
         </div>
       </div>
     </section>
+  );
+}
+
+function InstagramAtriumConnectionVisual() {
+  return (
+    <div className="flex shrink-0 items-center" aria-label="Instagram connecté à AtriumOne">
+      <InstagramMark className="h-12 w-12 sm:h-16 sm:w-16" />
+      <div className="relative mx-[-2px] h-[3px] w-6 bg-[linear-gradient(90deg,#D946EF,#6D3FC0)] sm:w-10">
+        <span className="absolute left-1/2 top-1/2 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-[#35A764] text-white shadow-sm">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 4 4L19 6" /></svg>
+        </span>
+      </div>
+      <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-[16px] border border-[#E2D7F3] bg-white p-2 shadow-[0_10px_26px_rgba(76,29,149,0.14)] sm:h-16 sm:w-16 sm:rounded-[20px] sm:p-2.5">
+        <img src="/atriumone-logo.webp" alt="AtriumOne" className="h-full w-full object-contain" />
+      </div>
+    </div>
+  );
+}
+
+function InstagramMark({ className }: { className?: string }) {
+  return (
+    <div className={`flex items-center justify-center rounded-[20px] bg-[radial-gradient(circle_at_30%_100%,#FEDA75_0%,#FA7E1E_25%,#D62976_52%,#962FBF_75%,#4F5BD5_100%)] text-white shadow-[0_10px_26px_rgba(214,41,118,0.2)] ${className ?? ""}`}>
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+      </svg>
+    </div>
   );
 }
 
@@ -1055,11 +1093,4 @@ function getInstagramStatusLabel(state: InstagramOnboardingState) {
   if (state === "action_required") return "Action requise";
   if (state === "error") return "À vérifier";
   return "Non connecté";
-}
-
-function getInstagramInitials(value: string) {
-  const clean = value.replace(/^@/, "").trim();
-  if (!clean) return "IG";
-  const parts = clean.split(/[\s._-]+/).filter(Boolean);
-  return (parts[0]?.[0] ?? "I") + (parts[1]?.[0] ?? parts[0]?.[1] ?? "G");
 }

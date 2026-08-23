@@ -47,8 +47,7 @@ export async function composeAndStoreSocialPostVisual({
   const logoAtBottom = logoPosition.startsWith("bottom");
   const logoOnRight = logoPosition.endsWith("right");
   const subtitleText = limitOverlaySubtitle(subtitle ?? "");
-  const signature = [merchant.business_name, merchant.city].filter(Boolean).join(" · ");
-  const rawVariant = Math.abs(hashText(`${visualHook}|${subtitleText}|${signature}`)) % 4;
+  const rawVariant = Math.abs(hashText(`${visualHook}|${subtitleText}|${merchant.city ?? ""}`)) % 4;
   const variant = showLogo && logoAtBottom && (rawVariant === 0 || rawVariant === 3)
     ? rawVariant === 0 ? 1 : 2
     : showLogo && !logoAtBottom && rawVariant === 1
@@ -83,18 +82,7 @@ export async function composeAndStoreSocialPostVisual({
     lineHeight: 1.28,
     fontWeight: 500
   });
-  const signatureFit = fitEstimatedText({
-    text: signature,
-    maxWidth: initialLayout.signatureWidth,
-    maxHeight: 30,
-    maxLines: 1,
-    maxFontSize: 22,
-    minFontSize: 16,
-    lineHeight: 1.1,
-    fontWeight: 700
-  });
-
-  if (!hookFit || !subtitleFit || !signatureFit) {
+  if (!hookFit || !subtitleFit) {
     throw new Error("Le texte du visuel est trop long pour être cadré sans troncature. Raccourcissez-le avant publication.");
   }
 
@@ -127,7 +115,6 @@ export async function composeAndStoreSocialPostVisual({
       <text text-anchor="${layout.anchor}" font-family="${escapeXml(selectedFont)}, Arial, Helvetica, sans-serif" font-size="${hookFit.fontSize}" font-weight="800" fill="#FFFFFF" letter-spacing="-1.5" paint-order="stroke" stroke="${escapeXml(primary)}" stroke-opacity="0.28" stroke-width="3">${hookMarkup}</text>
       <rect x="${layout.accentX}" y="${layout.accentY}" width="116" height="6" rx="3" fill="${escapeXml(accent)}"/>
       <text text-anchor="${layout.anchor}" font-family="${escapeXml(selectedFont)}, Arial, Helvetica, sans-serif" font-size="${subtitleFit.fontSize}" font-weight="500" fill="#FFFFFF">${subtitleMarkup}</text>
-      <text x="${layout.signatureX}" y="1014" text-anchor="${layout.anchor}" font-family="${escapeXml(selectedFont)}, Arial, Helvetica, sans-serif" font-size="${signatureFit.fontSize}" font-weight="700" fill="#FFFFFF">${escapeXml(signature)}</text>
     </svg>
   `);
   const composites: { input: Buffer; top: number; left: number }[] = [{ input: overlay, top: 0, left: 0 }];
@@ -217,12 +204,11 @@ export async function generateAndStoreSocialVisual({
   const toneDirection = mapToneToVisualDirection(brand?.tone ?? "professionnel");
   const fontDirection = brand?.social_font_family ? `Police éditoriale de référence pour la future composition : ${brand.social_font_family}.` : "";
   const clientRequest = [source, visualPrompt, title].filter(Boolean).join(" · ");
-  const peopleExplicitlyRequested = hasExplicitPeopleRequest(clientRequest);
   const creativeDirection = pickCreativeDirection(clientRequest);
   const prompt = [
     `Crée une image carrée premium pour un post Instagram d'un commerce local.`,
     clientRequest ? `DEMANDE ORIGINALE DU CLIENT — PRIORITÉ ABSOLUE : ${clientRequest}.` : "",
-    "Respecte littéralement les sujets, personnes, objets, actions, lieux, cadres, époques, couleurs et détails explicitement demandés. Ne remplace jamais un élément précis par une image générique du secteur.",
+    "Respecte les objets, produits, actions, lieux, cadres, époques, couleurs et détails non humains explicitement demandés. Ne remplace jamais un élément précis par une image générique du secteur.",
     `Secteur : ${merchant.business_type}. Ville : ${merchant.city}.`,
     merchant.description ? `Direction artistique et contexte du commerce : ${merchant.description}.` : "",
     `Style visuel attendu : ${visualStyle}.`,
@@ -236,9 +222,7 @@ export async function generateAndStoreSocialVisual({
     `Piste créative de cette génération : ${creativeDirection}. Utilise-la comme langage visuel secondaire sans contredire la demande originale.`,
     "Compose une scène forte avec une hiérarchie immédiatement compréhensible, mais varie franchement le cadrage, le point de vue, la profondeur, le rythme et la mise en scène d'une génération à l'autre.",
     "Préserve une zone suffisamment lisible pour la future accroche, sans imposer systématiquement la moitié basse ni centrer systématiquement le sujet.",
-    peopleExplicitlyRequested
-      ? "Le client demande explicitement une présence humaine : représente fidèlement la ou les personnes, leur rôle, leur action, leur apparence et le cadre demandé. Cette demande humaine doit être visible, crédible et centrale."
-      : "Interdiction stricte d'ajouter une personne, un visage, une main, une silhouette, un reflet humain ou une foule : aucune présence humaine n'a été explicitement demandée par le client.",
+    "Interdiction stricte d'ajouter une personne, un visage, une main, une silhouette, un reflet humain ou une foule, même si la demande initiale en mentionne. Transpose toujours le concept avec les produits, objets, matières, décors ou la boutique.",
     "Très important : n'écris jamais le nom de l'enseigne, aucun logo lisible et aucun texte marketing dans l'image, sauf si tu représentes visuellement la façade ou l'intérieur réel de la boutique. Même dans ce cas, cela doit rester rare.",
     "Évite les collages génériques, badges, pictogrammes et détails décoratifs gratuits. Une composition complexe reste autorisée uniquement si le client la demande ou si elle sert clairement le concept.",
     "Important : évite le texte intégré dans l'image générée. Le texte social sera posé ensuite dans le design.",
@@ -352,12 +336,6 @@ function getOverlayLayout(variant: number, hookLineCount: number) {
   return { hookX: 84, hookWidth: 912, firstLineY: hookLineCount > 1 ? 684 : 754, subtitleX: 88, subtitleY: 858, subtitleWidth: 880, accentX: 88, accentY: 816, signatureX: 88, signatureWidth: 880, anchor: "start", hookSize: 76, gradient: gradients.bottom };
 }
 
-function hasExplicitPeopleRequest(value: string) {
-  const normalized = value.toLocaleLowerCase("fr-FR").replace(/\s+/g, " ");
-  const humanSubject = "(?:personne|femme|homme|couple|mari[ée]e?|enfant|famille|client[e]?|équipe|artisan[e]?|serveu(?:r|se)|coiffeu(?:r|se)|modèle|mannequin|portrait)";
-  return new RegExp(`(?:avec|montr(?:e|er|ant)|représent(?:e|er|ant)|génèr(?:e|er)|cré(?:e|er)|inclu(?:re|ant)|photo de|portrait de).{0,80}\\b${humanSubject}\\b`, "i").test(normalized)
-    || new RegExp(`\\b${humanSubject}\\b.{0,50}(?:dans|devant|en train de|qui)`, "i").test(normalized);
-}
 
 function pickCreativeDirection(seed: string) {
   const directions = [

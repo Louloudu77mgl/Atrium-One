@@ -12,8 +12,6 @@ export type DraftIdeaInput = {
   title?: string;
   angle?: string;
   source?: string;
-  assetUrl?: string;
-  assetAltText?: string;
   category?: string;
   seasonalMoment?: string;
 };
@@ -152,7 +150,7 @@ export async function generateDraftContent({
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
       instructions:
-        "Tu crées un post social immédiatement publiable pour un commerce local. Retourne uniquement un JSON valide avec title, caption, cta, hashtags, visualPrompt, visualHook, visualSubtitle, format. La demande du commerçant dans idea est la priorité absolue : conserve les sujets, personnes, lieux, cadres, objets, actions et détails explicitement demandés. N'invente jamais de personne si le commerçant n'en demande pas explicitement. Si une personne, un métier, un couple, une famille ou un portrait est explicitement demandé, décris-le précisément dans visualPrompt au lieu de l'éviter. title : 64 caractères maximum. caption : bio Instagram naturelle de 2 ou 3 phrases, 320 caractères maximum, avec au plus 1 emoji. visualHook : accroche de 3 à 6 mots, 40 caractères maximum. visualSubtitle : une seule phrase éditoriale complète de 55 à 110 caractères, avec sujet, verbe et ponctuation finale. Elle doit être différente de la caption et ne jamais se terminer par des points de suspension. Il est interdit de couper ou tronquer cette phrase. visualPrompt : direction visuelle concrète et originale, fidèle mot pour mot à la demande du commerçant ; précise sujet, action, décor/cadre, cadrage, lumière et ambiance. Varie les cadrages et les concepts, évite les compositions génériques répétitives et n'impose pas systématiquement un produit centré. Aucun texte intégré dans l'image. Le résultat doit pouvoir être publié sans réécriture.",
+        "Tu crées un post social immédiatement publiable pour un commerce local. Retourne uniquement un JSON valide avec title, caption, cta, hashtags, visualPrompt, visualHook, visualSubtitle, format. La demande du commerçant dans idea est la priorité absolue : conserve les sujets non humains, lieux, cadres, objets, actions, couleurs et détails explicitement demandés. Ne prévois jamais de personne, visage, main, silhouette, foule ou reflet humain, même si la demande en mentionne : transpose l’idée avec les produits, le décor, les matières ou la boutique. title : 64 caractères maximum. caption : bio Instagram naturelle de 2 ou 3 phrases, 320 caractères maximum, avec au plus 1 emoji. visualHook : accroche de 3 à 6 mots, 40 caractères maximum. visualSubtitle : une seule phrase éditoriale complète de 55 à 110 caractères, avec sujet, verbe et ponctuation finale. Elle doit être différente de la caption et ne jamais se terminer par des points de suspension. Il est interdit de couper ou tronquer cette phrase. visualPrompt : direction visuelle concrète et originale, fidèle à l’intention du commerçant ; précise sujet non humain, action, décor/cadre, cadrage, lumière et ambiance. Varie les cadrages et les concepts, évite les compositions génériques répétitives et n'impose pas systématiquement un produit centré. Aucun texte intégré dans l'image. Le résultat doit pouvoir être publié sans réécriture.",
       input: JSON.stringify({
         merchant: {
           businessName: merchant.business_name,
@@ -203,23 +201,21 @@ export async function createSocialDraftFromIdea({
   }
 
   const { draft, brand } = await generateDraftContent({ merchant: currentMerchant, idea });
-  let imageUrl = idea.assetUrl ?? null;
+  let imageUrl: string | null = null;
   let visualUrl: string | null = null;
   let errorMessage: string | null = null;
 
-  if (!imageUrl) {
-    try {
-      imageUrl = (await generateAndStoreSocialVisual({
-        merchant: currentMerchant,
-        title: draft.title,
-        caption: draft.caption,
-        visualPrompt: draft.visualPrompt,
-        source: [idea.source, idea.angle, idea.category, idea.seasonalMoment, idea.assetAltText].filter(Boolean).join(" · ") || null,
-        styleOverride: brand?.visual_style ?? null
-      })).imageUrl;
-    } catch (error) {
-      errorMessage = getSocialVisualFallbackMessage(error);
-    }
+  try {
+    imageUrl = (await generateAndStoreSocialVisual({
+      merchant: currentMerchant,
+      title: draft.title,
+      caption: draft.caption,
+      visualPrompt: draft.visualPrompt,
+      source: [idea.source, idea.angle, idea.category, idea.seasonalMoment].filter(Boolean).join(" · ") || null,
+      styleOverride: brand?.visual_style ?? null
+    })).imageUrl;
+  } catch (error) {
+    errorMessage = getSocialVisualFallbackMessage(error);
   }
 
   if (imageUrl) {

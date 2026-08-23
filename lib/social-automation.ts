@@ -1,14 +1,12 @@
 import { getBrandSettings } from "@/lib/brand-settings";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { generateDraftContent } from "@/lib/social-drafts";
-import { getMerchantMediaAssets } from "@/lib/social-gallery";
 import { getFreshReviewInsights } from "@/lib/review-insights-server";
 import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
 import { buildAutomationSlots, getMaxPostsForCycle, normalizeSocialAutomationWindow } from "@/lib/social-automation-shared";
-import { getSuggestedMediaAssetsForBusinessType } from "@/lib/media-assets";
-import { composeAndStoreSocialPostVisual } from "@/lib/social-visuals";
+import { composeAndStoreSocialPostVisual, generateAndStoreSocialVisual } from "@/lib/social-visuals";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 
@@ -56,13 +54,10 @@ export async function ensureAutomatedSocialDrafts({
 
   const { reviews } = await getAppShellData();
   const analysis = reviews.length > 0 ? await getFreshReviewInsights(reviews, merchant) : null;
-  const mediaAssets = await getMerchantMediaAssets(merchant);
-  const suggestedAssets = await getSuggestedMediaAssetsForBusinessType(merchant.business_type, merchant.description, 8);
   const ideas = getTopSocialRecommendations({
     analysis,
     reviews,
-    merchant,
-    mediaAssets
+    merchant
   });
   const brand = await getBrandSettings(merchant);
   const plannedDates = buildAutomationSlots({
@@ -81,7 +76,6 @@ export async function ensureAutomatedSocialDrafts({
       title: `Mettre en avant ${merchant.business_type.toLowerCase()}`,
       angle: "Créer un post simple pour rappeler ce que vos clients apprécient déjà."
     };
-    const imageUrl = idea.assetUrl ?? mediaAssets[index]?.url ?? suggestedAssets[index]?.url ?? null;
     const { draft } = await generateDraftContent({
       merchant,
       idea: {
@@ -91,7 +85,20 @@ export async function ensureAutomatedSocialDrafts({
         source: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? "Automatisation Hans"
       }
     });
+    let imageUrl: string | null = null;
     let visualUrl: string | null = null;
+    try {
+      imageUrl = (await generateAndStoreSocialVisual({
+        merchant,
+        title: draft.title,
+        caption: draft.caption,
+        visualPrompt: draft.visualPrompt,
+        source: [idea.sourcePainPoint, idea.sourceStrength, idea.seasonalMoment, idea.angle].filter(Boolean).join(" · ") || "Automatisation Hans",
+        styleOverride: brand?.visual_style ?? null
+      })).imageUrl;
+    } catch {
+      imageUrl = null;
+    }
     if (imageUrl) {
       try {
         visualUrl = await composeAndStoreSocialPostVisual({

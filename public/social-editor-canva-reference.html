@@ -516,10 +516,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8 12 3 7 8"/><path d="M12 3v12"/></svg>
         <span>Imports</span>
       </button>
-      <button class="nav-item" data-panel="photos">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="9" r="1.8"/><path d="m21 15-5-5-9 9"/></svg>
-        <span>Photos</span>
-      </button>
       <button class="nav-item" data-panel="bg">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/></svg>
         <span>Fond</span>
@@ -630,16 +626,6 @@
           <input type="file" id="fileUpload" accept="image/*" multiple style="display:none">
           <div class="sp-section-title">Vos imports</div>
           <div class="grid-3" id="uploadGrid" style="min-height:20px;"></div>
-        </div>
-      </div>
-
-      <!-- PHOTOS PANEL -->
-      <div class="panel-content" data-content="photos" style="display:none">
-        <div class="sp-head"><div class="sp-title">Photos</div></div>
-        <div class="sp-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="Fleurs, bouquet, boutique…"></div>
-        <div class="sp-body">
-          <div class="sp-section-title">Suggestions</div>
-          <div class="grid-3" id="photoGrid"></div>
         </div>
       </div>
 
@@ -1285,31 +1271,6 @@ function mapRemotePostToState(post, merchant){
   };
 }
 
-function renderGalleryAssets(assets){
-  const photoGrid = document.getElementById('photoGrid');
-  const uploadGrid = document.getElementById('uploadGrid');
-  if(!photoGrid || !Array.isArray(assets) || assets.length===0) return;
-  photoGrid.innerHTML = assets.map(asset => `
-    <button class="photo-tile" data-url="${asset.url.replace(/"/g,'&quot;')}">
-      <img src="${asset.url}" alt="${(asset.alt_text || 'Image du commerce').replace(/"/g,'&quot;')}" style="width:100%;height:100%;object-fit:cover;">
-    </button>
-  `).join('');
-  photoGrid.querySelectorAll('.photo-tile').forEach(button => {
-    button.addEventListener('click', ()=> addImage(button.dataset.url));
-  });
-
-  if(uploadGrid){
-    uploadGrid.innerHTML = assets.slice(0,6).map(asset => `
-      <button class="photo-tile" data-url="${asset.url.replace(/"/g,'&quot;')}">
-        <img src="${asset.url}" alt="${(asset.alt_text || 'Image du commerce').replace(/"/g,'&quot;')}" style="width:100%;height:100%;object-fit:cover;">
-      </button>
-    `).join('');
-    uploadGrid.querySelectorAll('.photo-tile').forEach(button => {
-      button.addEventListener('click', ()=> addImage(button.dataset.url));
-    });
-  }
-}
-
 function renderBrandPanel(){
   const brandNameEl = document.getElementById('brandPanelName');
   const brandMetaEl = document.getElementById('brandPanelMeta');
@@ -1412,7 +1373,6 @@ async function loadEditorData(){
     }
     renderBrandPanel();
     idCounter = Math.max(1, ...state.elements.map(el => Number(el.id) || 0)) + 1;
-    renderGalleryAssets(data.galleryAssets || []);
     render();
     history = [];
     historyIndex = -1;
@@ -1641,27 +1601,6 @@ document.getElementById('addBrandLogoBtn').addEventListener('click', addBrandLog
 
 // Brand colors
 renderBrandPanel();
-
-// Photos (generated SVG placeholders — flower shop themed, offline-safe)
-const PHOTO_THEMES = [
-  {c1:'#F7C9D6',c2:'#E9748C'},{c1:'#D7E7C9',c2:'#7CAE52'},{c1:'#FBE3B0',c2:'#E8A93B'},
-  {c1:'#D9CFF3',c2:'#8E77F5'},{c1:'#F3D9CF',c2:'#E88A3D'},{c1:'#CFE9E3',c2:'#3FB98A'}
-];
-function photoSVG(c1,c2){
-  return `<svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
-    <rect width="100" height="100" fill="${c1}"/>
-    <circle cx="35" cy="40" r="20" fill="${c2}" opacity="0.85"/>
-    <circle cx="65" cy="60" r="26" fill="${c2}" opacity="0.55"/>
-  </svg>`;
-}
-document.getElementById('photoGrid').innerHTML = PHOTO_THEMES.map(t=>`<button class="photo-tile">${photoSVG(t.c1,t.c2)}</button>`).join('');
-document.getElementById('photoGrid').querySelectorAll('.photo-tile').forEach((b,i)=>{
-  b.addEventListener('click', ()=>{
-    const svg = b.innerHTML;
-    const uri = 'data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg.replace('width="100%" height="100%"','width="400" height="400"'))));
-    addImage(uri);
-  });
-});
 
 // Templates (preset AtriumOne / Maison Lavigne layouts)
 const TEMPLATES = [

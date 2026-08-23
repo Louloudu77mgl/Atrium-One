@@ -9,7 +9,6 @@ import { getAppNotifications } from "@/lib/notifications";
 import { getFallbackReviewInsights } from "@/lib/review-insights";
 import { getFreshReviewInsights } from "@/lib/review-insights-server";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
-import { getMerchantMediaAssets } from "@/lib/social-gallery";
 import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { getSocialPosts } from "@/lib/social-posts";
 import { hasSupabaseAdminEnv } from "@/lib/supabase/admin";
@@ -28,11 +27,10 @@ export default async function SocialPage({
   const { reviews, merchant, googleConnection } = await getAppShellData();
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
-  const [automationSettings, instagramConnection, posts, mediaAssets] = await Promise.all([
+  const [automationSettings, instagramConnection, posts] = await Promise.all([
     hasSupabaseEnv() && !isDemoMode() && merchant ? getAutomationSettings(merchant) : Promise.resolve(null),
     merchant ? getInstagramConnection(merchant) : Promise.resolve(null),
-    hasSupabaseEnv() && !isDemoMode() ? getSocialPosts(merchant) : Promise.resolve([]),
-    hasSupabaseEnv() && !isDemoMode() ? getMerchantMediaAssets(merchant) : Promise.resolve([])
+    hasSupabaseEnv() && !isDemoMode() ? getSocialPosts(merchant) : Promise.resolve([])
   ]);
   const instagramConfigured = hasInstagramOAuthConfig();
   const cadence = getSocialAutomationCadence(automationSettings);
@@ -42,8 +40,7 @@ export default async function SocialPage({
   const ideas = getTopSocialRecommendations({
     analysis,
     reviews,
-    merchant,
-    mediaAssets
+    merchant
   });
   const isInstagramUnavailable = params?.error === "instagram_unavailable";
 
@@ -68,7 +65,6 @@ export default async function SocialPage({
               cadence={cadence}
               posts={posts}
               ideas={ideas}
-              mediaAssets={mediaAssets}
             />
           </div>
         </main>

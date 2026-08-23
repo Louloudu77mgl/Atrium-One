@@ -1,6 +1,5 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
-import { getMerchantMediaAssets } from "@/lib/social-gallery";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -26,14 +25,13 @@ export async function GET(
     return NextResponse.json({ error: "Commerce introuvable." }, { status: 404 });
   }
 
-  const [{ data, error }, galleryAssets, brandSettings] = await Promise.all([
+  const [{ data, error }, brandSettings] = await Promise.all([
     supabase
       .from("social_posts")
       .select("*")
       .eq("id", postId)
       .eq("merchant_id", merchant.id)
       .single(),
-    getMerchantMediaAssets(merchant),
     getBrandSettings(merchant)
   ]);
 
@@ -50,8 +48,7 @@ export async function GET(
       city: merchant.city,
       logo_url: merchant.logo_url
     },
-    brandSettings,
-    galleryAssets
+    brandSettings
   });
 }
 

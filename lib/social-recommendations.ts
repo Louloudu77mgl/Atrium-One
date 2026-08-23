@@ -2,7 +2,7 @@ import type { Review } from "@/lib/mock-data";
 import { getSocialRecommendationsTargetCount } from "@/lib/review-insights";
 import type { ReviewInsightsAnalysis, ReviewSocialPostIdea } from "@/lib/review-insights";
 import { getUpcomingFrenchCommercialMoments } from "@/lib/social-calendar";
-import type { MerchantMediaAssetRow, MerchantRow } from "@/lib/supabase/types";
+import type { MerchantRow } from "@/lib/supabase/types";
 
 function scoreIdea(idea: ReviewSocialPostIdea) {
   let score = 0;
@@ -16,13 +16,11 @@ function scoreIdea(idea: ReviewSocialPostIdea) {
 export function getTopSocialRecommendations({
   analysis,
   reviews,
-  merchant,
-  mediaAssets = []
+  merchant
 }: {
   analysis: ReviewInsightsAnalysis | null;
   reviews: Review[];
   merchant?: MerchantRow | null;
-  mediaAssets?: MerchantMediaAssetRow[];
 }) {
   const targetCount = getSocialRecommendationsTargetCount(reviews.length);
 
@@ -45,7 +43,7 @@ export function getTopSocialRecommendations({
       }
     });
 
-    return withSeasonalIdeas([...unique.values()], merchant, mediaAssets).slice(0, Math.max(targetCount, 6));
+    return withSeasonalIdeas([...unique.values()], merchant).slice(0, Math.max(targetCount, 6));
   }
 
   const fallbackIdeas: ReviewSocialPostIdea[] = [];
@@ -99,7 +97,7 @@ export function getTopSocialRecommendations({
     }
   });
 
-  return withSeasonalIdeas([...unique.values()], merchant, mediaAssets).slice(0, Math.max(targetCount, 6));
+  return withSeasonalIdeas([...unique.values()], merchant).slice(0, Math.max(targetCount, 6));
 }
 
 export function buildCreatePostHref(idea: ReviewSocialPostIdea) {
@@ -110,8 +108,6 @@ export function buildCreatePostHref(idea: ReviewSocialPostIdea) {
     source: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? "Avis clients"
   });
 
-  if (idea.assetUrl) params.set("assetUrl", idea.assetUrl);
-  if (idea.assetAltText) params.set("assetAltText", idea.assetAltText);
   if (idea.category) params.set("category", idea.category);
   if (idea.seasonalMoment) params.set("seasonalMoment", idea.seasonalMoment);
 
@@ -120,28 +116,20 @@ export function buildCreatePostHref(idea: ReviewSocialPostIdea) {
 
 function withSeasonalIdeas(
   ideas: ReviewSocialPostIdea[],
-  merchant?: MerchantRow | null,
-  mediaAssets: MerchantMediaAssetRow[] = []
+  merchant?: MerchantRow | null
 ) {
-  const seasonalIdeas: ReviewSocialPostIdea[] = getUpcomingFrenchCommercialMoments(new Date()).map((moment, index) => {
-    const asset = mediaAssets[index];
-    const context = asset?.alt_text ?? asset?.category ?? merchant?.business_type ?? "votre commerce";
-
-    return {
+  const seasonalIdeas: ReviewSocialPostIdea[] = getUpcomingFrenchCommercialMoments(new Date()).map((moment) => ({
       platform: "instagram" as const,
       title: `${moment.shortLabel} : post à préparer`,
-      angle: `Créer un post simple et vendeur pour ${moment.label.toLowerCase()} en partant de ${context.toLowerCase()}.`,
+      angle: `Créer un post simple et vendeur pour ${moment.label.toLowerCase()}, adapté à ${merchant?.business_type?.toLowerCase() ?? "votre commerce"}.`,
       seasonalMoment: moment.label,
-      category: asset?.category ?? merchant?.business_type ?? undefined,
-      assetUrl: asset?.url,
-      assetAltText: asset?.alt_text ?? undefined
-    };
-  });
+      category: merchant?.business_type ?? undefined
+    }));
 
   const unique = new Map<string, ReviewSocialPostIdea>();
 
   [...ideas, ...seasonalIdeas].forEach((idea) => {
-    const source = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? idea.assetAltText ?? "avis";
+    const source = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? "avis";
     const key = `${idea.platform}-${idea.title.toLowerCase()}-${source.toLowerCase()}`;
     if (!unique.has(key)) {
       unique.set(key, idea);
