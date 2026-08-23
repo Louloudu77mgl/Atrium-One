@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/useToast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import type { MerchantMediaAssetRow } from "@/lib/supabase/types";
 import { getUserErrorMessage } from "@/lib/user-feedback";
+import { badgeStyles, buttonStyles, fieldStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 
 export function SocialGalleryManager({
   initialAssets,
@@ -73,17 +74,17 @@ export function SocialGalleryManager({
 
   return (
     <>
-      <section className="rounded-[22px] border border-[#E9D5FF] bg-white p-5 shadow-[0_10px_30px_rgba(76,29,149,0.07)]">
+      <section className={`${surfaceStyles.section} p-5`}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h3 className="text-lg font-black text-[#211432]">Galerie du commerce</h3>
-            <p className="mt-1 text-sm text-[#6B617F]">Hans peut utiliser vos propres images pour préparer les posts Instagram.</p>
+            <h3 className={typographyStyles.h3}>Galerie du commerce</h3>
+            <p className={`${typographyStyles.body} mt-1`}>Hans peut utiliser vos propres images pour préparer les posts Instagram.</p>
           </div>
-          <div className="rounded-full bg-[#F3E8FF] px-3 py-1 text-xs font-black text-[#7C3AED]">{galleryCountLabel}</div>
+          <div className={badgeStyles.hans}>{galleryCountLabel}</div>
         </div>
 
         <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_1fr_auto]">
-          <label className="rounded-2xl border border-[#E9D5FF] bg-[#FBFAFF] px-4 py-3 text-sm font-semibold text-[#211432]">
+          <label className={`${fieldStyles.label} ao-card-subtle px-4 py-3`}>
             Ajouter une image
             <input
               type="file"
@@ -99,7 +100,7 @@ export function SocialGalleryManager({
               disabled={busy === "upload"}
             />
           </label>
-          <div className="rounded-2xl border border-[#E9D5FF] bg-[#FBFAFF] px-4 py-3 text-sm text-[#211432]">
+          <div className="ao-card-subtle px-4 py-3 text-sm text-[var(--color-text)]">
             <div className="font-semibold">Site utilisé pour Hans</div>
             <div className="mt-2 break-all text-sm text-[#6B617F]">{websiteUrl?.trim() || "Aucun site renseigné pour le moment."}</div>
           </div>
@@ -108,25 +109,25 @@ export function SocialGalleryManager({
               type="button"
               onClick={() => void importWebsiteImages()}
               disabled={busy === "site"}
-              className="inline-flex h-fit items-center justify-center rounded-xl bg-[#4C1D95] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#6D28D9] disabled:opacity-60"
+              className={`${buttonStyles.primary} h-fit disabled:opacity-60`}
             >
               {busy === "site" ? "Import..." : "Importer les images du site"}
             </button>
           ) : (
-            <a href="/settings" className="inline-flex h-fit items-center justify-center rounded-xl bg-[#F3E8FF] px-4 py-3 text-sm font-bold text-[#4C1D95] transition hover:bg-[#E9D5FF]">
+            <a href="/settings" className={`${buttonStyles.secondary} h-fit`}>
               Ajouter mon site dans Réglages
             </a>
           )}
         </div>
 
         {assets.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-dashed border-[#D8B4FE] bg-[#FBFAFF] p-5 text-sm text-[#6B617F]">
+          <div className={`${surfaceStyles.empty} mt-4 p-5 text-sm text-[var(--color-text-muted)]`}>
             Aucune image disponible pour le moment. Ajoutez vos visuels ou importez ceux de votre site.
           </div>
         ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {assets.map((asset) => (
-              <article key={asset.id} className="overflow-hidden rounded-[20px] border border-[#E9D5FF] bg-[#FBFAFF]">
+              <article key={asset.id} className="ao-card-subtle overflow-hidden">
                 <img src={asset.url} alt={asset.alt_text ?? "Image du commerce"} className="aspect-square w-full object-cover" />
                 <div className="space-y-1 p-3">
                   <div className="flex items-center justify-between gap-2">

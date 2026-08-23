@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   const rows = parseCustomerCsv(payload.csv ?? "");
 
   if (rows.length === 0) {
-    return NextResponse.json({ error: "Aucun contact valide trouvé. Vérifiez les colonnes prénom, téléphone et consentement." }, { status: 400 });
+    return NextResponse.json({ error: "Aucun contact valide trouvé. Vérifiez les colonnes Prénom, Nom et adresse mail." }, { status: 400 });
   }
 
   const importedAt = new Date();
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     merchant_id: merchant.id,
     first_name: row.first_name,
     last_name: row.last_name,
-    phone: row.phone!,
+    phone: row.phone ?? "",
     email: row.email,
     favorite_products: row.favorite_products.join(", ") || null,
     consent_sms: row.opt_in_sms,

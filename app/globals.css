@@ -335,10 +335,88 @@ select {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
+  outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
 }
 
 .ao-input::placeholder {
   color: var(--color-text-soft);
+}
+
+.ao-input:focus,
+.ao-select:focus {
+  border-color: var(--color-primary-hover);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15);
+}
+
+.ao-select {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.ao-label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.ao-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(33, 20, 50, 0.52);
+  backdrop-filter: blur(4px);
+}
+
+.ao-modal-content {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface);
+  box-shadow: 0 24px 80px rgba(33, 20, 50, 0.28);
+  animation: modal-in 180ms ease-out;
+}
+
+.ao-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.ao-skeleton::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.72) 48%, transparent 76%);
+  content: "";
+  transform: translateX(-100%);
+  animation: ao-skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes ao-skeleton-shimmer {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ao-skeleton::after { animation: none; }
+}
+
+/* Compatibilité des écrans migrés progressivement vers les primitives AtriumOne. */
+.section-block {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-hero);
 }
 
 .ao-segmented {

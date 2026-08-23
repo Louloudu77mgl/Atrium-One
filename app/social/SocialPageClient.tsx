@@ -13,6 +13,7 @@ import type { Review } from "@/lib/mock-data";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
 import type { MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { getUserErrorMessage } from "@/lib/user-feedback";
+import { badgeStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 
 type InstagramConnectionLike = {
   status: "connected" | "disconnected" | "error" | "pending_configuration";
@@ -396,18 +397,18 @@ export function SocialPageClient({
 
   return (
     <>
-      <div className="mx-auto max-w-[1180px] bg-[#F5F4FA] px-6 pb-20 pt-8">
+      <div className="mx-auto max-w-[1180px] px-6 pb-20 pt-8">
         <div className="section-block">
-          <div className="card hero rounded-[20px] border border-[#ECE9F4] bg-white px-7 py-[26px] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)]">
+          <div className={`${surfaceStyles.hero} px-7 py-[26px]`}>
             <div className="hero-top flex flex-wrap justify-between gap-7">
               <div className="hero-left min-w-[280px] flex-1">
-                <p className="eyebrow mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Instagram</p>
-                <h1 className="mb-[10px] text-[24px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Hans vous aide à préparer vos prochains posts.</h1>
-                <p className="desc mb-4 max-w-[480px] text-[14.5px] leading-[1.55] text-[#6E6B80]">
+                <p className={`${typographyStyles.kicker} mb-2`}>Instagram</p>
+                <h1 className={`${typographyStyles.h1} mb-[10px]`}>Hans vous aide à préparer vos prochains posts.</h1>
+                <p className={`${typographyStyles.body} mb-4 max-w-[480px]`}>
                   Choisissez une idée, créez un post, puis publiez-le quand votre compte est connecté.
                 </p>
                 <div className="hero-actions mb-[14px] flex flex-wrap items-center gap-4">
-                  <Link href="/social/create" className="btn btn-primary inline-flex items-center rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[18px] py-[11px] text-[13.5px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)] transition hover:shadow-[0_8px_22px_rgba(75,46,131,0.36)]">
+                  <Link href="/social/create" className={buttonStyles.primary}>
                     Créer un post
                   </Link>
                   <a href="#recommendations" className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
@@ -415,7 +416,7 @@ export function SocialPageClient({
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
                   </a>
                 </div>
-                <span className="pill pill-purple inline-flex rounded-full bg-[#F1EAFB] px-[10px] py-1 text-[11.5px] font-semibold text-[#4B2E83]">
+                <span className={badgeStyles.hans}>
                   {automationSettings?.social_auto_publish_enabled
                     ? `✨ Préparation automatique active · ${cadence.postsPerCycle} post${cadence.postsPerCycle > 1 ? "s" : ""} toutes les ${cadence.cycleWeeks} semaine${cadence.cycleWeeks > 1 ? "s" : ""}`
                     : "🔒 Vous gardez la main sur vos publications"}

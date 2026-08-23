@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getMerchant } from "@/lib/merchants";
 import type { Review } from "@/lib/mock-data";
 import {
@@ -15,7 +16,7 @@ import {
   validateReviewInsights
 } from "@/lib/review-insights";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { Json, MerchantRow, SocialPostIdeaRow } from "@/lib/supabase/types";
+import type { Database, Json, MerchantRow, SocialPostIdeaRow } from "@/lib/supabase/types";
 
 type OpenAIResponseContent = {
   type?: string;
@@ -125,7 +126,7 @@ export async function analyzeReviewsWithOpenAI(reviews: Review[], merchant: Merc
     body: JSON.stringify({
       model,
       instructions:
-        "Tu es Hans, l'agent IA d'AtriumOne. Tu analyses des avis clients Google pour un commerce de proximité. Retourne uniquement un JSON valide, sans Markdown, sans commentaire. Le JSON doit contenir painPoints, strengths, priorityActions et socialPostIdeas. Utilise un vocabulaire simple pour commerçant non-technique. Ne crée pas de faits non présents dans les avis. IMPORTANT UX: AtriumOne affiche des conclusions, pas un rapport. Retourne maximum 4 douleurs, maximum 4 points forts, maximum 3 actions prioritaires. Chaque summary, recommendation et communicationAngle doit faire 120 caractères maximum, en une seule phrase claire. Les actions prioritaires doivent avoir uniquement title, impact, difficulty et description courte. Pour socialPostIdeas, interdiction de proposer un sujet générique ou non présent dans les avis. Chaque idée doit venir d’un thème vraiment cité dans plusieurs avis ou d’un avis très marquant. Les titres doivent être spécifiques au commerce et aux retours clients, jamais des placeholders.",
+        "Tu es Hans, l'agent IA d'AtriumOne. Tu analyses des avis clients Google pour un commerce de proximité. Retourne uniquement un JSON valide, sans Markdown, sans commentaire. Le JSON doit contenir painPoints, strengths, priorityActions et socialPostIdeas. Utilise un vocabulaire simple pour commerçant non-technique. Ne crée pas de faits non présents dans les avis. IMPORTANT UX: AtriumOne affiche des conclusions, pas un rapport. Retourne maximum 4 douleurs, maximum 4 points forts et entre 2 et 4 actions recommandées. Chaque summary, recommendation et communicationAngle doit faire 120 caractères maximum, en une seule phrase claire. Pour chaque action recommandée, choisis un seul channel parmi sms, social, rcu ou reviews selon ce qui répond le mieux à l'analyse. Ne sélectionne pas un canal sans justification dans les avis. Donne un title spécifique, impact, difficulty, une description courte et 2 à 3 strategyPoints concrets expliquant la stratégie. Les strategyPoints doivent citer le signal client exploité, l'approche proposée et le résultat recherché. Pour socialPostIdeas, interdiction de proposer un sujet générique ou non présent dans les avis. Chaque idée doit venir d’un thème vraiment cité dans plusieurs avis ou d’un avis très marquant. Les titres doivent être spécifiques au commerce et aux retours clients, jamais des placeholders.",
       input: JSON.stringify({
         merchant: {
           businessName: merchant.business_name,
@@ -136,12 +137,12 @@ export async function analyzeReviewsWithOpenAI(reviews: Review[], merchant: Merc
         expectedShape: {
           painPoints: [{ title: "Attente trop longue", frequency: "élevée", summary: "Les clients mentionnent régulièrement des délais d’attente trop importants.", examples: ["Avis"], recommendation: "Réduire l’attente ou mieux communiquer sur les heures d’affluence." }],
           strengths: [{ title: "Accueil chaleureux", summary: "Les clients apprécient régulièrement la qualité de l’accueil.", examples: ["Avis"], communicationAngle: "Communiquer davantage sur l’équipe." }],
-          priorityActions: [{ title: "Clarifier les informations en ligne", impact: "élevé", difficulty: "facile", description: "Mettre à jour horaires, contact et informations clés." }],
+          priorityActions: [{ title: "Rassurer sur les temps d’attente", channel: "sms", impact: "élevé", difficulty: "facile", description: "Prévenir les clients avant les périodes chargées.", strategyPoints: ["Cibler les clients concernés par les créneaux les plus chargés.", "Envoyer un message court avant le pic d’affluence.", "Mesurer si les nouveaux avis mentionnent moins l’attente."] }],
           socialPostIdeas: [{ platform: "instagram", title: "Titre", angle: "Angle", sourcePainPoint: "Douleur ou point fort source" }]
         },
         reviews: sample
       }),
-      max_output_tokens: 1800
+      max_output_tokens: 2400
     })
   });
 
@@ -161,8 +162,13 @@ export async function analyzeReviewsWithOpenAI(reviews: Review[], merchant: Merc
   }
 }
 
-export async function saveReviewInsights(merchant: MerchantRow, analysis: ReviewInsightsAnalysis, reviews?: Review[]) {
-  const supabase = await createServerSupabaseClient();
+export async function saveReviewInsights(
+  merchant: MerchantRow,
+  analysis: ReviewInsightsAnalysis,
+  reviews?: Review[],
+  client?: SupabaseClient<Database>
+) {
+  const supabase = client ?? await createServerSupabaseClient();
   const now = new Date().toISOString();
   const safeReviews = reviews ?? [];
   const analysisWithIdeas = enforceSocialPostIdeaRules(ensureReviewInsightsPostIdeas(analysis) ?? analysis, safeReviews);

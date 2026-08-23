@@ -6,6 +6,7 @@ export const appShellStyles = {
 } as const;
 
 export const surfaceStyles = {
+  card: "ao-card",
   hero: "ao-hero",
   section: "ao-section-card",
   hans: "ao-hans-card",
@@ -14,6 +15,18 @@ export const surfaceStyles = {
   subtle: "ao-card-subtle",
   empty: "ao-empty-state",
   icon: "ao-card-icon"
+} as const;
+
+export const fieldStyles = {
+  input: "ao-input ao-focus h-10 w-full px-3 text-sm font-medium",
+  select: "ao-select ao-focus h-10 w-full px-3 text-sm font-medium",
+  textarea: "ao-input ao-focus w-full px-3 py-2.5 text-sm font-medium leading-6",
+  label: "ao-label"
+} as const;
+
+export const modalStyles = {
+  backdrop: "ao-modal-backdrop",
+  content: "ao-modal-content"
 } as const;
 
 export const buttonStyles = {

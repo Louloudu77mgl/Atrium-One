@@ -21,7 +21,7 @@ const HEADER_SYNONYMS = {
   lastName: ["nom", "lastname", "last_name", "client_nom"],
   phone: ["telephone", "téléphone", "portable", "mobile", "phone", "gsm", "numero", "numéro"],
   phoneShort: ["tel", "tél"],
-  email: ["email", "e_mail", "mail", "courriel"],
+  email: ["email", "e_mail", "mail", "courriel", "adresse_mail", "adresse_email"],
   optIn: ["optin", "opt_in", "consentement", "accord_sms", "sms_ok", "autorisation_sms"],
   emailOptIn: ["opt_in_email", "optin_email", "consentement_email", "accord_email", "email_ok", "autorisation_email"],
   birthday: ["date_naissance", "date_de_naissance", "anniversaire", "birthday", "birth_date"],
@@ -85,11 +85,54 @@ function detectDelimiter(text: string) {
 function parseCsv(text: string) {
   const sanitizedText = text.replace(/^\uFEFF/, "");
   const delimiter = detectDelimiter(sanitizedText);
-  const rows = sanitizedText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, "")));
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < sanitizedText.length; index += 1) {
+    const character = sanitizedText[index];
+    const nextCharacter = sanitizedText[index + 1];
+
+    if (character === "\"") {
+      if (inQuotes && nextCharacter === "\"") {
+        currentCell += "\"";
+        index += 1;
+        continue;
+      }
+
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (!inQuotes && character === delimiter) {
+      currentRow.push(currentCell.trim());
+      currentCell = "";
+      continue;
+    }
+
+    if (!inQuotes && (character === "\n" || character === "\r")) {
+      if (character === "\r" && nextCharacter === "\n") {
+        index += 1;
+      }
+
+      currentRow.push(currentCell.trim());
+      const hasMeaningfulData = currentRow.some((cell) => cell.length > 0);
+      if (hasMeaningfulData) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      currentCell = "";
+      continue;
+    }
+
+    currentCell += character;
+  }
+
+  currentRow.push(currentCell.trim());
+  if (currentRow.some((cell) => cell.length > 0)) {
+    rows.push(currentRow);
+  }
 
   const [headers = [], ...dataRows] = rows;
 
@@ -145,12 +188,20 @@ export function parseCustomerCsv(text: string) {
   const purchaseDateIndex = findHeaderIndex(headers, HEADER_SYNONYMS.purchaseDate);
   const notesIndex = findHeaderIndex(headers, HEADER_SYNONYMS.notes);
 
+  if (firstNameIndex < 0 || lastNameIndex < 0 || emailIndex < 0) {
+    return [];
+  }
+
   const rows: CsvImportRow[] = [];
 
   dataRows.forEach((row) => {
     const phone = normalizeFrenchPhone((phoneIndex >= 0 ? row[phoneIndex] : phoneShortIndex >= 0 ? row[phoneShortIndex] : "") ?? "");
 
-    if (!phone) {
+    const email = emailIndex >= 0 ? row[emailIndex]?.trim() || null : null;
+
+    // L'import de la base clients est utilisable avec les trois colonnes
+    // d'identification les plus courantes : prénom, nom et adresse e-mail.
+    if (!email) {
       return;
     }
 
@@ -158,13 +209,13 @@ export function parseCustomerCsv(text: string) {
     const lastName = lastNameIndex >= 0 ? row[lastNameIndex] ?? "" : "";
     const eventProduct = productIndex >= 0 ? row[productIndex] ?? "" : "";
     const notes = notesIndex >= 0 ? row[notesIndex] ?? "" : "";
-    const optIn = optInIndex >= 0 ? parseBoolean(row[optInIndex]) : true;
+    const optIn = optInIndex >= 0 ? parseBoolean(row[optInIndex]) : false;
 
     rows.push({
       first_name: firstName || "Client",
       last_name: lastName,
       phone,
-      email: emailIndex >= 0 ? row[emailIndex]?.trim() || null : null,
+      email,
       opt_in_sms: optIn,
       opt_in_email: emailOptInIndex >= 0 ? parseBoolean(row[emailOptInIndex]) : false,
       birthday: birthdayIndex >= 0 ? parseDate(row[birthdayIndex])?.slice(0, 10) ?? null : null,

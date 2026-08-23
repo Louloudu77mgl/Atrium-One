@@ -5,6 +5,7 @@ import { useState } from "react";
 import { HansAvatar } from "@/components/hans-avatar";
 import { Icon } from "@/components/icons";
 import { SocialIdeasGrid } from "@/components/SocialIdeasGrid";
+import { Skeleton, SkeletonCard, SkeletonText } from "@/components/Skeleton";
 import { buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 import type { ReviewInsightsAnalysis, ReviewSocialPostIdea } from "@/lib/review-insights";
 
@@ -102,25 +103,9 @@ export function ReviewInsightsCards({
 
 export function HansAnalysisLoading() {
   return (
-    <section className={`${surfaceStyles.section} relative overflow-hidden`}>
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#7C3AED]/10 to-transparent" />
-      <div className="relative flex flex-col items-center justify-center py-8 text-center">
-        <div className="relative mb-5 flex h-24 w-24 items-center justify-center rounded-[28px] border border-[#E9D5FF] bg-[#F5F0FF] shadow-[0_18px_42px_rgba(76,29,149,0.14)]">
-          <span className="absolute inset-3 rounded-full bg-[#A855F7]/20 blur-2xl" />
-          <HansAvatar size={82} className="relative" />
-        </div>
-        <h2 className={`flex items-center gap-1.5 ${typographyStyles.h2}`}>
-          Hans analyse vos avis
-          <span className="inline-flex translate-y-1 gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#7C3AED] [animation:bounce_1s_infinite]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-[#7C3AED] [animation:bounce_1s_0.15s_infinite]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-[#7C3AED] [animation:bounce_1s_0.3s_infinite]" />
-          </span>
-        </h2>
-        <p className={`${typographyStyles.body} mt-2 max-w-xl`}>
-          Hans lit les avis, repère les douleurs clients récurrentes, les points forts et prépare vos prochaines actions.
-        </p>
-      </div>
+    <section className={`${surfaceStyles.section} p-6`} aria-busy="true" aria-label="Analyse des avis en cours">
+      <div className="flex items-center gap-4"><Skeleton className="h-12 w-12 rounded-2xl" /><div className="flex-1"><Skeleton className="h-5 w-52" /><SkeletonText className="mt-3 max-w-xl" /></div></div>
+      <div className="mt-6 grid gap-4 xl:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <SkeletonCard key={index} className="min-h-48" />)}</div>
     </section>
   );
 }

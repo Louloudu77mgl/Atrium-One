@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { badgeStyles, fieldStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 
 type AutomationCardProps = {
   title: string;
@@ -78,12 +79,12 @@ export function AutomationCard({
   }
 
   return (
-    <section className="rounded-[22px] border border-[#E9D5FF] bg-white p-5 shadow-[0_10px_30px_rgba(76,29,149,0.07)]">
+    <section className={`${surfaceStyles.section} p-5`}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="mb-2 inline-flex rounded-full bg-[#F3E8FF] px-3 py-1 text-xs font-black text-[#7C3AED]">{modeLabel}</div>
-          <h2 className="text-xl font-black text-[#211432]">{title}</h2>
-          <p className="mt-2 text-sm leading-6 text-[#6B617F]">{description}</p>
+          <div className={`${badgeStyles.hans} mb-2`}>{modeLabel}</div>
+          <h2 className={typographyStyles.h2}>{title}</h2>
+          <p className={`${typographyStyles.body} mt-2`}>{description}</p>
         </div>
         <button
           type="button"
@@ -97,8 +98,8 @@ export function AutomationCard({
         </button>
       </div>
 
-      <div className="mt-4 rounded-2xl bg-[#FBFAFF] p-4">
-        <div className="text-sm font-semibold text-[#211432]">{enabled ? enabledLabel : disabledLabel}</div>
+      <div className={`${surfaceStyles.subtle} mt-4 p-4`}>
+        <div className="text-sm font-semibold text-[var(--color-text)]">{enabled ? enabledLabel : disabledLabel}</div>
         {showFrequency ? (
           <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr]">
             <label className="block">
@@ -110,7 +111,7 @@ export function AutomationCard({
                 value={String(postsPerCycle)}
                 disabled={!enabled || saving}
                 onChange={(event) => void save({ postsPerCycle: Number(event.target.value) })}
-                className="w-full rounded-lg border border-[#E9D5FF] px-3 py-2 text-sm font-semibold text-[#211432] outline-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                className={`${fieldStyles.input} disabled:cursor-not-allowed disabled:opacity-60`}
               />
             </label>
             <label className="block">
@@ -122,7 +123,7 @@ export function AutomationCard({
                 value={String(cycleWeeks)}
                 disabled={!enabled || saving}
                 onChange={(event) => void save({ cycleWeeks: Number(event.target.value) })}
-                className="w-full rounded-lg border border-[#E9D5FF] px-3 py-2 text-sm font-semibold text-[#211432] outline-none transition disabled:cursor-not-allowed disabled:opacity-60"
+                className={`${fieldStyles.input} disabled:cursor-not-allowed disabled:opacity-60`}
               />
             </label>
             <div className="md:col-span-2 text-xs text-[#8B7AA8]">

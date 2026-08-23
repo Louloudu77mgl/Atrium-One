@@ -47,6 +47,7 @@ export function RcuClient({
   const [creatingForm, setCreatingForm] = useState(false);
   const [creatingPosterId, setCreatingPosterId] = useState<string | null>(null);
   const [editingFormId, setEditingFormId] = useState<string | null>(null);
+  const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [formType, setFormType] = useState<RcuFormType>("points");
   const [formTitle, setFormTitle] = useState("");
   const [formIncentive, setFormIncentive] = useState("");
@@ -151,6 +152,7 @@ export function RcuClient({
     setPosterHeadline(form.poster_headline ?? getRcuTypeDefinition(form.form_type).defaultPosterHeadline);
     setPosterBody(form.poster_body ?? getRcuTypeDefinition(form.form_type).defaultPosterBody);
     setGameConfig(form.game_config);
+    setAdvancedOptionsOpen(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -196,7 +198,7 @@ export function RcuClient({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-3">
         <article className={surfaceStyles.kpi}>
           <div className={typographyStyles.kicker}>RCU actifs</div>
           <div className="mt-3 text-[30px] font-black tracking-[-0.04em] text-[var(--color-text)]">
@@ -205,21 +207,14 @@ export function RcuClient({
           <p className={`${typographyStyles.body} mt-2`}>QR codes déployés en boutique.</p>
         </article>
         <article className={surfaceStyles.kpi}>
-          <div className={typographyStyles.kicker}>Types disponibles</div>
-          <div className="mt-3 text-[30px] font-black tracking-[-0.04em] text-[var(--color-text)]">{RCU_TYPE_DEFINITIONS.length}</div>
-          <p className={`${typographyStyles.body} mt-2`}>Points, roue, tombola, visites et Hans IA.</p>
-        </article>
-        <article className={surfaceStyles.kpi}>
           <div className={typographyStyles.kicker}>Clients collectés</div>
           <div className="mt-3 text-[30px] font-black tracking-[-0.04em] text-[var(--color-text)]">{initialCustomers.length}</div>
           <p className={`${typographyStyles.body} mt-2`}>Contacts centralisés dans votre RCU.</p>
         </article>
         <article className={surfaceStyles.kpi}>
-          <div className={typographyStyles.kicker}>Contacts consentis</div>
-          <div className="mt-3 text-[30px] font-black tracking-[-0.04em] text-[var(--color-text)]">
-            {initialCustomers.filter((customer) => customer.opt_in_email || (customer.opt_in_sms && !customer.sms_unsubscribed)).length}
-          </div>
-          <p className={`${typographyStyles.body} mt-2`}>Contacts ayant accepté les e-mails ou les SMS.</p>
+          <div className={typographyStyles.kicker}>Prêt à activer</div>
+          <div className="mt-3 text-[30px] font-black tracking-[-0.04em] text-[var(--color-text)]">{initialCustomers.filter((customer) => customer.opt_in_email || (customer.opt_in_sms && !customer.sms_unsubscribed)).length}</div>
+          <p className={`${typographyStyles.body} mt-2`}>Contacts avec un consentement marketing.</p>
         </article>
       </section>
 
@@ -235,7 +230,7 @@ export function RcuClient({
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {RCU_TYPE_DEFINITIONS.map((type) => (
               <button
                 key={type.id}
@@ -256,7 +251,7 @@ export function RcuClient({
             ))}
           </div>
 
-          <div className="mt-5 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-4">
+          <div className="mt-5 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-primary-muted)] p-4">
             <div className="text-sm font-black text-[var(--color-text)]">{selectedType.label}</div>
             <p className="mt-1 text-sm text-[var(--color-text-muted)]">{selectedType.description}</p>
           </div>
@@ -294,38 +289,15 @@ export function RcuClient({
               />
             </div>
 
-            {selectedType.targetLabel ? (
-              <input
-                value={targetUrl}
-                onChange={(event) => setTargetUrl(event.target.value)}
-                className="ao-input ao-focus w-full px-3.5 py-2.5 text-sm"
-                placeholder={selectedType.targetPlaceholder ?? "https://…"}
-              />
-            ) : null}
-
-            <RcuGameConfigFields type={formType} config={gameConfig} onChange={setGameConfig} />
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <input
-                value={posterHeadline}
-                onChange={(event) => setPosterHeadline(event.target.value)}
-                className="ao-input ao-focus w-full px-3.5 py-2.5 text-sm"
-                placeholder="Titre de l’affiche"
-              />
-              <input
-                value={successMessage}
-                onChange={(event) => setSuccessMessage(event.target.value)}
-                className="ao-input ao-focus w-full px-3.5 py-2.5 text-sm"
-                placeholder="Message de succès"
-              />
-            </div>
-            <textarea
-              value={posterBody}
-              onChange={(event) => setPosterBody(event.target.value)}
-              rows={3}
-              className="ao-input ao-focus w-full resize-none px-3.5 py-2.5 text-sm"
-              placeholder="Texte secondaire de l’affiche"
-            />
+            <button type="button" onClick={() => setAdvancedOptionsOpen((open) => !open)} className={`${buttonStyles.tertiary} w-fit`} aria-expanded={advancedOptionsOpen}>
+              {advancedOptionsOpen ? "Masquer les options avancées" : "Options avancées"}
+            </button>
+            {advancedOptionsOpen ? <div className="grid gap-3 border-t border-[var(--color-border)] pt-4">
+              {selectedType.targetLabel ? <input value={targetUrl} onChange={(event) => setTargetUrl(event.target.value)} className="ao-input ao-focus w-full px-3.5 py-2.5 text-sm" placeholder={selectedType.targetPlaceholder ?? "https://…"} /> : null}
+              <RcuGameConfigFields type={formType} config={gameConfig} onChange={setGameConfig} />
+              <div className="grid gap-3 md:grid-cols-2"><input value={posterHeadline} onChange={(event) => setPosterHeadline(event.target.value)} className="ao-input ao-focus w-full px-3.5 py-2.5 text-sm" placeholder="Titre de l’affiche" /><input value={successMessage} onChange={(event) => setSuccessMessage(event.target.value)} className="ao-input ao-focus w-full px-3.5 py-2.5 text-sm" placeholder="Message de succès" /></div>
+              <textarea value={posterBody} onChange={(event) => setPosterBody(event.target.value)} rows={3} className="ao-input ao-focus w-full resize-none px-3.5 py-2.5 text-sm" placeholder="Texte secondaire de l’affiche" />
+            </div> : null}
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">

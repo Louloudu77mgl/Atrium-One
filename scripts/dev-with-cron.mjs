@@ -16,6 +16,7 @@ const nextProcess = spawn(process.execPath, [nextBinary, "dev"], {
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 let cronRunning = false;
+let lastInsightsRunDate = null;
 
 async function triggerScheduledPublications() {
   if (!cronSecret || cronRunning) return;
@@ -42,12 +43,57 @@ async function triggerScheduledPublications() {
   }
 }
 
+async function triggerDailyReviewInsights() {
+  if (!cronSecret) return;
+
+  const now = new Date();
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("fr-FR", {
+      timeZone: "Europe/Paris",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(now).map((part) => [part.type, part.value])
+  );
+  const dateKey = `${parts.year}-${parts.month}-${parts.day}`;
+
+  if (Number(parts.hour) !== 8 || lastInsightsRunDate === dateKey) return;
+  lastInsightsRunDate = dateKey;
+
+  try {
+    const response = await fetch(`${appOrigin}/api/cron/review-insights`, {
+      headers: { Authorization: `Bearer ${cronSecret}` },
+      signal: AbortSignal.timeout(60_000)
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      console.error(`[local-cron:review-insights] ${response.status}: ${payload.error ?? "Erreur inconnue"}`);
+    } else {
+      const updated = Array.isArray(payload.results)
+        ? payload.results.filter((result) => result.status === "updated").length
+        : 0;
+      console.log(`[local-cron:review-insights] ${updated} analyse(s) mise(s) à jour.`);
+    }
+  } catch (error) {
+    lastInsightsRunDate = null;
+    if (nextProcess.exitCode === null && error instanceof Error && !error.message.includes("fetch failed")) {
+      console.error(`[local-cron:review-insights] ${error.message}`);
+    }
+  }
+}
+
 const startupTimer = setTimeout(() => void triggerScheduledPublications(), 2_000);
 const cronTimer = setInterval(() => void triggerScheduledPublications(), DAY_IN_MS);
+const insightsStartupTimer = setTimeout(() => void triggerDailyReviewInsights(), 2_000);
+const insightsCronTimer = setInterval(() => void triggerDailyReviewInsights(), 60_000);
 
 function stop(signal) {
   clearTimeout(startupTimer);
   clearInterval(cronTimer);
+  clearTimeout(insightsStartupTimer);
+  clearInterval(insightsCronTimer);
   if (nextProcess.exitCode === null) nextProcess.kill(signal);
 }
 
@@ -56,6 +102,8 @@ process.on("SIGTERM", () => stop("SIGTERM"));
 nextProcess.on("exit", (code) => {
   clearTimeout(startupTimer);
   clearInterval(cronTimer);
+  clearTimeout(insightsStartupTimer);
+  clearInterval(insightsCronTimer);
   process.exit(code ?? 0);
 });
 

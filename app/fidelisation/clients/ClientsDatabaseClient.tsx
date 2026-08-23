@@ -206,7 +206,7 @@ export function ClientsDatabaseClient({ customers }: { customers: RcuCustomerRow
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-black text-[#211432]">Importer des clients</h2>
-                <p className="mt-1 text-sm leading-6 text-[#6B617F]">CSV avec contact, anniversaire et consentements SMS/e-mail séparés.</p>
+                <p className="mt-1 text-sm leading-6 text-[#6B617F]">Colonnes requises : Prénom, Nom et adresse mail. Les autres informations sont facultatives.</p>
               </div>
               <button type="button" onClick={() => setImportModalOpen(false)} className="rounded-full border border-[#E9D5FF] px-3 py-1.5 text-sm font-black text-[#6D28D9] transition hover:bg-[#F3E8FF]">Fermer</button>
             </div>
@@ -214,7 +214,7 @@ export function ClientsDatabaseClient({ customers }: { customers: RcuCustomerRow
               Ajouter un CSV
               <input type="file" accept=".csv,text/csv" onChange={(event) => void onCsvFileChange(event.target.files?.[0] ?? null)} className="hidden" />
             </label>
-            <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} rows={8} className="mt-4 w-full resize-y rounded-2xl border border-[#E5DAF5] bg-[#FBFAFF] px-4 py-3 text-sm font-medium leading-6 text-[#211432] outline-none transition focus:border-[#7C3AED] focus:ring-4 focus:ring-[#F3E8FF]" placeholder={"prenom;nom;telephone;email;date_naissance;produit acheté;notes;consentement_sms;consentement_email\nCamille;Martin;06 12 34 56 78;camille@exemple.fr;12/05/1992;Produit préféré;Cliente fidèle;oui;oui"} />
+            <textarea value={csvText} onChange={(event) => setCsvText(event.target.value)} rows={8} className="mt-4 w-full resize-y rounded-2xl border border-[#E5DAF5] bg-[#FBFAFF] px-4 py-3 text-sm font-medium leading-6 text-[#211432] outline-none transition focus:border-[#7C3AED] focus:ring-4 focus:ring-[#F3E8FF]" placeholder={"Prénom;Nom;adresse mail\nCamille;Martin;camille@exemple.fr"} />
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" onClick={() => setImportModalOpen(false)} className={`${buttonStyles.secondary} rounded-2xl`}>Annuler</button>
               <button type="button" onClick={() => void importCsv()} disabled={importing} className={`${buttonStyles.primary} rounded-2xl disabled:opacity-60`}>{importing ? "Import..." : "Importer les clients"}</button>
@@ -235,28 +235,22 @@ function CustomerTableRow({ customer, onCopyPhone }: { customer: RcuCustomerRow;
   const description = getCustomerDescription(customer);
 
   return (
-    <article className="grid gap-4 px-5 py-6 transition hover:bg-[#FCFAFF] md:grid-cols-[180px_minmax(0,1fr)_150px_176px] md:items-center md:px-7">
-      <div className="text-sm font-black text-[#9A8CAD]">
-        <div>{formatDate(customer.created_at)}</div>
-        <div className="mt-1 text-xs uppercase tracking-[0.08em]">{source === "import" ? "Import CSV" : "Collecte RCU"}</div>
+    <article className="grid gap-2 px-3 py-2 transition hover:bg-[#FCFAFF] md:grid-cols-[142px_minmax(0,1fr)_116px_108px] md:items-center md:gap-3 md:px-4">
+      <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-[#8B7AA8]">
+        <span className="shrink-0">{formatDate(customer.created_at)}</span>
+        <span className="truncate text-[10px] font-black uppercase tracking-[0.06em] text-[#AA9ABA]">{source === "import" ? "CSV" : "RCU"}</span>
       </div>
 
-      <Link href={`/fidelisation/clients/${customer.id}`} className="min-w-0">
-        <h2 className="truncate text-lg font-black text-[#211432] transition hover:text-[#6D28D9]">{displayName}</h2>
-        <p className="mt-1 line-clamp-2 text-base leading-6 text-[#6B617F]">{description}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {customer.phone ? <span className="rounded-full bg-[#F3E8FF] px-3 py-1 text-xs font-black text-[#6D28D9]">{customer.phone}</span> : null}
-          {customer.email ? <span className="rounded-full bg-[#F8F5FF] px-3 py-1 text-xs font-bold text-[#7B6A92]">{customer.email}</span> : null}
-          {customer.opt_in_email ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">E-mail accepté</span> : null}
-          {customer.opt_in_sms ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">SMS accepté</span> : null}
-        </div>
+      <Link href={`/fidelisation/clients/${customer.id}`} className="flex min-w-0 items-center gap-2">
+        <h2 className="truncate text-sm font-black text-[#211432] transition hover:text-[#6D28D9]">{displayName}</h2>
+        <span className="hidden truncate text-xs font-medium text-[#8B7AA8] lg:inline">{customer.email || customer.phone || description}</span>
       </Link>
 
       <div>
         <span className={status.className}>{status.label}</span>
       </div>
 
-      <div className="flex items-center gap-3 md:justify-end">
+      <div className="flex items-center gap-1.5 md:justify-end">
         <RoundAction label="Copier téléphone" icon="phone" onClick={() => void onCopyPhone(customer.phone)} disabled={!customer.phone} />
         <RoundLink label="Voir la fiche" icon="document" href={`/fidelisation/clients/${customer.id}`} />
         <RoundAction label="SMS bientôt disponible" icon="message" onClick={() => undefined} disabled={!customer.opt_in_sms || customer.sms_unsubscribed} />
@@ -286,16 +280,16 @@ function FilterField({ label, children }: { label: string; children: React.React
 
 function RoundAction({ label, icon, onClick, disabled = false }: { label: string; icon: "phone" | "message"; onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className="flex h-12 w-12 items-center justify-center rounded-full border border-[#E9D5FF] bg-white text-[#5B21B6] shadow-[0_8px_22px_rgba(76,29,149,0.12)] transition hover:-translate-y-0.5 hover:bg-[#F3E8FF] disabled:cursor-not-allowed disabled:opacity-35">
-      <Icon name={icon} className="h-5 w-5" />
+    <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className="flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-white text-[#5B21B6] shadow-sm transition hover:bg-[#F3E8FF] disabled:cursor-not-allowed disabled:opacity-35">
+      <Icon name={icon} className="h-3.5 w-3.5" />
     </button>
   );
 }
 
 function RoundLink({ label, icon, href }: { label: string; icon: "document"; href: string }) {
   return (
-    <Link aria-label={label} title={label} href={href} className="flex h-12 w-12 items-center justify-center rounded-full border border-[#E9D5FF] bg-white text-[#5B21B6] shadow-[0_8px_22px_rgba(76,29,149,0.12)] transition hover:-translate-y-0.5 hover:bg-[#F3E8FF]">
-      <Icon name={icon} className="h-5 w-5" />
+    <Link aria-label={label} title={label} href={href} className="flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-white text-[#5B21B6] shadow-sm transition hover:bg-[#F3E8FF]">
+      <Icon name={icon} className="h-3.5 w-3.5" />
     </Link>
   );
 }
@@ -306,18 +300,18 @@ function getCustomerSource(customer: RcuCustomerRow): "rcu" | "import" {
 
 function getCustomerStatus(customer: RcuCustomerRow): { key: StatusFilter; label: string; className: string } {
   if (!customer.phone) {
-    return { key: "incomplete", label: "Incomplet", className: "rounded-full bg-[#F6F1FF] px-4 py-2 text-sm font-black text-[#7B6A92]" };
+    return { key: "incomplete", label: "Incomplet", className: "rounded-full bg-[#F6F1FF] px-2.5 py-1 text-[11px] font-black text-[#7B6A92]" };
   }
 
   if (customer.sms_unsubscribed) {
-    return { key: "unsubscribed", label: "Désinscrit", className: "rounded-full bg-[#FFF1F2] px-4 py-2 text-sm font-black text-[#E11D48]" };
+    return { key: "unsubscribed", label: "Désinscrit", className: "rounded-full bg-[#FFF1F2] px-2.5 py-1 text-[11px] font-black text-[#E11D48]" };
   }
 
   if (!customer.opt_in_sms && !customer.opt_in_email) {
-    return { key: "no-consent", label: "Sans consentement", className: "rounded-full bg-[#FFF7ED] px-4 py-2 text-sm font-black text-[#C2410C]" };
+    return { key: "no-consent", label: "Sans consentement", className: "rounded-full bg-[#FFF7ED] px-2.5 py-1 text-[11px] font-black text-[#C2410C]" };
   }
 
-  return { key: "ready", label: "Activable", className: "rounded-full bg-[#EFE7FF] px-4 py-2 text-sm font-black text-[#5B21B6]" };
+  return { key: "ready", label: "Activable", className: "rounded-full bg-[#EFE7FF] px-2.5 py-1 text-[11px] font-black text-[#5B21B6]" };
 }
 
 function getCustomerDescription(customer: RcuCustomerRow) {

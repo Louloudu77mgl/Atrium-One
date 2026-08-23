@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { emptyAnalysis, mapInsightRow, prepareReviewInsightsForDisplay, shouldRefreshReviewInsights } from "@/lib/review-insights";
+import { emptyAnalysis, isReviewInsightsRefreshWindow, mapInsightRow, prepareReviewInsightsForDisplay, shouldRefreshReviewInsights } from "@/lib/review-insights";
 import { analyzeReviewsWithOpenAI, saveReviewInsights } from "@/lib/review-insights-server";
 import { mapReviewRow } from "@/lib/reviews";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
@@ -18,6 +18,18 @@ export async function GET(request: Request) {
 
   if (!hasSupabaseAdminEnv()) {
     return NextResponse.json({ error: "Configuration Supabase admin manquante." }, { status: 500 });
+  }
+
+  const runAt = new Date();
+
+  if (!isReviewInsightsRefreshWindow(runAt)) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: "En dehors de la fenêtre quotidienne de 8 h (Europe/Paris).",
+      run_at: runAt.toISOString(),
+      results: []
+    });
   }
 
   const supabase = createSupabaseAdminClient();
@@ -58,7 +70,7 @@ export async function GET(request: Request) {
       const reviews = (reviewRows ?? []).map((review, index) => mapReviewRow(review, index));
 
       if (reviews.length === 0) {
-        const saved = await saveReviewInsights(merchant, emptyAnalysis, []);
+        const saved = await saveReviewInsights(merchant, emptyAnalysis, [], supabase);
         results.push({
           merchant_id: merchant.id,
           status: "updated",
@@ -67,7 +79,7 @@ export async function GET(request: Request) {
         continue;
       }
 
-      if (!shouldRefreshReviewInsights({ reviews, storedInsights: insightRow as ReviewInsightRow | null })) {
+      if (!shouldRefreshReviewInsights({ reviews, storedInsights: insightRow as ReviewInsightRow | null, now: runAt })) {
         results.push({ merchant_id: merchant.id, status: "skipped" });
         continue;
       }
@@ -76,7 +88,7 @@ export async function GET(request: Request) {
       if (!analysis) {
         throw new Error("Analyse vide.");
       }
-      const saved = await saveReviewInsights(merchant, analysis, reviews);
+      const saved = await saveReviewInsights(merchant, analysis, reviews, supabase);
 
       results.push({
         merchant_id: merchant.id,
@@ -94,7 +106,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    run_at: new Date().toISOString(),
+    run_at: runAt.toISOString(),
     results
   });
 }

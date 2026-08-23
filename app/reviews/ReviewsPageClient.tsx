@@ -12,7 +12,7 @@ import { Icon } from "@/components/icons";
 import { Sidebar } from "@/components/Sidebar";
 import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
-import { appShellStyles } from "@/lib/design-system";
+import { appShellStyles, badgeStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { getHansScore } from "@/lib/hans-score";
 import { type Review } from "@/lib/mock-data";
@@ -25,6 +25,14 @@ import type { GoogleConnectionRow, MerchantAutomationSettingsRow, MerchantRow } 
 import { getUserErrorMessage } from "@/lib/user-feedback";
 
 type FilterValue = "all" | "pending" | "negative" | "ready" | "published";
+
+function getFilterFromQuery(value: string | null): FilterValue {
+  if (value === "negative" || value === "pending" || value === "ready" || value === "published") {
+    return value;
+  }
+
+  return value === "urgent" ? "negative" : "all";
+}
 
 type HansRecommendation = {
   id: string;
@@ -135,6 +143,7 @@ export function ReviewsPageClient({
   const [bulkProgress, setBulkProgress] = useState<BulkReplyProgress>({ total: 0, done: 0, errors: [], running: false });
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState<FilterValue>(() => getFilterFromQuery(searchParams.get("filter")));
   const autoProcessStarted = useRef<Set<string>>(new Set());
   const { toast, showToast } = useToast();
 
@@ -146,13 +155,6 @@ export function ReviewsPageClient({
   const counters = getReviewCountersFromReviews(localReviews);
   const notifications = getAppNotifications(localReviews, googleConnection);
   const hansScore = getHansScore(localReviews);
-  const queryFilter = searchParams.get("filter");
-  const activeFilter: FilterValue =
-    queryFilter === "negative" || queryFilter === "pending" || queryFilter === "ready" || queryFilter === "published"
-      ? queryFilter
-      : queryFilter === "urgent"
-        ? "negative"
-        : "all";
   const baseRecommendations = getDynamicHansRecommendations(localReviews, googleConnected);
   const automationSummary = getAutomationSummary(automationSettings);
 
@@ -200,6 +202,28 @@ export function ReviewsPageClient({
       return true;
     });
   }, [activeFilter, search, sortedReviews]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveFilter(getFilterFromQuery(new URLSearchParams(window.location.search).get("filter")));
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  function changeFilter(nextFilter: FilterValue) {
+    setActiveFilter(nextFilter);
+    const url = new URL(window.location.href);
+
+    if (nextFilter === "all") {
+      url.searchParams.delete("filter");
+    } else {
+      url.searchParams.set("filter", nextFilter);
+    }
+
+    window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
 
   const reviewsWithoutReply = useMemo(
     () =>
@@ -711,20 +735,20 @@ export function ReviewsPageClient({
         <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
         <main className={appShellStyles.content}>
           <div className={appShellStyles.width}>
-            <div className="mx-auto max-w-[1180px] bg-[#F5F4FA] px-6 pb-20 pt-8">
-              <section className="section-block rounded-[20px] border border-[#ECE9F4] bg-white px-7 py-6 shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)]">
+            <div className="mx-auto max-w-[1180px] px-6 pb-20 pt-8">
+              <section className={`${surfaceStyles.hero} px-7 py-6`}>
                 <div className="flex flex-wrap items-start justify-between gap-6">
                   <div className="min-w-[260px] flex-1">
-                    <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Avis Google</p>
-                    <h1 className="text-[23px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Votre réputation est surveillée automatiquement par Hans.</h1>
-                    <p className="mt-2 text-[14px] font-semibold text-[#6E6B80]">{heroSubtitle}</p>
-                    <span className="mt-4 inline-flex rounded-full bg-[#F1EAFB] px-[13px] py-[7px] text-[12px] font-semibold text-[#4B2E83]">{automationSummary}</span>
+                    <p className={`${typographyStyles.kicker} mb-2`}>Avis Google</p>
+                    <h1 className={typographyStyles.h1}>Votre réputation est surveillée automatiquement par Hans.</h1>
+                    <p className={`${typographyStyles.body} mt-2`}>{heroSubtitle}</p>
+                    <span className={`${badgeStyles.hans} mt-4`}>{automationSummary}</span>
                   </div>
                   <div className="flex flex-wrap gap-[10px]">
-                    <Link href="/integrations" className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[18px] py-[11px] text-[13.5px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)] transition hover:shadow-[0_8px_22px_rgba(75,46,131,0.36)]">
+                    <Link href="/integrations" className={`${buttonStyles.primary} gap-2`}>
                       {googleConnected ? "Importer les avis" : "Connecter Google"}
                     </Link>
-                    <Link href="/reviews?filter=ready" className="inline-flex items-center gap-2 rounded-full border border-[#ECE9F4] bg-white px-[16px] py-[10px] text-[13.5px] font-semibold text-[#1E1B2E] transition hover:border-[#7C4DCB] hover:text-[#4B2E83]">
+                    <Link href="/reviews?filter=ready" className={`${buttonStyles.secondary} gap-2`}>
                       Valider les réponses
                     </Link>
                   </div>
@@ -738,77 +762,23 @@ export function ReviewsPageClient({
                 <SummaryCard label="Réponses publiées" value={String(counters.answered)} hint={counters.answered > 0 ? "Votre réputation est bien suivie" : "Publiez vos premières réponses"} />
               </section>
 
-              <section className="mb-[22px] grid gap-[18px] xl:grid-cols-[1.6fr_1fr]">
-                <section className="rounded-[20px] border border-[#ECE9F4] bg-white px-5 pb-5 pt-[18px] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)]">
-                  <div className="mb-[14px] flex items-start justify-between gap-3">
-                    <div>
-                      <p className="mb-[2px] text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Hans</p>
-                      <h2 className="mt-[6px] text-[16px] font-extrabold text-[#1E1B2E]">Ce que Hans recommande</h2>
-                    </div>
-                    <span className="inline-flex rounded-full bg-[#F1EAFB] px-[10px] py-1 text-[11.5px] font-semibold text-[#4B2E83]">{recommendations.length} priorités</span>
+              <section className="mb-[22px] grid gap-4 md:grid-cols-2">
+                <Link href="/reviews/insights" className="ao-card group flex items-center justify-between gap-4 px-5 py-[18px]">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Insights IA</p>
+                    <h2 className="mt-1 text-[15px] font-extrabold text-[#1E1B2E]">Voir les recommandations de Hans</h2>
                   </div>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F1EAFB] text-[#5B2A9E] transition group-hover:bg-[#5B2A9E] group-hover:text-white">→</span>
+                </Link>
 
-                  <div className="space-y-[10px]">
-                    {recommendations.map((recommendation, index) => (
-                      <article key={recommendation.id} className="rounded-[14px] border border-[#F1EEF8] bg-[#FDFCFE] px-4 py-[14px]">
-                        <div className="mb-[5px] flex flex-wrap items-start justify-between gap-2">
-                          <span className="text-[13.8px] font-bold text-[#1E1B2E]">{recommendation.title}</span>
-                          <span className={getPriorityPillClass(recommendation.priority)}>{recommendation.priority}</span>
-                        </div>
-                        <p className="mb-2 text-[12.6px] leading-[1.5] text-[#6E6B80]">{recommendation.description}</p>
-                        {index === 1 && recommendation.priority === "Haute" ? (
-                          <div className="mb-[10px] flex items-center gap-[7px]">
-                            <span className="flex gap-[3px]">{[0, 1, 2, 3, 4].map((step) => <span key={step} className={`h-[5px] w-[14px] rounded-[3px] ${step === 0 ? "bg-[#C7791F]" : "bg-[#F2F1F6]"}`} />)}</span>
-                            <small className="text-[11px] font-semibold text-[#9895A8]">Priorité 1 sur 5</small>
-                          </div>
-                        ) : null}
-                        {recommendation.href ? (
-                          <Link href={recommendation.href} className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[14px] py-[8px] text-[12.6px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)]">
-                            {recommendation.actionLabel}
-                          </Link>
-                        ) : (
-                          <button type="button" onClick={recommendation.onClick} className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[14px] py-[8px] text-[12.6px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)]">
-                            {recommendation.actionLabel}
-                          </button>
-                        )}
-                      </article>
-                    ))}
+                <Link href="/automations" className="ao-card group flex items-center justify-between gap-4 px-5 py-[18px]">
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Automatisations</p>
+                    <h2 className="mt-1 text-[15px] font-extrabold text-[#1E1B2E]">Gérer les automatisations</h2>
                   </div>
-                </section>
-
-                <section className="rounded-[20px] border border-[#ECE9F4] bg-white px-5 py-[18px] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)]">
-                  <p className="mb-[2px] text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Automatisation</p>
-                  <h2 className="mt-[6px] text-[16px] font-extrabold text-[#1E1B2E]">Réponses automatiques Hans</h2>
-                  <p className="mt-[6px] text-[12.8px] leading-[1.55] text-[#6E6B80]">Hans peut répondre automatiquement aux nouveaux avis pour accélérer votre suivi.</p>
-                  <div className="mt-[14px] flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#F1EEF8] bg-[#FDFCFE] px-[14px] py-[13px]">
-                    <div className="min-w-[180px] flex-1">
-                      <b className="mb-[3px] block text-[13px] text-[#1E1B2E]">Automatisation des avis</b>
-                      <span className="text-[12px] leading-[1.4] text-[#6E6B80]">{automationSummary}</span>
-                      {autoReplySaving ? <div className="mt-1 text-[11px] text-[#9895A8]">Sauvegarde en cours…</div> : null}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void toggleAutoReply(!autoReplyEnabled)}
-                        className={`relative inline-flex h-8 w-[54px] items-center rounded-full p-1 transition ${autoReplyEnabled ? "bg-[#4B2E83]" : "bg-[#DEDBE8]"}`}
-                        aria-pressed={autoReplyEnabled}
-                      >
-                        <span className={`h-6 w-6 rounded-full bg-white shadow-sm transition ${autoReplyEnabled ? "translate-x-[22px]" : "translate-x-0"}`} />
-                      </button>
-                      <Link href="/automations" className="inline-flex items-center rounded-full border border-[#ECE9F4] bg-white px-[13px] py-[7px] text-[12.6px] font-semibold text-[#1E1B2E] transition hover:border-[#7C4DCB] hover:text-[#4B2E83]">Configurer</Link>
-                    </div>
-                  </div>
-                </section>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F1EAFB] text-[#5B2A9E] transition group-hover:bg-[#5B2A9E] group-hover:text-white">→</span>
+                </Link>
               </section>
-
-              <button
-                type="button"
-                onClick={() => document.getElementById("reviews")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="section-block flex w-full items-center justify-between rounded-[20px] border border-[#ECE9F4] bg-white px-[22px] py-[14px] text-left shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)] transition hover:shadow-[0_10px_26px_rgba(46,26,84,0.08)]"
-              >
-                <span className="text-[13px] font-semibold text-[#5B2A9E]">Vue détaillée</span>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#5B2A9E]"><path d="M6 9l6 6 6-6" /></svg>
-              </button>
 
               <section className="section-block" id="reviews">
                 <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -830,24 +800,25 @@ export function ReviewsPageClient({
                     />
                   </div>
                   <div className="flex flex-wrap gap-1 rounded-full bg-[#F2F1F6] p-[3px]">
-                    {[
+                    {([
                       { label: "Tous", value: "all" },
                       { label: "À traiter", value: "pending" },
                       { label: "Avis négatifs", value: "negative" },
                       { label: "Réponses prêtes", value: "ready" },
                       { label: "Publiés", value: "published" }
-                    ].map((item) => {
+                    ] satisfies { label: string; value: FilterValue }[]).map((item) => {
                       const isActive = activeFilter === item.value;
-                      const href = item.value === "all" ? "/reviews" : `/reviews?filter=${item.value}`;
 
                       return (
-                        <Link
+                        <button
+                          type="button"
                           key={item.value}
-                          href={href}
+                          onClick={() => changeFilter(item.value)}
+                          aria-pressed={isActive}
                           className={`rounded-full px-3 py-[7px] text-[12.4px] font-semibold transition ${isActive ? "bg-[#4B2E83] text-white" : "text-[#6E6B80]"}`}
                         >
                           {item.label}
-                        </Link>
+                        </button>
                       );
                     })}
                   </div>
@@ -899,16 +870,6 @@ export function ReviewsPageClient({
                           </div>
 
                           <p className="mb-3 ml-[46px] text-[13px] leading-[1.55] text-[#1E1B2E] max-sm:ml-0">{review.text}</p>
-
-                          {review.generatedReply ? (
-                            <div className="mb-3 ml-[46px] rounded-[10px] border border-[#F1EAFB] bg-[#F8F5FC] px-[13px] py-[11px] max-sm:ml-0">
-                              <div className="mb-[5px] flex items-center gap-[5px] text-[10.5px] font-bold uppercase tracking-[0.05em] text-[#5B2A9E]">
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                                Brouillon Hans
-                              </div>
-                              <p className="text-[12.6px] leading-[1.5] text-[#6E6B80]">{review.generatedReply}</p>
-                            </div>
-                          ) : null}
 
                           <div className="ml-[46px] flex flex-wrap gap-2 max-sm:ml-0">
                             {!hasReply ? (

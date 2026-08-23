@@ -4,6 +4,7 @@ import type { ReviewInsightRow } from "@/lib/supabase/types";
 export type InsightFrequency = "faible" | "moyenne" | "élevée";
 export type InsightLevel = "faible" | "moyen" | "élevé";
 export type SocialPlatform = "instagram" | "facebook";
+export type RecommendedActionChannel = "sms" | "social" | "rcu" | "reviews";
 
 export type ReviewPainPoint = {
   title: string;
@@ -25,6 +26,8 @@ export type ReviewPriorityAction = {
   impact: InsightLevel;
   difficulty: InsightLevel | "facile" | "moyenne" | "difficile";
   description: string;
+  channel: RecommendedActionChannel;
+  strategyPoints: string[];
 };
 
 export type ReviewSocialPostIdea = {
@@ -78,6 +81,12 @@ function asString(value: unknown, fallback = "") {
 function asStringArray(value: unknown) {
   return Array.isArray(value)
     ? value.map((item) => asString(item)).filter(Boolean).slice(0, 3)
+    : [];
+}
+
+function asStrategyPoints(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => limitText(item, "", 180)).filter(Boolean).slice(0, 3)
     : [];
 }
 
@@ -161,6 +170,17 @@ function normalizeDifficulty(value: unknown): ReviewPriorityAction["difficulty"]
   return "facile";
 }
 
+function normalizeActionChannel(value: unknown, fallbackIndex = 0): RecommendedActionChannel {
+  const normalized = asString(value).toLowerCase();
+
+  if (normalized.includes("sms")) return "sms";
+  if (normalized.includes("social") || normalized.includes("instagram") || normalized.includes("réseau") || normalized.includes("reseau")) return "social";
+  if (normalized.includes("rcu") || normalized.includes("client") || normalized.includes("fidél") || normalized.includes("fidel")) return "rcu";
+  if (normalized.includes("avis") || normalized.includes("review") || normalized.includes("google")) return "reviews";
+
+  return (["social", "reviews", "sms", "rcu"] as const)[fallbackIndex % 4];
+}
+
 function normalizePlatform(value: unknown): SocialPlatform {
   return asString(value).toLowerCase().includes("facebook") ? "facebook" : "instagram";
 }
@@ -197,15 +217,19 @@ export function validateReviewInsights(raw: unknown): ReviewInsightsAnalysis {
     : [];
 
   const priorityActions = Array.isArray(source.priorityActions)
-    ? source.priorityActions.map((item) => {
+    ? source.priorityActions.map((item, index) => {
         const action = item as Record<string, unknown>;
+        const description = limitText(action.description, "Une action simple peut améliorer l'expérience client et la communication.", 180);
+        const strategyPoints = asStrategyPoints(action.strategyPoints ?? action.bullets);
         return {
           title: asString(action.title, "Action recommandée"),
           impact: normalizeLevel(action.impact),
           difficulty: normalizeDifficulty(action.difficulty),
-          description: limitText(action.description, "Une action simple peut améliorer l'expérience client et la communication.")
+          description,
+          channel: normalizeActionChannel(action.channel, index),
+          strategyPoints: strategyPoints.length > 0 ? strategyPoints : [description]
         };
-      }).slice(0, 3)
+      }).slice(0, 4)
     : [];
 
   const rawSocialPostIdeas = Array.isArray(source.socialPostIdeas)
@@ -431,17 +455,52 @@ export function getFallbackReviewInsights(reviews: Review[]): ReviewInsightsAnal
     priorityActions: [
       firstPain
         ? {
-            title: `Répondre au sujet : ${firstPain.title}`,
+            title: `Transformer les retours sur ${firstPain.title.toLowerCase()} en réassurance`,
             impact: "élevé",
             difficulty: "facile",
-            description: firstPain.recommendation
+            description: firstPain.recommendation,
+            channel: "reviews",
+            strategyPoints: [
+              "Préparer une réponse cohérente qui reconnaît clairement le problème remonté.",
+              firstPain.recommendation,
+              "Automatiser le premier brouillon tout en gardant une validation humaine."
+            ]
           }
         : {
             title: "Demander de nouveaux avis récents",
             impact: "moyen",
             difficulty: "facile",
-            description: "Relancer les clients satisfaits permet d’obtenir une lecture plus fraîche de l’expérience."
-          }
+            description: "Relancer les clients satisfaits permet d’obtenir une lecture plus fraîche de l’expérience.",
+            channel: "reviews",
+            strategyPoints: [
+              "Cibler les clients satisfaits après leur passage.",
+              "Envoyer une demande courte au moment où l’expérience est encore récente."
+            ]
+          },
+      {
+        title: firstStrength ? `Faire connaître votre point fort : ${firstStrength.title.toLowerCase()}` : "Valoriser les retours positifs",
+        impact: "élevé",
+        difficulty: "facile",
+        description: firstStrength?.communicationAngle ?? "Transformer les avis positifs en contenu de réassurance.",
+        channel: "social",
+        strategyPoints: [
+          firstStrength?.communicationAngle ?? "Créer un contenu centré sur ce que les clients apprécient déjà.",
+          "Reprendre les mots des clients pour rendre le message plus crédible.",
+          "Terminer par une invitation simple à découvrir le commerce."
+        ]
+      },
+      {
+        title: "Construire une audience client mieux qualifiée",
+        impact: "moyen",
+        difficulty: "moyenne",
+        description: "Collecter les préférences clients pour envoyer des communications plus pertinentes.",
+        channel: "rcu",
+        strategyPoints: [
+          "Créer un formulaire court avec uniquement les informations utiles.",
+          "Segmenter les contacts selon leurs attentes et leur fréquence de visite.",
+          "Utiliser ces segments pour personnaliser les prochaines campagnes."
+        ]
+      }
     ],
     socialPostIdeas: [
       firstPain
@@ -490,18 +549,59 @@ export function getReviewInsightsVersion(reviews: Review[]) {
   };
 }
 
+const REVIEW_INSIGHTS_TIME_ZONE = "Europe/Paris";
+const REVIEW_INSIGHTS_REFRESH_HOUR = 8;
+
+function getReviewInsightsLocalParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: REVIEW_INSIGHTS_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return {
+    dateKey: `${values.year}-${values.month}-${values.day}`,
+    hour: Number(values.hour)
+  };
+}
+
+export function isReviewInsightsRefreshWindow(date = new Date()) {
+  return getReviewInsightsLocalParts(date).hour === REVIEW_INSIGHTS_REFRESH_HOUR;
+}
+
+export function isDailyReviewInsightsRefreshDue(updatedAt: string | null | undefined, date = new Date()) {
+  if (!updatedAt) {
+    return true;
+  }
+
+  const now = getReviewInsightsLocalParts(date);
+  const lastUpdate = getReviewInsightsLocalParts(new Date(updatedAt));
+
+  return now.hour >= REVIEW_INSIGHTS_REFRESH_HOUR && now.dateKey !== lastUpdate.dateKey;
+}
+
 export function shouldRefreshReviewInsights({
   reviews,
-  storedInsights
+  storedInsights,
+  now = new Date()
 }: {
   reviews: Review[];
   storedInsights: ReviewInsightRow | null | undefined;
+  now?: Date;
 }) {
   if (reviews.length === 0) {
     return false;
   }
 
   if (!storedInsights?.updated_at) {
+    return true;
+  }
+
+  if (isDailyReviewInsightsRefreshDue(storedInsights.updated_at, now)) {
     return true;
   }
 

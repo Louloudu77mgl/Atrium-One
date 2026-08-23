@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { MerchantAutomationSettingsRow, SocialPostRow } from "@/lib/supabase/types";
 import { getRecommendedPublishingSentence, getMaxPostsForCycle } from "@/lib/social-automation-shared";
+import { fieldStyles, surfaceStyles } from "@/lib/design-system";
 
-const cardClass = "rounded-[20px] border border-[#EBE6DF] bg-white shadow-[0_1px_2px_rgba(23,19,31,0.03),0_6px_18px_rgba(23,19,31,0.04)]";
-const subCardClass = "rounded-[12px] border border-[#EBE6DF] bg-[#F6F3EF] p-[20px_22px]";
-const inputClass = "w-full rounded-[12px] border border-[#EBE6DF] bg-white px-4 py-[11px] text-center text-[13.5px] font-bold text-[#17131F] outline-none focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-[#6E4DE0]";
+const cardClass = surfaceStyles.section;
+const subCardClass = `${surfaceStyles.subtle} p-[20px_22px]`;
+const inputClass = `${fieldStyles.input} text-center text-[13.5px] font-bold`;
 
 export function SocialAutomationPanel({
   initialSettings,
