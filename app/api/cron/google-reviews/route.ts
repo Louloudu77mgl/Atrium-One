@@ -19,6 +19,7 @@ export async function GET(request: Request) {
     const results = await syncAllConnectedGoogleReviews();
     return NextResponse.json({
       ok: true,
+      engine_version: "review-flows-v2",
       run_at: new Date().toISOString(),
       synchronized: results.filter((result) => !result.error).length,
       failed: results.filter((result) => result.error).length,
