@@ -40,6 +40,14 @@ export type RcuLeadRecord = {
   last_purchase_date?: string | null;
 };
 
+export type RcuDeveloperEmailConsent = {
+  merchant_id: string;
+  customer_key: string;
+  enabled: boolean;
+  source: "developer";
+  updated_at: string;
+};
+
 export type RcuGameRecord = {
   id: string;
   public_token: string;
@@ -116,6 +124,8 @@ export type RcuCustomerDetail = {
 
 export type RcuCustomerRow = CustomerRow & {
   opt_in_email: boolean;
+  developer_email_consent: boolean;
+  email_consent_source: "customer" | "developer" | null;
 };
 
 let bucketPromise: Promise<void> | null = null;
@@ -143,6 +153,10 @@ function getWalletPath(token: string) {
 
 function getCustomerWalletPath(merchantId: string, customerKey: string) {
   return `merchants/${merchantId}/wallets/${customerKey}.json`;
+}
+
+function getDeveloperEmailConsentPath(merchantId: string, customerKey: string) {
+  return `merchants/${merchantId}/customer-consents/${customerKey}.json`;
 }
 
 function getRaffleDrawPath(merchantId: string, programId: string, month: string) {
@@ -688,47 +702,128 @@ export async function listStoredRcuLeads(merchantId: string): Promise<RcuLeadRec
     .sort((left, right) => right.submitted_at.localeCompare(left.submitted_at));
 }
 
-function buildStoredRcuCustomers(merchantId: string, records: RcuLeadRecord[]): RcuCustomerRow[] {
+export async function listStoredRcuDeveloperEmailConsents(merchantId: string): Promise<RcuDeveloperEmailConsent[]> {
+  await ensureRcuBucket();
+  const supabase = createSupabaseAdminClient();
+  const prefix = `merchants/${merchantId}/customer-consents`;
+  const { data, error } = await supabase.storage.from(RCU_BUCKET).list(prefix, {
+    limit: 1000,
+    sortBy: { column: "updated_at", order: "desc" }
+  });
+
+  if (error) {
+    throw new Error(`Impossible de charger les consentements de test : ${error.message}`);
+  }
+
+  const records = await Promise.all(
+    (data ?? [])
+      .filter((item) => item.name.endsWith(".json"))
+      .map((item) => downloadJson<RcuDeveloperEmailConsent>(`${prefix}/${item.name}`))
+  );
+
+  return records.filter((record): record is RcuDeveloperEmailConsent => Boolean(
+    record
+      && record.merchant_id === merchantId
+      && /^[a-f0-9]{24}$/i.test(record.customer_key)
+      && record.source === "developer"
+  ));
+}
+
+export async function setStoredRcuDeveloperEmailConsent({
+  merchantId,
+  customerKey,
+  enabled
+}: {
+  merchantId: string;
+  customerKey: string;
+  enabled: boolean;
+}) {
+  if (!/^[a-f0-9]{24}$/i.test(customerKey)) {
+    throw new Error("Identifiant client invalide.");
+  }
+
+  const leads = await listStoredRcuLeads(merchantId);
+  const customerLead = leads.find((lead) => getRcuCustomerKey(merchantId, lead.phone, lead.email) === customerKey);
+
+  if (!customerLead) {
+    throw new Error("Client introuvable.");
+  }
+
+  if (!/^\S+@\S+\.\S+$/.test(customerLead.email?.trim() ?? "")) {
+    throw new Error("Ce client ne possède pas d’adresse e-mail valide.");
+  }
+
+  const consent: RcuDeveloperEmailConsent = {
+    merchant_id: merchantId,
+    customer_key: customerKey,
+    enabled,
+    source: "developer",
+    updated_at: new Date().toISOString()
+  };
+
+  await uploadJson(getDeveloperEmailConsentPath(merchantId, customerKey), consent, true);
+  return consent;
+}
+
+function buildStoredRcuCustomers(
+  merchantId: string,
+  records: RcuLeadRecord[],
+  developerEmailConsents: RcuDeveloperEmailConsent[] = []
+): RcuCustomerRow[] {
   const latestByIdentity = new Map<string, RcuLeadRecord>();
+  const developerConsentByCustomer = new Map(
+    developerEmailConsents.map((consent) => [consent.customer_key, consent.enabled])
+  );
 
   records.forEach((lead) => {
     const customerKey = getRcuCustomerKey(merchantId, lead.phone, lead.email);
     if (!latestByIdentity.has(customerKey)) latestByIdentity.set(customerKey, lead);
   });
 
-  return Array.from(latestByIdentity.entries()).map(([customerKey, lead]) => ({
-    id: customerKey,
-    merchant_id: lead.merchant_id,
-    first_name: lead.first_name,
-    last_name: lead.last_name,
-    phone: lead.phone,
-    email: lead.email,
-    gender_guess: null,
-    opt_in_sms: lead.consent_sms,
-    opt_in_email: lead.consent_email === true,
-    sms_unsubscribed: false,
-    favorite_products: lead.favorite_products ? [lead.favorite_products] : [],
-    last_purchase_date: lead.last_purchase_date ?? null,
-    notes: `${lead.form_title}${lead.notes ? ` · ${lead.notes}` : ""}${lead.promo_code ? ` · Code ${lead.promo_code}` : ""}`,
-    created_at: lead.submitted_at,
-    updated_at: lead.submitted_at
-  }));
+  return Array.from(latestByIdentity.entries()).map(([customerKey, lead]) => {
+    const customerConsent = lead.consent_email === true;
+    const developerConsent = developerConsentByCustomer.get(customerKey) === true;
+
+    return {
+      id: customerKey,
+      merchant_id: lead.merchant_id,
+      first_name: lead.first_name,
+      last_name: lead.last_name,
+      phone: lead.phone,
+      email: lead.email,
+      gender_guess: null,
+      opt_in_sms: lead.consent_sms,
+      opt_in_email: customerConsent || developerConsent,
+      developer_email_consent: developerConsent,
+      email_consent_source: customerConsent ? "customer" : developerConsent ? "developer" : null,
+      sms_unsubscribed: false,
+      favorite_products: lead.favorite_products ? [lead.favorite_products] : [],
+      last_purchase_date: lead.last_purchase_date ?? null,
+      notes: `${lead.form_title}${lead.notes ? ` · ${lead.notes}` : ""}${lead.promo_code ? ` · Code ${lead.promo_code}` : ""}`,
+      created_at: lead.submitted_at,
+      updated_at: lead.submitted_at
+    };
+  });
 }
 
 export async function listStoredRcuCustomers(merchantId: string): Promise<RcuCustomerRow[]> {
-  const records = await listStoredRcuLeads(merchantId);
-  return buildStoredRcuCustomers(merchantId, records);
+  const [records, developerEmailConsents] = await Promise.all([
+    listStoredRcuLeads(merchantId),
+    listStoredRcuDeveloperEmailConsents(merchantId)
+  ]);
+  return buildStoredRcuCustomers(merchantId, records, developerEmailConsents);
 }
 
 export async function getStoredRcuCustomerDetail(merchantId: string, customerKey: string): Promise<RcuCustomerDetail | null> {
-  const [leads, allPlays, allRedemptions, allRaffleDraws, directWallet] = await Promise.all([
+  const [leads, allPlays, allRedemptions, allRaffleDraws, directWallet, developerEmailConsents] = await Promise.all([
     listStoredRcuLeads(merchantId),
     listStoredRcuGameRecords(merchantId),
     listStoredRcuRewardRedemptions(merchantId),
     listStoredRcuRaffleDraws(merchantId),
-    getStoredRcuWalletForCustomer(merchantId, customerKey)
+    getStoredRcuWalletForCustomer(merchantId, customerKey),
+    listStoredRcuDeveloperEmailConsents(merchantId)
   ]);
-  const customers = buildStoredRcuCustomers(merchantId, leads);
+  const customers = buildStoredRcuCustomers(merchantId, leads, developerEmailConsents);
   const customer = customers.find((item) => item.id === customerKey);
   if (!customer) return null;
 

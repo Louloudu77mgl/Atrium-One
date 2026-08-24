@@ -3,7 +3,7 @@ import { listEmailCampaigns, listSuppressedEmailAddresses } from "@/lib/emailing
 import type { EmailSubscriberProfile, EmailingDashboardData } from "@/lib/emailing-types";
 import { getGmailConnection, isGmailConnectionReady } from "@/lib/gmail-connections";
 import type { Review } from "@/lib/mock-data";
-import { getRcuCustomerKey, listStoredRcuGameRecords, listStoredRcuLeads, listStoredRcuRaffleDraws, listStoredRcuRewardRedemptions } from "@/lib/rcu-store";
+import { getRcuCustomerKey, listStoredRcuDeveloperEmailConsents, listStoredRcuGameRecords, listStoredRcuLeads, listStoredRcuRaffleDraws, listStoredRcuRewardRedemptions } from "@/lib/rcu-store";
 import { hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 import type { MerchantRow } from "@/lib/supabase/types";
 
@@ -28,6 +28,7 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
   try {
     dashboardData = await Promise.all([
       listStoredRcuLeads(merchant.id),
+      listStoredRcuDeveloperEmailConsents(merchant.id),
       listStoredRcuGameRecords(merchant.id),
       listStoredRcuRewardRedemptions(merchant.id),
       listStoredRcuRaffleDraws(merchant.id),
@@ -60,7 +61,10 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
     };
   }
 
-  const [leads, plays, redemptions, raffleDraws, campaigns, suppressedEmails, brand, gmailConnection] = dashboardData;
+  const [leads, developerEmailConsents, plays, redemptions, raffleDraws, campaigns, suppressedEmails, brand, gmailConnection] = dashboardData;
+  const developerConsentByCustomer = new Map(
+    developerEmailConsents.map((consent) => [consent.customer_key, consent.enabled])
+  );
   const latestByCustomer = new Map<string, (typeof leads)[number]>();
   leads.forEach((lead) => {
     const key = getRcuCustomerKey(merchant.id, lead.phone, lead.email);
@@ -76,8 +80,9 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
 
   latestByCustomer.forEach((lead) => {
     const email = lead.email?.trim().toLocaleLowerCase("fr-FR") ?? "";
-    if (!lead.consent_email || suppressedEmails.has(email) || !/^\S+@\S+\.\S+$/.test(email)) return;
     const customerKey = getRcuCustomerKey(merchant.id, lead.phone, lead.email);
+    const hasEmailConsent = lead.consent_email === true || developerConsentByCustomer.get(customerKey) === true;
+    if (!hasEmailConsent || suppressedEmails.has(email) || !/^\S+@\S+\.\S+$/.test(email)) return;
     const customerName = normalizeName(`${lead.first_name} ${lead.last_name}`);
     const customerPlays = plays.filter((play) => play.customer_key === customerKey || (play.customer_key === lead.customer_key && normalizeName(`${play.first_name} ${play.last_name}`) === customerName));
     const customerRedemptions = redemptions.filter((redemption) => redemption.customer_key === customerKey);

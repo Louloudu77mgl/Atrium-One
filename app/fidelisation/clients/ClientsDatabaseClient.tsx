@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
@@ -24,13 +24,35 @@ export function ClientsDatabaseClient({ customers }: { customers: RcuCustomerRow
   const [csvText, setCsvText] = useState("");
   const [importing, setImporting] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [updatingConsentId, setUpdatingConsentId] = useState<string | null>(null);
+  const [developerEmailConsent, setDeveloperEmailConsent] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(customers.map((customer) => [customer.id, customer.developer_email_consent]))
+  );
   const { toast, showToast } = useToast();
   const hasActiveFilters = query.trim() !== "" || sourceFilter !== "all" || statusFilter !== "all" || sortKey !== "recent";
+
+  useEffect(() => {
+    setDeveloperEmailConsent(Object.fromEntries(
+      customers.map((customer) => [customer.id, customer.developer_email_consent])
+    ));
+  }, [customers]);
+
+  const effectiveCustomers = useMemo(() => customers.map((customer) => {
+    const customerConsent = customer.email_consent_source === "customer";
+    const developerConsent = developerEmailConsent[customer.id] ?? customer.developer_email_consent;
+
+    return {
+      ...customer,
+      opt_in_email: customerConsent || developerConsent,
+      developer_email_consent: developerConsent,
+      email_consent_source: customerConsent ? "customer" as const : developerConsent ? "developer" as const : null
+    };
+  }), [customers, developerEmailConsent]);
 
   const filteredCustomers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return customers
+    return effectiveCustomers
       .filter((customer) => {
         const source = getCustomerSource(customer);
         const status = getCustomerStatus(customer);
@@ -53,7 +75,7 @@ export function ClientsDatabaseClient({ customers }: { customers: RcuCustomerRow
           .some((value) => String(value).toLowerCase().includes(normalizedQuery));
       })
       .sort((left, right) => sortCustomers(left, right, sortKey));
-  }, [customers, query, sourceFilter, statusFilter, sortKey]);
+  }, [effectiveCustomers, query, sourceFilter, statusFilter, sortKey]);
 
   async function onCsvFileChange(file: File | null) {
     if (!file) return;
@@ -95,6 +117,45 @@ export function ClientsDatabaseClient({ customers }: { customers: RcuCustomerRow
       showToast("Téléphone copié", "success");
     } catch {
       showToast("Impossible de copier le téléphone.", "error");
+    }
+  }
+
+  async function updateDeveloperEmailConsent(customer: RcuCustomerRow, enabled: boolean) {
+    if (!customer.email) {
+      showToast("Ajoutez d’abord une adresse e-mail à ce client.", "error");
+      return;
+    }
+
+    if (enabled) {
+      const confirmed = window.confirm(
+        `Mode développeur : autoriser ${customer.email} à recevoir les e-mails de test ?\n\nÀ utiliser uniquement pour un faux client ou une adresse que vous contrôlez.`
+      );
+      if (!confirmed) return;
+    }
+
+    setUpdatingConsentId(customer.id);
+    showToast(enabled ? "Activation du consentement de test..." : "Retrait du consentement de test...", "saving");
+
+    try {
+      const response = await fetchWithTimeout(`/api/rcu/clients/${customer.id}/email-consent`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled })
+      }, 15000);
+      const data = await response.json() as { enabled?: boolean; error?: string };
+
+      if (!response.ok) throw new Error(data.error ?? "Modification impossible.");
+
+      setDeveloperEmailConsent((current) => ({ ...current, [customer.id]: data.enabled === true }));
+      router.refresh();
+      showToast(
+        data.enabled ? "E-mails de test autorisés pour ce faux client." : "Consentement développeur retiré.",
+        "success"
+      );
+    } catch (error) {
+      showToast(getUserErrorMessage(error, "Modification impossible."), "error");
+    } finally {
+      setUpdatingConsentId(null);
     }
   }
 
@@ -146,7 +207,13 @@ export function ClientsDatabaseClient({ customers }: { customers: RcuCustomerRow
           ) : (
             <div className="divide-y divide-[#F0EAF8]">
               {filteredCustomers.map((customer) => (
-                <CustomerTableRow key={customer.id} customer={customer} onCopyPhone={copyPhone} />
+                <CustomerTableRow
+                  key={customer.id}
+                  customer={customer}
+                  updatingConsent={updatingConsentId === customer.id}
+                  onCopyPhone={copyPhone}
+                  onDeveloperEmailConsentChange={updateDeveloperEmailConsent}
+                />
               ))}
             </div>
           )}
@@ -228,14 +295,24 @@ export function ClientsDatabaseClient({ customers }: { customers: RcuCustomerRow
   );
 }
 
-function CustomerTableRow({ customer, onCopyPhone }: { customer: RcuCustomerRow; onCopyPhone: (phone: string) => Promise<void> }) {
+function CustomerTableRow({
+  customer,
+  updatingConsent,
+  onCopyPhone,
+  onDeveloperEmailConsentChange
+}: {
+  customer: RcuCustomerRow;
+  updatingConsent: boolean;
+  onCopyPhone: (phone: string) => Promise<void>;
+  onDeveloperEmailConsentChange: (customer: RcuCustomerRow, enabled: boolean) => Promise<void>;
+}) {
   const source = getCustomerSource(customer);
   const status = getCustomerStatus(customer);
   const displayName = `${customer.first_name} ${customer.last_name}`.trim() || "Client sans nom";
   const description = getCustomerDescription(customer);
 
   return (
-    <article className="grid gap-2 px-3 py-2 transition hover:bg-[#FCFAFF] md:grid-cols-[142px_minmax(0,1fr)_116px_108px] md:items-center md:gap-3 md:px-4">
+    <article className="grid gap-2 px-3 py-2 transition hover:bg-[#FCFAFF] md:grid-cols-[132px_minmax(0,1fr)_108px_132px_104px] md:items-center md:gap-3 md:px-4">
       <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-[#8B7AA8]">
         <span className="shrink-0">{formatDate(customer.created_at)}</span>
         <span className="truncate text-[10px] font-black uppercase tracking-[0.06em] text-[#AA9ABA]">{source === "import" ? "CSV" : "RCU"}</span>
@@ -250,12 +327,63 @@ function CustomerTableRow({ customer, onCopyPhone }: { customer: RcuCustomerRow;
         <span className={status.className}>{status.label}</span>
       </div>
 
+      <DeveloperEmailToggle
+        customer={customer}
+        updating={updatingConsent}
+        onChange={(enabled) => void onDeveloperEmailConsentChange(customer, enabled)}
+      />
+
       <div className="flex items-center gap-1.5 md:justify-end">
         <RoundAction label="Copier téléphone" icon="phone" onClick={() => void onCopyPhone(customer.phone)} disabled={!customer.phone} />
         <RoundLink label="Voir la fiche" icon="document" href={`/fidelisation/clients/${customer.id}`} />
         <RoundAction label="SMS bientôt disponible" icon="message" onClick={() => undefined} disabled={!customer.opt_in_sms || customer.sms_unsubscribed} />
       </div>
     </article>
+  );
+}
+
+function DeveloperEmailToggle({
+  customer,
+  updating,
+  onChange
+}: {
+  customer: RcuCustomerRow;
+  updating: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  const hasCustomerConsent = customer.email_consent_source === "customer";
+  const enabled = customer.developer_email_consent;
+  const disabled = updating || !customer.email || hasCustomerConsent;
+  const label = hasCustomerConsent
+    ? "Consentement e-mail donné par le client"
+    : !customer.email
+      ? "Adresse e-mail manquante"
+      : enabled
+        ? "Retirer le consentement e-mail de test"
+        : "Autoriser les e-mails de test pour ce faux client";
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={hasCustomerConsent || enabled}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={() => onChange(!enabled)}
+      className={`flex h-8 items-center gap-2 rounded-full border px-2 text-[10px] font-black uppercase tracking-[0.04em] transition ${
+        hasCustomerConsent
+          ? "border-[#D8F3E4] bg-[#F0FBF5] text-[#168653]"
+          : enabled
+            ? "border-[#F6D58B] bg-[#FFF8E8] text-[#A16207]"
+            : "border-[#E9D5FF] bg-white text-[#7C3AED] hover:bg-[#F8F3FF]"
+      } disabled:cursor-not-allowed disabled:opacity-55`}
+    >
+      <span className={`relative h-4 w-7 shrink-0 rounded-full transition ${hasCustomerConsent ? "bg-[#22A865]" : enabled ? "bg-[#D99414]" : "bg-[#D8C9EB]"}`}>
+        <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition ${hasCustomerConsent || enabled ? "left-3.5" : "left-0.5"}`} />
+      </span>
+      <span className="truncate">{updating ? "..." : hasCustomerConsent ? "Client" : "Dev e-mail"}</span>
+    </button>
   );
 }
 

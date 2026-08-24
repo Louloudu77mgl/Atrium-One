@@ -49,7 +49,12 @@ async function getDatabaseFallback(merchant: MerchantRow): Promise<RcuDashboardD
     const data = await getSmsModuleData(merchant);
 
     return {
-      customers: data.customers.map((customer) => ({ ...customer, opt_in_email: false })),
+      customers: data.customers.map((customer) => ({
+        ...customer,
+        opt_in_email: false,
+        developer_email_consent: false,
+        email_consent_source: null
+      })),
       forms: data.forms.map(normalizeDatabaseForm).filter((form): form is RcuProgram => Boolean(form))
     };
   } catch (error) {
