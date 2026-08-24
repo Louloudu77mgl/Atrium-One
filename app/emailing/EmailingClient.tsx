@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { GmailConnectionActions } from "@/components/GmailConnectionActions";
 import { HansAvatar } from "@/components/hans-avatar";
 import { Icon } from "@/components/icons";
@@ -18,10 +19,27 @@ function formatDate(value: string | null) {
 const statusLabels = { draft: "Brouillon", scheduled: "Programmée", sending: "Envoi en cours", sent: "Envoyée", failed: "À vérifier" } as const;
 
 export function EmailingClient({ merchant, brand, subscribers, initialCampaigns, providerReady, providerAddress, providerStatus, providerError, gmailConnectedNotice }: { merchant: MerchantRow | null; brand: MerchantBrandSettingsRow | null; subscribers: EmailSubscriberProfile[]; initialCampaigns: EmailCampaignRecord[]; providerReady: boolean; providerAddress: string | null; providerStatus: "connected" | "disconnected" | "error"; providerError: string | null; gmailConnectedNotice: boolean }) {
+  const router = useRouter();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [editingCampaign, setEditingCampaign] = useState<EmailCampaignRecord | null>(null);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    setCampaigns(initialCampaigns);
+  }, [initialCampaigns]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible" && !wizardOpen) router.refresh();
+    };
+    const interval = window.setInterval(refresh, 10_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [router, wizardOpen]);
   const totals = useMemo(() => {
     const sent = campaigns.reduce((sum, campaign) => sum + campaign.sent_count, 0);
     const opens = campaigns.reduce((sum, campaign) => sum + campaign.open_count, 0);
