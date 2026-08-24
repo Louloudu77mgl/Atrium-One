@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 import type { MerchantAutomationSettingsRow } from "@/lib/supabase/types";
 
@@ -74,6 +74,15 @@ export type StoredAutomationFlow = {
   executionHistory: unknown[];
   merchant_id?: string;
   saved_at?: string;
+};
+
+export type StoredGoogleReviewIndex = {
+  source_review_id: string;
+  local_review_id: string;
+  create_time: string | null;
+  update_time: string | null;
+  has_reply: boolean;
+  synced_at: string;
 };
 
 type StoredAutomationSettings = Partial<MerchantAutomationSettingsRow> & {
@@ -230,4 +239,25 @@ export async function deleteStoredAutomationFlow(merchantId: string, flowId: str
     .from(AUTOMATION_BUCKET)
     .remove([`merchants/${merchantId}/flows/${safeFlowId(flowId)}.json`]);
   if (error) throw new Error(error.message);
+}
+
+function googleReviewIndexPath(merchantId: string, sourceReviewId: string) {
+  const key = createHash("sha256").update(sourceReviewId).digest("hex");
+  return `merchants/${merchantId}/google-reviews/${key}.json`;
+}
+
+export async function getStoredGoogleReviewIndex(merchantId: string, sourceReviewId: string) {
+  return downloadJson<StoredGoogleReviewIndex>(googleReviewIndexPath(merchantId, sourceReviewId));
+}
+
+export async function saveStoredGoogleReviewIndex(
+  merchantId: string,
+  input: Omit<StoredGoogleReviewIndex, "synced_at"> & Partial<Pick<StoredGoogleReviewIndex, "synced_at">>
+) {
+  const record: StoredGoogleReviewIndex = {
+    ...input,
+    synced_at: input.synced_at ?? new Date().toISOString()
+  };
+  await uploadJson(googleReviewIndexPath(merchantId, input.source_review_id), record, true);
+  return record;
 }

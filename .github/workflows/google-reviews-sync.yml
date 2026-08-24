@@ -1,0 +1,26 @@
+name: Synchronisation des avis Google
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: google-reviews-sync
+  cancel-in-progress: false
+
+jobs:
+  synchronize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Synchroniser les avis et exécuter les scénarios
+        env:
+          CRON_SECRET: ${{ secrets.ATRIUM_CRON_SECRET }}
+          CRON_URL: https://atrium-one-self.vercel.app/api/cron/google-reviews
+        run: |
+          test -n "$CRON_SECRET"
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-all-errors --max-time 240 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$CRON_URL"

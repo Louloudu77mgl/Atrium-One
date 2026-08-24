@@ -3,7 +3,7 @@ import { syncAllConnectedGoogleReviews } from "@/lib/google-review-auto-sync";
 import { hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 240;
 
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;

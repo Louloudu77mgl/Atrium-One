@@ -8,7 +8,8 @@ import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "
 import { buildAutomationSlots, getMaxPostsForCycle, normalizeSocialAutomationWindow } from "@/lib/social-automation-shared";
 import { composeAndStoreSocialPostVisual, generateAndStoreSocialVisual } from "@/lib/social-visuals";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database, MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 
 export async function ensureAutomatedSocialDrafts({
   merchant,
@@ -155,4 +156,82 @@ export async function ensureAutomatedSocialDrafts({
   }
 
   return [...keptPosts, ...createdPosts];
+}
+
+export async function createTriggeredSocialDraft({
+  merchant,
+  theme,
+  source,
+  supabaseClient
+}: {
+  merchant: MerchantRow;
+  theme: string;
+  source: string;
+  supabaseClient: SupabaseClient<Database>;
+}) {
+  const brand = await getBrandSettings(merchant, supabaseClient);
+  const { draft } = await generateDraftContent({
+    merchant,
+    idea: {
+      platform: "instagram",
+      title: theme || `L’expérience chez ${merchant.business_name}`,
+      angle: "Transformer cet avis client en publication authentique, sans citer le nom du client et sans inventer d’information.",
+      source
+    }
+  });
+  const generated = await generateAndStoreSocialVisual({
+    merchant,
+    title: draft.title,
+    caption: draft.caption,
+    visualPrompt: draft.visualPrompt,
+    source,
+    styleOverride: brand?.visual_style ?? null,
+    supabaseClient
+  });
+  const visualUrl = await composeAndStoreSocialPostVisual({
+    merchant,
+    imageUrl: generated.imageUrl,
+    visualHook: draft.visualHook,
+    subtitle: draft.visualSubtitle,
+    supabaseClient
+  });
+  const designDocument = createGeneratedDesignDocument({
+    title: draft.title,
+    caption: draft.caption,
+    visualHook: draft.visualHook,
+    visualSubtitle: draft.visualSubtitle,
+    imageUrl: generated.imageUrl,
+    merchant,
+    brandSettings: brand
+  });
+  const builderState = serializeDocumentToBuilderState(designDocument);
+  const now = new Date().toISOString();
+  const { data, error } = await supabaseClient
+    .from("social_posts")
+    .insert({
+      merchant_id: merchant.id,
+      platform: "instagram",
+      title: draft.title,
+      caption: draft.caption,
+      cta: draft.cta,
+      hashtags: draft.hashtags,
+      visual_url: visualUrl,
+      image_url: generated.imageUrl,
+      source: "automation",
+      status: "draft",
+      scheduled_at: null,
+      template_id: null,
+      visual_text: draft.visualHook,
+      visual_html: renderBuilderStateToHtml(builderState),
+      builder_state: designDocument,
+      primary_color: brand?.primary_color ?? "#4C1D95",
+      secondary_color: brand?.secondary_color ?? "#F3E8FF",
+      accent_color: brand?.accent_color ?? "#A855F7",
+      last_saved_at: now,
+      updated_at: now
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
 }

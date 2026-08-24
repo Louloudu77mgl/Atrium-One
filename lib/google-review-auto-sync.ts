@@ -5,7 +5,7 @@ import { runReviewAutomationsForMerchant } from "@/lib/review-automation-runner"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database, GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
 
-const AUTO_SYNC_MAX_AGE_MS = 15 * 60 * 1000;
+const AUTO_SYNC_MAX_AGE_MS = 10 * 60 * 1000;
 
 export type GoogleReviewSyncResult = {
   attempted: boolean;

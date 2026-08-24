@@ -5,7 +5,8 @@ import { getGmailConnection, isGmailConnectionReady } from "@/lib/gmail-connecti
 import type { Review } from "@/lib/mock-data";
 import { getRcuCustomerKey, listStoredRcuDeveloperEmailConsents, listStoredRcuGameRecords, listStoredRcuLeads, listStoredRcuRaffleDraws, listStoredRcuRewardRedemptions } from "@/lib/rcu-store";
 import { hasSupabaseAdminEnv } from "@/lib/supabase/admin";
-import type { MerchantRow } from "@/lib/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database, MerchantRow } from "@/lib/supabase/types";
 
 function normalizeName(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr-FR").replace(/[^a-z0-9]/g, "");
@@ -16,7 +17,11 @@ function isWinningWheelPrize(label: string | undefined) {
   return Boolean(value && !value.includes("rien") && !value.includes("retentez") && !value.includes("rejouez"));
 }
 
-export async function getEmailingDashboardData(merchant: MerchantRow | null, reviews: Review[]): Promise<EmailingDashboardData & {
+export async function getEmailingDashboardData(
+  merchant: MerchantRow | null,
+  reviews: Review[],
+  databaseClient?: SupabaseClient<Database>
+): Promise<EmailingDashboardData & {
   brand: Awaited<ReturnType<typeof getBrandSettings>>;
 }> {
   if (!merchant || !hasSupabaseAdminEnv()) {
@@ -34,8 +39,8 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
       listStoredRcuRaffleDraws(merchant.id),
       listEmailCampaigns(merchant.id),
       listSuppressedEmailAddresses(merchant.id),
-      getBrandSettings(merchant),
-      getGmailConnection(merchant)
+      getBrandSettings(merchant, databaseClient),
+      getGmailConnection(merchant, databaseClient)
     ]);
   } catch (error) {
     console.error("[emailing/dashboard] storage_unavailable", {
@@ -44,8 +49,8 @@ export async function getEmailingDashboardData(merchant: MerchantRow | null, rev
     });
 
     const [brandResult, gmailResult] = await Promise.allSettled([
-      getBrandSettings(merchant),
-      getGmailConnection(merchant)
+      getBrandSettings(merchant, databaseClient),
+      getGmailConnection(merchant, databaseClient)
     ]);
     const brand = brandResult.status === "fulfilled" ? brandResult.value : null;
     const gmailConnection = gmailResult.status === "fulfilled" ? gmailResult.value : null;

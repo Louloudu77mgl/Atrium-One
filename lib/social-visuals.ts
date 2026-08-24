@@ -1,8 +1,9 @@
 import sharp from "sharp";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { fitEstimatedText } from "@/lib/social-editor/layout-safety";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { MerchantRow } from "@/lib/supabase/types";
+import type { Database, MerchantRow } from "@/lib/supabase/types";
 
 type OpenAIImageBody = {
   data?: { b64_json?: string }[];
@@ -14,20 +15,22 @@ export async function composeAndStoreSocialPostVisual({
   imageUrl,
   visualHook,
   subtitle,
-  postId
+  postId,
+  supabaseClient
 }: {
   merchant: MerchantRow;
   imageUrl: string;
   visualHook: string;
   subtitle?: string | null;
   postId?: string | null;
+  supabaseClient?: SupabaseClient<Database>;
 }) {
-  const supabase = await createServerSupabaseClient();
+  const supabase = supabaseClient ?? await createServerSupabaseClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user && !supabaseClient) {
     throw new Error("Utilisateur non connecté.");
   }
 
@@ -36,7 +39,7 @@ export async function composeAndStoreSocialPostVisual({
     throw new Error("Le visuel source est inaccessible pour la composition.");
   }
 
-  const brand = await getBrandSettings(merchant);
+  const brand = await getBrandSettings(merchant, supabaseClient);
   const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
   const background = brand?.secondary_color ?? "#F3E8FF";
   const primary = brand?.primary_color ?? "#4C1D95";
@@ -151,7 +154,7 @@ export async function composeAndStoreSocialPostVisual({
     .composite(composites)
     .png()
     .toBuffer();
-  const path = `${user.id}/${postId ?? "social-ready"}/ready-${Date.now()}.png`;
+  const path = `${user?.id ?? merchant.id}/${postId ?? "social-ready"}/ready-${Date.now()}.png`;
   const { error: uploadError } = await supabase.storage
     .from("social-visuals")
     .upload(path, png, {
@@ -174,7 +177,8 @@ export async function generateAndStoreSocialVisual({
   caption,
   visualPrompt,
   source,
-  styleOverride
+  styleOverride,
+  supabaseClient
 }: {
   merchant: MerchantRow;
   postId?: string | null;
@@ -183,6 +187,7 @@ export async function generateAndStoreSocialVisual({
   visualPrompt?: string | null;
   source?: string | null;
   styleOverride?: string | null;
+  supabaseClient?: SupabaseClient<Database>;
 }) {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -190,16 +195,16 @@ export async function generateAndStoreSocialVisual({
     throw new Error("OPENAI_API_KEY manquante pour générer l'image IA.");
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = supabaseClient ?? await createServerSupabaseClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user && !supabaseClient) {
     throw new Error("Utilisateur non connecté.");
   }
 
-  const brand = await getBrandSettings(merchant);
+  const brand = await getBrandSettings(merchant, supabaseClient);
   const visualStyle = mapVisualStyleToPrompt(styleOverride ?? brand?.visual_style ?? "premium");
   const toneDirection = mapToneToVisualDirection(brand?.tone ?? "professionnel");
   const fontDirection = brand?.social_font_family ? `Police éditoriale de référence pour la future composition : ${brand.social_font_family}.` : "";
@@ -248,7 +253,7 @@ export async function generateAndStoreSocialVisual({
     throw new Error(body.error?.message ?? "Génération d'image IA impossible.");
   }
 
-  const path = `${user.id}/${postId ?? "social-visual"}/ai-${Date.now()}.png`;
+  const path = `${user?.id ?? merchant.id}/${postId ?? "social-visual"}/ai-${Date.now()}.png`;
   const { error: uploadError } = await supabase.storage
     .from("social-visuals")
     .upload(path, Buffer.from(base64, "base64"), {

@@ -6,8 +6,15 @@ import {
   type StoredAutomationFlow
 } from "@/lib/automation-execution-store";
 import { hansHtmlToPlainText, sanitizeHansHtml } from "@/lib/sanitize-hans-html";
+import { createTriggeredSocialDraft } from "@/lib/social-automation";
+import { publishPostToInstagram } from "@/lib/social-publish";
+import { getEmailingDashboardData } from "@/lib/emailing-data";
+import { generateEmailWithHans } from "@/lib/emailing-hans";
+import { createEmailCampaign, createEmailRecipients } from "@/lib/emailing-store";
+import { dispatchEmailCampaign } from "@/lib/emailing-provider";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { GoogleConnectionRow, MerchantAutomationSettingsRow, MerchantRow } from "@/lib/supabase/types";
+import type { EmailCampaignRecord } from "@/lib/emailing-types";
+import type { GoogleConnectionRow, MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 
 type GoogleReview = {
   name?: string;
@@ -179,13 +186,8 @@ async function processMerchantReviews({
     .eq("merchant_id", merchant.id);
 
   const reviews = await listGoogleReviews(accessToken, connection.google_location_id as string);
-  const activationTime = Math.min(
-    new Date(settings.updated_at ?? settings.created_at).getTime(),
-    ...flows.map((flow) => new Date(flow.updatedAt).getTime())
-  );
   const candidates = reviews
     .filter((review) => !review.reviewReply?.comment && review.name && review.createTime)
-    .filter((review) => new Date(review.createTime as string).getTime() >= activationTime)
     .sort((left, right) => new Date(left.createTime as string).getTime() - new Date(right.createTime as string).getTime())
     .slice(0, limit);
   const results: AutomationResult[] = [];
@@ -262,6 +264,9 @@ async function processGoogleReview({
 
   let replyHtml = existingReply?.reply_text ?? null;
   let replyId = existingReply?.id;
+  let googlePublished = false;
+  let socialPost: SocialPostRow | null = null;
+  let emailCampaign: EmailCampaignRecord | null = null;
   const steps: AutomationResultStep[] = [];
   let activeNode: StoredAutomationFlow["nodes"][number] | null = null;
 
@@ -329,19 +334,90 @@ async function processGoogleReview({
       }
 
       await publishGoogleReply({ reviewName: review.name as string, replyHtml, replyId, reviewId: localReview.id, accessToken });
+      googlePublished = true;
       steps.push(step(node, "success", "Réponse publiée sur Google."));
-      return {
+      continue;
+    }
+
+    if (node.type === "prepare_instagram") {
+      socialPost = await createTriggeredSocialDraft({
+        merchant,
+        theme: String(node.config.theme ?? "Avis client"),
+        source: `Avis Google ${rating}/5 : ${reviewText}`,
+        supabaseClient: supabase
+      });
+      steps.push(step(node, "success", `Brouillon Instagram « ${socialPost.title} » créé.`));
+      continue;
+    }
+
+    if (node.type === "publish_instagram") {
+      if (!socialPost) throw new Error("Le flow tente de publier sur Instagram avant de préparer la publication.");
+      if (node.mode !== "automatic") {
+        steps.push(step(node, "waiting", "Publication Instagram enregistrée en brouillon, conformément au mode de cette card."));
+        continue;
+      }
+      socialPost = await publishPostToInstagram({ merchant, post: socialPost, supabaseClient: supabase });
+      steps.push(step(node, "success", "Publication publiée sur Instagram."));
+      continue;
+    }
+
+    if (node.type === "generate_email") {
+      const dashboard = await getEmailingDashboardData(merchant, [], supabase);
+      const goal = String(node.config.goal ?? "Partager une actualité avec les clients");
+      const content = await generateEmailWithHans({
+        merchant,
+        brand: dashboard.brand,
+        brief: `${goal}. Point de départ : un avis Google ${rating}/5 vient d’être reçu.`,
+        campaignType: goal.toLocaleLowerCase("fr-FR").includes("réactiv") ? "reactivation" : "newsletter",
+        segmentLabel: "Tous les clients consentants"
+      });
+      const configuredSubject = plan.nodes.find((candidate) => candidate.type === "send_email")?.config.subject;
+      if (configuredSubject) content.subject = String(configuredSubject).slice(0, 120);
+      const recipients = createEmailRecipients(dashboard.subscribers);
+      emailCampaign = await createEmailCampaign({
         merchant_id: merchant.id,
-        local_review_id: localReview.id,
-        review_name: review.name,
-        customer_name: getGoogleReviewerName(review),
-        rating,
-        status: "published",
-        message: `Scénario « ${plan.flow.title} » exécuté : réponse publiée sur Google.`,
-        flow_id: plan.flow.id,
-        flow_title: plan.flow.title,
-        steps
-      };
+        name: content.subject,
+        campaign_type: goal.toLocaleLowerCase("fr-FR").includes("réactiv") ? "reactivation" : "newsletter",
+        brief: goal,
+        segment_rules: [{ id: "all_customers" }],
+        segment_mode: "all",
+        segment_label: "Tous les clients consentants",
+        recipient_count: recipients.length,
+        recipients,
+        content,
+        status: "draft",
+        scheduled_at: null,
+        sent_at: null,
+        sent_count: 0,
+        open_count: 0,
+        click_count: 0,
+        open_rate: 0,
+        click_rate: 0,
+        provider_message_ids: [],
+        error_message: null
+      });
+      steps.push(step(node, "success", `E-mail « ${content.subject} » généré pour ${recipients.length} client(s) consentant(s).`));
+      continue;
+    }
+
+    if (node.type === "send_email") {
+      if (!emailCampaign) throw new Error("Le flow tente d’envoyer un e-mail avant que Hans ait créé la campagne.");
+      if (node.mode !== "automatic") {
+        steps.push(step(node, "waiting", "E-mail conservé en brouillon, conformément au mode de cette card."));
+        continue;
+      }
+      if (!emailCampaign.recipients.length) {
+        steps.push(step(node, "waiting", "Aucun client consentant : la campagne reste en brouillon."));
+        continue;
+      }
+      emailCampaign = await dispatchEmailCampaign({
+        campaign: emailCampaign,
+        merchant,
+        origin: getApplicationOrigin(),
+        supabaseClient: supabase
+      });
+      steps.push(step(node, "success", `E-mail envoyé à ${emailCampaign.sent_count} client(s).`));
+      continue;
     }
 
     if (node.type === "stop_flow") {
@@ -350,6 +426,11 @@ async function processGoogleReview({
     }
 
     throw new Error(`La card « ${node.title} » (${node.type}) n’a pas d’exécuteur compatible avec le déclencheur Avis Google.`);
+    }
+
+    if (googlePublished) {
+      const waitingCount = steps.filter((current) => current.status === "waiting").length;
+      return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "published", message: waitingCount ? `Scénario « ${plan.flow.title} » exécuté ; ${waitingCount} action(s) attendent une validation.` : `Scénario « ${plan.flow.title} » exécuté jusqu’au bout.`, flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
     }
 
     if (replyHtml) {
@@ -378,6 +459,13 @@ async function processGoogleReview({
   }
 }
 
+function getApplicationOrigin() {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  return vercelHost ? `https://${vercelHost}` : "http://localhost:3000";
+}
+
 function buildReviewFlowPlan(flow: StoredAutomationFlow, rating: number): ReviewFlowPlan {
   const nodesById = new Map(flow.nodes.map((node) => [node.id, node]));
   const nodes: StoredAutomationFlow["nodes"] = [];
@@ -396,7 +484,6 @@ function buildReviewFlowPlan(flow: StoredAutomationFlow, rating: number): Review
     if (current.category === "action" && current.mode !== "automatic") requiresValidation = true;
     if (current.type === "publish_review_reply") {
       action = current.mode === "automatic" && !requiresValidation ? "automatic" : "validation";
-      break;
     }
 
     let branch: "default" | "yes" | "no" = "default";

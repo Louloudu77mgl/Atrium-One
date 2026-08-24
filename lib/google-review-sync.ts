@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getFreshGoogleAccessToken } from "@/lib/google-tokens";
 import { upsertGoogleConnection } from "@/lib/google-connections";
+import { getStoredGoogleReviewIndex, saveStoredGoogleReviewIndex } from "@/lib/automation-execution-store";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, GoogleConnectionRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
 
@@ -73,21 +74,28 @@ export async function syncGoogleBusinessReviews(
     for (const review of data.reviews ?? []) {
       if (!review.name) continue;
       const rating = ratings[review.starRating ?? ""] ?? 3;
-      const existing = await findExistingGoogleReview({
-        supabase,
-        merchantId: merchant.id,
-        sourceReviewId: review.name,
-        createdAt: review.createTime
-      });
+      const storedIndex = await getStoredGoogleReviewIndex(merchant.id, review.name).catch(() => null);
+      const indexedReview = storedIndex?.local_review_id
+        ? await findReviewById(supabase, merchant.id, storedIndex.local_review_id)
+        : null;
+      const existing = indexedReview ?? await findExistingGoogleReview({
+          supabase,
+          merchantId: merchant.id,
+          sourceReviewId: review.name,
+          createdAt: review.createTime
+        });
+      const reviewText = cleanGoogleReviewText(review.comment) || "Avis sans commentaire";
       const fullPayload = {
         merchant_id: merchant.id,
         author_name: review.reviewer?.isAnonymous ? "Client Google" : review.reviewer?.displayName ?? "Client Google",
         rating,
-        review_text: review.comment?.trim() || "Avis sans commentaire",
-        content: review.comment?.trim() || null,
+        review_text: reviewText,
+        content: reviewText === "Avis sans commentaire" ? null : reviewText,
         source: "google",
         source_review_id: review.name,
-        status: review.reviewReply?.comment ? "repondu" as const : rating <= 2 ? "urgent" as const : "a_traiter" as const,
+        status: review.reviewReply?.comment
+          ? "repondu" as const
+          : existing?.status ?? (rating <= 2 ? "urgent" as const : "a_traiter" as const),
         sentiment: rating >= 4 ? "positif" as const : rating <= 2 ? "negatif" as const : "neutre" as const,
         created_at: review.createTime ?? new Date().toISOString(),
         updated_at: review.updateTime ?? review.createTime ?? new Date().toISOString()
@@ -96,7 +104,16 @@ export async function syncGoogleBusinessReviews(
         ? await writeGoogleReview({ supabase, reviewId: existing.id, payload: fullPayload })
         : await writeGoogleReview({ supabase, payload: fullPayload });
       if (result.error) throw new Error(result.error.message);
-      imported += 1;
+      const localReviewId = result.id ?? existing?.id;
+      if (!localReviewId) throw new Error("L’avis Google a été enregistré sans identifiant local.");
+      await saveStoredGoogleReviewIndex(merchant.id, {
+        source_review_id: review.name,
+        local_review_id: localReviewId,
+        create_time: review.createTime ?? null,
+        update_time: review.updateTime ?? review.createTime ?? null,
+        has_reply: Boolean(review.reviewReply?.comment)
+      });
+      if (!existing) imported += 1;
     }
 
     pageToken = data.nextPageToken;
@@ -126,13 +143,13 @@ async function findExistingGoogleReview({
 }) {
   const bySourceReviewId = await supabase
     .from("reviews")
-    .select("id")
+    .select("id, status")
     .eq("merchant_id", merchantId)
     .eq("source_review_id", sourceReviewId)
-    .maybeSingle();
+    .limit(20);
 
   if (!bySourceReviewId.error) {
-    return bySourceReviewId.data;
+    return collapseDuplicateReviews(supabase, bySourceReviewId.data ?? []);
   }
 
   if (!isMissingColumnError(bySourceReviewId.error.message) || !createdAt) {
@@ -141,13 +158,52 @@ async function findExistingGoogleReview({
 
   const byCreatedAt = await supabase
     .from("reviews")
-    .select("id")
+    .select("id, status")
     .eq("merchant_id", merchantId)
     .eq("created_at", createdAt)
-    .maybeSingle();
+    .limit(20);
 
   if (byCreatedAt.error) throw new Error(byCreatedAt.error.message);
-  return byCreatedAt.data;
+  return collapseDuplicateReviews(supabase, byCreatedAt.data ?? []);
+}
+
+async function collapseDuplicateReviews(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  reviews: Array<{ id: string; status: ReviewRow["status"] }>
+) {
+  if (!reviews.length) return null;
+  if (reviews.length === 1) return reviews[0];
+
+  const statusPriority = ["published_auto", "published_manual", "published", "repondu", "generated", "ready_to_publish", "validation_required", "urgent", "a_traiter"];
+  const sorted = [...reviews].sort((left, right) => {
+    const leftPriority = statusPriority.indexOf(left.status ?? "");
+    const rightPriority = statusPriority.indexOf(right.status ?? "");
+    return (leftPriority < 0 ? statusPriority.length : leftPriority) - (rightPriority < 0 ? statusPriority.length : rightPriority);
+  });
+  const kept = sorted[0];
+  const duplicateIds = sorted.slice(1).map((review) => review.id);
+  const replyMove = await supabase.from("generated_replies").update({ review_id: kept.id }).in("review_id", duplicateIds);
+  if (replyMove.error && !replyMove.error.message.toLowerCase().includes("does not exist")) {
+    throw new Error(replyMove.error.message);
+  }
+  const deletion = await supabase.from("reviews").delete().in("id", duplicateIds);
+  if (deletion.error) throw new Error(deletion.error.message);
+  return kept;
+}
+
+async function findReviewById(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  merchantId: string,
+  reviewId: string
+) {
+  const result = await supabase
+    .from("reviews")
+    .select("id, status")
+    .eq("merchant_id", merchantId)
+    .eq("id", reviewId)
+    .maybeSingle();
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
 }
 
 async function writeGoogleReview({
@@ -161,11 +217,11 @@ async function writeGoogleReview({
 }) {
   const reviewsTable = supabase.from("reviews");
   const result = reviewId
-    ? await reviewsTable.update(payload).eq("id", reviewId)
-    : await reviewsTable.insert(payload);
+    ? await reviewsTable.update(payload).eq("id", reviewId).select("id").maybeSingle()
+    : await reviewsTable.insert(payload).select("id").single();
 
   if (!result.error || !isMissingColumnError(result.error.message)) {
-    return result;
+    return { id: result.data?.id ?? reviewId, error: result.error };
   }
 
   const {
@@ -176,9 +232,18 @@ async function writeGoogleReview({
     ...fallbackPayload
   } = payload;
 
-  return reviewId
-    ? await reviewsTable.update(fallbackPayload).eq("id", reviewId)
-    : await reviewsTable.insert(fallbackPayload);
+  const fallback = reviewId
+    ? await reviewsTable.update(fallbackPayload).eq("id", reviewId).select("id").maybeSingle()
+    : await reviewsTable.insert(fallbackPayload).select("id").single();
+  return { id: fallback.data?.id ?? reviewId, error: fallback.error };
+}
+
+export function cleanGoogleReviewText(value?: string) {
+  if (!value) return "";
+  return value
+    .replace(/\n{2,}\s*\(?(?:translated by google|traduit par google)\)?[\s\S]*$/i, "")
+    .replace(/\n{2,}\s*(?:original|texte d’origine)\s*[:：][\s\S]*$/i, "")
+    .trim();
 }
 
 function isMissingColumnError(message: string) {

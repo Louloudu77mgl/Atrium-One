@@ -1,8 +1,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
+import type { Database, MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
 
 export const DEFAULT_BRAND_SETTINGS = {
   primary_color: "#4C1D95",
@@ -25,14 +26,17 @@ function getMissingOptionalBrandColumn(message: string) {
   )) ?? null;
 }
 
-export async function getBrandSettings(merchant?: MerchantRow | null): Promise<MerchantBrandSettingsRow | null> {
+export async function getBrandSettings(
+  merchant?: MerchantRow | null,
+  databaseClient?: SupabaseClient<Database>
+): Promise<MerchantBrandSettingsRow | null> {
   const currentMerchant = merchant ?? (await getMerchant());
 
   if (!currentMerchant) {
     return null;
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = databaseClient ?? await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("merchant_brand_settings")
     .select("*")

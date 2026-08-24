@@ -869,7 +869,7 @@ export function ReviewsPageClient({
                             ))}
                           </div>
 
-                          <p className="mb-3 ml-[46px] text-[13px] leading-[1.55] text-[#1E1B2E] max-sm:ml-0">{review.text}</p>
+                          <p lang="fr" translate="no" className="notranslate mb-3 ml-[46px] text-[13px] leading-[1.55] text-[#1E1B2E] max-sm:ml-0">{review.text}</p>
 
                           <div className="ml-[46px] flex flex-wrap gap-2 max-sm:ml-0">
                             {!hasReply ? (

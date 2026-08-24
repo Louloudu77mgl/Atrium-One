@@ -94,7 +94,7 @@ export function ReviewCard({
 
       <div className="px-[18px] pb-3.5">
         <div className="mb-1.5 text-[13px] tracking-[1px] text-[var(--color-primary)]">{stars(review.rating)}</div>
-        <p className="text-[13.5px] leading-6 text-[var(--color-text-muted)]">{review.text}</p>
+        <p lang="fr" translate="no" className="notranslate text-[13.5px] leading-6 text-[var(--color-text-muted)]">{review.text}</p>
       </div>
 
       <div className={`flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] px-[18px] py-3 ${isAnswered ? "bg-[var(--color-primary-soft)]" : "bg-[var(--color-surface-subtle)]"}`}>
