@@ -72,6 +72,7 @@ export function mapReviewRow(row: ReviewRow, index = 0, reply?: GeneratedReplyRo
     generatedReplyStatus: reply?.status,
     generatedText: reply?.generated_text ?? undefined,
     isReplyEdited: reply?.is_edited,
+    replyCreatedAt: reply?.created_at,
     publishedAt: reply?.status === "published" ? dateLabel(reply.created_at) : undefined
   };
 }

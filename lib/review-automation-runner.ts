@@ -1,5 +1,6 @@
 import { getGoogleOAuthConfig } from "@/lib/google-oauth";
 import { getReviewAutomationDecision } from "@/lib/review-automation";
+import { getStoredAutomationSettings, saveAutomationExecutionLog } from "@/lib/automation-execution-store";
 import { hansHtmlToPlainText, sanitizeHansHtml } from "@/lib/sanitize-hans-html";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { GoogleConnectionRow, MerchantAutomationSettingsRow, MerchantRow } from "@/lib/supabase/types";
@@ -26,9 +27,12 @@ type OpenAIResponseBody = {
   error?: { message?: string };
 };
 
-type AutomationResult = {
+export type AutomationResult = {
   merchant_id: string;
+  local_review_id?: string;
   review_name?: string;
+  customer_name?: string;
+  rating?: number;
   status: "published" | "drafted" | "skipped" | "error";
   message?: string;
 };
@@ -54,37 +58,72 @@ export async function runReviewAutomations(limit = 5) {
       break;
     }
 
-    try {
-      const [{ data: merchant, error: merchantError }, { data: connection, error: connectionError }] = await Promise.all([
-        supabase.from("merchants").select("*").eq("id", settings.merchant_id).maybeSingle(),
-        supabase.from("google_connections").select("*").eq("merchant_id", settings.merchant_id).eq("status", "connected").maybeSingle()
-      ]);
-
-      if (merchantError) throw new Error(merchantError.message);
-      if (connectionError) throw new Error(connectionError.message);
-      if (!merchant || !connection?.google_location_id) {
-        results.push({ merchant_id: settings.merchant_id, status: "skipped", message: "Google Business non connecté." });
-        continue;
-      }
-
-      const available = Math.max(0, limit - results.filter((result) => result.status !== "skipped").length);
-      const merchantResults = await processMerchantReviews({
-        merchant,
-        connection,
-        settings,
-        limit: available
-      });
-      results.push(...merchantResults);
-    } catch (error) {
-      results.push({
-        merchant_id: settings.merchant_id,
-        status: "error",
-        message: error instanceof Error ? error.message : "Erreur inconnue"
-      });
-    }
+    const available = Math.max(0, limit - results.filter((result) => result.status !== "skipped").length);
+    results.push(...await runReviewAutomationsForMerchant(settings.merchant_id, available));
   }
 
   return results;
+}
+
+export async function runReviewAutomationsForMerchant(merchantId: string, limit = 5) {
+  const supabase = createSupabaseAdminClient();
+  let results: AutomationResult[];
+
+  try {
+    const [{ data: databaseSettings, error: settingsError }, { data: merchant, error: merchantError }, { data: connection, error: connectionError }, storedSettings] = await Promise.all([
+      supabase.from("merchant_automation_settings").select("*").eq("merchant_id", merchantId).maybeSingle(),
+      supabase.from("merchants").select("*").eq("id", merchantId).maybeSingle(),
+      supabase.from("google_connections").select("*").eq("merchant_id", merchantId).eq("status", "connected").maybeSingle(),
+      getStoredAutomationSettings(merchantId).catch(() => null)
+    ]);
+
+    if (settingsError) throw new Error(settingsError.message);
+    if (merchantError) throw new Error(merchantError.message);
+    if (connectionError) throw new Error(connectionError.message);
+
+    const settings = databaseSettings
+      ? { ...databaseSettings, ...storedSettings, id: databaseSettings.id, merchant_id: databaseSettings.merchant_id, created_at: databaseSettings.created_at }
+      : null;
+
+    if (!settings?.reviews_auto_reply_enabled) {
+      results = [{ merchant_id: merchantId, status: "skipped", message: "Automatisation des avis désactivée." }];
+    } else if (!merchant || !connection?.google_location_id) {
+      results = [{ merchant_id: merchantId, status: "skipped", message: "Google Business non connecté." }];
+    } else {
+      results = await processMerchantReviews({ merchant, connection, settings, limit });
+    }
+  } catch (error) {
+    results = [{
+      merchant_id: merchantId,
+      status: "error",
+      message: error instanceof Error ? error.message : "Erreur inconnue"
+    }];
+  }
+
+  await Promise.all(results.map((result) => saveAutomationExecutionLog({
+    merchant_id: result.merchant_id,
+    automation_key: "google_reviews",
+    local_review_id: result.local_review_id ?? null,
+    review_name: result.review_name ?? null,
+    customer_name: result.customer_name ?? null,
+    rating: result.rating ?? null,
+    status: result.status,
+    message: result.message ?? defaultResultMessage(result.status)
+  }).catch((error) => {
+    console.error("[review-automation] execution_log_failed", {
+      merchantId: result.merchant_id,
+      message: error instanceof Error ? error.message : "Erreur inconnue"
+    });
+  })));
+
+  return results;
+}
+
+function defaultResultMessage(status: AutomationResult["status"]) {
+  if (status === "published") return "Réponse publiée automatiquement sur Google.";
+  if (status === "drafted") return "Réponse préparée et mise en attente de validation.";
+  if (status === "error") return "L’automatisation a échoué.";
+  return "Aucune action nécessaire.";
 }
 
 async function processMerchantReviews({
@@ -121,6 +160,8 @@ async function processMerchantReviews({
       results.push({
         merchant_id: merchant.id,
         review_name: review.name,
+        customer_name: getGoogleReviewerName(review),
+        rating: ratings[review.starRating ?? ""] ?? 3,
         status: "error",
         message: error instanceof Error ? error.message : "Erreur inconnue"
       });
@@ -161,7 +202,7 @@ async function processGoogleReview({
   const decision = getReviewAutomationDecision({ rating, reviewText, settings: effectiveSettings });
 
   if (decision.action === "disabled") {
-    return { merchant_id: merchant.id, review_name: review.name, status: "skipped", message: "Automatisation désactivée pour cette note." };
+    return { merchant_id: merchant.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Automatisation désactivée pour cette note." };
   }
 
   const localReview = await findOrCreateReview({ merchant, review, rating, reviewText });
@@ -175,7 +216,7 @@ async function processGoogleReview({
 
   if (existingReplyError) throw new Error(existingReplyError.message);
   if (existingReply?.is_edited) {
-    return { merchant_id: merchant.id, review_name: review.name, status: "skipped", message: "Réponse modifiée manuellement : publication automatique ignorée." };
+    return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Réponse modifiée manuellement : publication automatique ignorée." };
   }
 
   const replyHtml = existingReply?.reply_text || await generateHansReply({ merchant, review, rating, reviewText });
@@ -202,7 +243,10 @@ async function processGoogleReview({
     await updateReviewStatus(localReview.id, "generated");
     return {
       merchant_id: merchant.id,
+      local_review_id: localReview.id,
       review_name: review.name,
+      customer_name: getGoogleReviewerName(review),
+      rating,
       status: "drafted",
       message: decision.blockedBySafety ? `Mot sensible détecté : ${decision.sensitiveKeyword}` : "Validation humaine requise par le workflow."
     };
@@ -231,7 +275,19 @@ async function processGoogleReview({
   }
   await updateReviewStatus(localReview.id, "published_auto");
 
-  return { merchant_id: merchant.id, review_name: review.name, status: "published" };
+  return {
+    merchant_id: merchant.id,
+    local_review_id: localReview.id,
+    review_name: review.name,
+    customer_name: getGoogleReviewerName(review),
+    rating,
+    status: "published",
+    message: "Réponse publiée automatiquement sur Google."
+  };
+}
+
+function getGoogleReviewerName(review: GoogleReview) {
+  return review.reviewer?.isAnonymous ? "Client Google" : review.reviewer?.displayName ?? "Client Google";
 }
 
 async function findOrCreateReview({

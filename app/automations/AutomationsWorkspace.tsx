@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
+import type { AutomationExecutionLog } from "@/lib/automation-execution-store";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewCounters } from "@/lib/review-counters";
 import type { GoogleConnectionRow, InstagramConnectionRow, MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
@@ -35,6 +36,7 @@ export function AutomationsWorkspace({
   instagramConnection,
   instagramConfigured,
   settings,
+  automationRuns,
   socialPosts,
   emailSubscribersCount,
   emailCampaignsCount,
@@ -47,6 +49,7 @@ export function AutomationsWorkspace({
   instagramConnection?: InstagramConnectionRow | null;
   instagramConfigured: boolean;
   settings: MerchantAutomationSettingsRow | null;
+  automationRuns: AutomationExecutionLog[];
   socialPosts: SocialPostRow[];
   emailSubscribersCount: number;
   emailCampaignsCount: number;
@@ -62,6 +65,7 @@ export function AutomationsWorkspace({
     buildExistingAutomations({
       merchant,
       settings,
+      automationRuns,
       reviews,
       reviewCounters,
       socialPosts,
@@ -133,7 +137,12 @@ export function AutomationsWorkspace({
         favoriteTypes?: string[];
         recentTypes?: string[];
       };
-      if (Array.isArray(parsed.automations)) setAutomations(parsed.automations);
+      if (Array.isArray(parsed.automations)) {
+        setAutomations((current) => [
+          ...current.filter((automation) => automation.source === "existing"),
+          ...parsed.automations!.filter((automation) => automation.source !== "existing")
+        ]);
+      }
       if (parsed.selectedAutomationId) setSelectedAutomationId(parsed.selectedAutomationId);
       if (parsed.view) setView(parsed.view);
       if (parsed.favoriteTypes) setFavoriteTypes(parsed.favoriteTypes);
@@ -926,6 +935,7 @@ export function AutomationsWorkspace({
 
 function buildExistingAutomations({
   settings,
+  automationRuns,
   reviews,
   reviewCounters,
   socialPosts,
@@ -938,6 +948,7 @@ function buildExistingAutomations({
 }: {
   merchant?: MerchantRow | null;
   settings: MerchantAutomationSettingsRow | null;
+  automationRuns: AutomationExecutionLog[];
   reviews: Review[];
   reviewCounters: ReviewCounters;
   socialPosts: SocialPostRow[];
@@ -951,7 +962,9 @@ function buildExistingAutomations({
   const reviewsTemplate = cloneFlow(templates.find((item) => item.id === "template-reviews") ?? templates[0]);
   reviewsTemplate.id = "existing-reviews";
   reviewsTemplate.source = "existing";
-  reviewsTemplate.status = googleConnected ? (settings?.review_automation_mode === "disabled" ? "draft" : "active") : "incomplete";
+  reviewsTemplate.status = googleConnected
+    ? settings?.reviews_auto_reply_enabled && settings.review_automation_mode !== "disabled" ? "active" : "draft"
+    : "incomplete";
   reviewsTemplate.summary = `${reviewCounters.pending} avis à traiter, ${reviewCounters.answered} déjà publiés.`;
 
   const instagramTemplate = cloneFlow(templates.find((item) => item.id === "template-instagram") ?? templates[1]);
@@ -973,30 +986,7 @@ function buildExistingAutomations({
     executionHistory: automation.executionHistory.length ? automation.executionHistory : []
   }));
 
-  if (reviews[0]?.updatedAt) {
-    emptyHistory[0].executionHistory = [{
-      id: "seed-review-run",
-      createdAt: reviews[0].updatedAt,
-      customerName: reviews[0].author ?? "Client Google",
-      triggerLabel: "Nouvel avis Google",
-      status: "validation_required",
-      durationLabel: "12 s",
-      inputData: {
-        client: reviews[0].author ?? "Client Google",
-        noteAvis: reviews[0].rating,
-        avis: reviews[0].text || "Avis sans commentaire"
-      },
-      outputData: {
-        resultat: "Réponse préparée pour validation",
-        brancheChoisie: "Oui"
-      },
-      steps: [
-        { id: "seed-step-1", nodeId: emptyHistory[0].nodes[0]?.id ?? "trigger", title: "Nouvel avis Google", result: "Avis détecté" },
-        { id: "seed-step-2", nodeId: emptyHistory[0].nodes[1]?.id ?? "condition", title: "Vérifier la note", result: "Branche positive choisie", branch: "yes" },
-        { id: "seed-step-3", nodeId: emptyHistory[0].nodes[2]?.id ?? "action", title: "Hans génère une réponse", result: "Réponse préparée pour validation" }
-      ]
-    }];
-  }
+  emptyHistory[0].executionHistory = buildRealReviewHistory(reviews, automationRuns, emptyHistory[0]);
 
   if (socialPosts[0]?.updated_at) {
     emptyHistory[1].executionHistory = [{
@@ -1022,6 +1012,96 @@ function buildExistingAutomations({
   }
 
   return emptyHistory;
+}
+
+function buildRealReviewHistory(
+  reviews: Review[],
+  automationRuns: AutomationExecutionLog[],
+  automation: AutomationFlow
+): ExecutionRecord[] {
+  const loggedReviewIds = new Set(automationRuns.map((run) => run.local_review_id).filter(Boolean));
+  const triggerNode = automation.nodes.find((node) => node.type === "google_review")?.id ?? "google-review-trigger";
+  const generateNode = automation.nodes.find((node) => node.type === "generate_review_reply")?.id ?? "google-review-generate";
+  const publishNode = automation.nodes.find((node) => node.type === "publish_review_reply")?.id ?? "google-review-publish";
+
+  const storedRuns: ExecutionRecord[] = automationRuns.map((run) => ({
+    id: run.id,
+    createdAt: run.created_at,
+    customerName: run.customer_name ?? "Contrôle automatique Google",
+    triggerLabel: run.review_name ? "Nouvel avis Google" : "Contrôle automatique des avis",
+    status: run.status === "published" ? "success" : run.status === "drafted" ? "validation_required" : run.status === "error" ? "failed" : "cancelled",
+    durationLabel: "Temps réel",
+    inputData: {
+      client: run.customer_name ?? "Non renseigné",
+      noteAvis: run.rating ?? null,
+      identifiantAvis: run.review_name ?? null
+    },
+    outputData: {
+      resultat: run.message,
+      publicationGoogle: run.status === "published"
+    },
+    steps: buildStoredRunSteps(run, triggerNode, generateNode, publishNode)
+  }));
+
+  const reviewRuns: ExecutionRecord[] = reviews
+    .filter((review) => !loggedReviewIds.has(review.id))
+    .map((review) => {
+      const published = review.status === "repondu"
+        || ["published", "published_auto", "published_manual"].includes(review.generatedReplyStatus ?? "");
+      const generated = Boolean(review.generatedReplyId || review.generatedReply);
+      const createdAt = review.replyCreatedAt ?? review.updatedAt ?? review.createdAt ?? new Date().toISOString();
+      const steps: ExecutionRecord["steps"] = [
+        { id: `${review.id}-detected`, nodeId: triggerNode, title: "Nouvel avis Google", result: "Avis réellement importé dans AtriumOne" }
+      ];
+
+      if (generated) {
+        steps.push({ id: `${review.id}-generated`, nodeId: generateNode, title: "Hans génère une réponse", result: "Réponse réellement enregistrée" });
+      }
+      if (published) {
+        steps.push({ id: `${review.id}-published`, nodeId: publishNode, title: "Publication Google", result: "Réponse acceptée et publiée par Google" });
+      }
+
+      return {
+        id: `review-${review.id}`,
+        createdAt,
+        customerName: review.author || "Client Google",
+        triggerLabel: "Nouvel avis Google",
+        status: published ? "success" : generated ? "validation_required" : "pending",
+        durationLabel: published ? "Exécution terminée" : "En cours",
+        inputData: { client: review.author, noteAvis: review.rating, avis: review.text || "Avis sans commentaire" },
+        outputData: {
+          resultat: published ? "Réponse publiée sur Google" : generated ? "Réponse en attente de validation" : "Avis détecté, réponse non générée",
+          publicationGoogle: published
+        },
+        steps
+      };
+    });
+
+  return [...storedRuns, ...reviewRuns]
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    .slice(0, 30);
+}
+
+function buildStoredRunSteps(
+  run: AutomationExecutionLog,
+  triggerNode: string,
+  generateNode: string,
+  publishNode: string
+): ExecutionRecord["steps"] {
+  if (!run.review_name) {
+    return [{ id: `${run.id}-check`, nodeId: triggerNode, title: "Contrôle Google", result: run.message }];
+  }
+
+  const steps: ExecutionRecord["steps"] = [
+    { id: `${run.id}-detected`, nodeId: triggerNode, title: "Nouvel avis Google", result: "Avis détecté par le runner serveur" }
+  ];
+  if (run.status !== "skipped") {
+    steps.push({ id: `${run.id}-generated`, nodeId: generateNode, title: "Hans génère une réponse", result: run.status === "error" ? "Étape lancée avant l’erreur" : "Réponse générée" });
+  }
+  if (run.status === "published" || run.status === "error") {
+    steps.push({ id: `${run.id}-publish`, nodeId: publishNode, title: "Publication Google", result: run.message });
+  }
+  return steps;
 }
 
 function buildHansFlow(prompt: string, templates: AutomationFlow[], theme: string) {

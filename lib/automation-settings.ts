@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getStoredAutomationSettings, saveStoredAutomationSettings } from "@/lib/automation-execution-store";
 import { getMerchant } from "@/lib/merchants";
 import {
   DEFAULT_SENSITIVE_KEYWORDS,
@@ -53,7 +54,10 @@ export async function getAutomationSettings(merchant?: MerchantRow | null): Prom
     throw new Error(error.message);
   }
 
-  return data;
+  const storedSettings = await getStoredAutomationSettings(currentMerchant.id).catch(() => null);
+  return data && storedSettings
+    ? { ...data, ...storedSettings, id: data.id, merchant_id: data.merchant_id, created_at: data.created_at }
+    : data;
 }
 
 function normalizeInteger(value: number, min: number, max: number, fallback: number) {
@@ -214,6 +218,8 @@ export async function upsertAutomationSettings(partial: UpsertPayload, merchant?
       throw new Error(legacyResult.error.message);
     }
   }
+
+  await saveStoredAutomationSettings(currentMerchant.id, payload);
 
   revalidatePath("/settings");
   revalidatePath("/automations");

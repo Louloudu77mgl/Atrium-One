@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getGoogleBusinessLocations } from "@/lib/google-business-profile";
 import { getGoogleConnection, upsertGoogleConnection } from "@/lib/google-connections";
 import { syncGoogleBusinessReviews } from "@/lib/google-review-sync";
+import { runReviewAutomationsForMerchant } from "@/lib/review-automation-runner";
 import { getFreshGoogleAccessToken } from "@/lib/google-tokens";
 import { getMerchant } from "@/lib/merchants";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
     }
 
     const imported = await syncGoogleBusinessReviews(connectionToSync, merchant);
+    await runReviewAutomationsForMerchant(merchant.id, 5);
     revalidatePath("/dashboard");
     revalidatePath("/reviews");
     revalidatePath("/integrations");

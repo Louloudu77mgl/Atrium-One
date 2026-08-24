@@ -1,4 +1,5 @@
 import { syncGoogleBusinessReviews } from "@/lib/google-review-sync";
+import { runReviewAutomationsForMerchant } from "@/lib/review-automation-runner";
 import { upsertGoogleConnection } from "@/lib/google-connections";
 import type { GoogleBusinessLocation } from "@/lib/google-business-profile";
 import type { MerchantRow } from "@/lib/supabase/types";
@@ -38,6 +39,7 @@ export async function connectGoogleBusinessLocation({
 
   try {
     const imported = await syncGoogleBusinessReviews(connection, merchant);
+    await runReviewAutomationsForMerchant(merchant.id, 5);
     return { imported, syncError: null };
   } catch (error) {
     const syncError = error instanceof Error ? error.message : "Synchronisation Google impossible.";
@@ -49,4 +51,3 @@ export async function connectGoogleBusinessLocation({
     return { imported: 0, syncError };
   }
 }
-

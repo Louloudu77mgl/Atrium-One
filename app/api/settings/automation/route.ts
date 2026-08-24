@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { upsertAutomationSettings } from "@/lib/automation-settings";
 import { getMerchant } from "@/lib/merchants";
+import { runReviewAutomationsForMerchant } from "@/lib/review-automation-runner";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -59,7 +60,13 @@ export async function POST(request: Request) {
       social_cycle_weeks: payload.social_cycle_weeks
     }, merchant);
 
-    return NextResponse.json({ settings });
+    const shouldRunReviewAutomation = payload.reviews_auto_reply_enabled === true
+      || Boolean(payload.review_automation_mode && payload.review_automation_mode !== "disabled");
+    const automationResults = shouldRunReviewAutomation
+      ? await runReviewAutomationsForMerchant(merchant.id, 5)
+      : [];
+
+    return NextResponse.json({ settings, automationResults });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Impossible d’enregistrer l’automatisation." },

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getGoogleConnection, upsertGoogleConnection } from "@/lib/google-connections";
 import { syncGoogleBusinessReviews } from "@/lib/google-review-sync";
+import { runReviewAutomationsForMerchant } from "@/lib/review-automation-runner";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database, GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
 
@@ -35,6 +36,7 @@ export async function syncGoogleReviewsIfStale({
 
   try {
     const imported = await syncGoogleBusinessReviews(connection, merchant, databaseClient);
+    await runReviewAutomationsForMerchant(merchant.id, 5);
     return { attempted: true, imported, error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Synchronisation Google impossible.";

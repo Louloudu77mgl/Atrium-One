@@ -21,6 +21,7 @@ export type Review = {
   generatedReplyStatus?: GeneratedReplyStatus;
   generatedText?: string;
   isReplyEdited?: boolean;
+  replyCreatedAt?: string;
   publishedAt?: string;
 };
 
