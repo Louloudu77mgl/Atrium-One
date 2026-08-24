@@ -4,7 +4,12 @@ import { isEditorDocument } from "@/lib/social-editor/types";
 import type { InstagramConnectionRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-type GraphResponse = { id?: string; error?: { message?: string } };
+type GraphResponse = {
+  id?: string;
+  status_code?: "EXPIRED" | "ERROR" | "FINISHED" | "IN_PROGRESS" | "PUBLISHED";
+  status?: string;
+  error?: { message?: string };
+};
 
 export async function publishPostToInstagram({
   merchant,
@@ -60,6 +65,12 @@ export async function publishPostToInstagram({
     throw new Error(createData.error?.message ?? "Instagram n’a pas accepté ce média.");
   }
 
+  await waitForInstagramContainer({
+    containerId: createData.id,
+    accessToken: connection.access_token_encrypted,
+    version
+  });
+
   const publishResponse = await fetch(`https://graph.instagram.com/${version}/${connection.instagram_account_id}/media_publish`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -100,4 +111,29 @@ export async function publishPostToInstagram({
     .eq("merchant_id", merchant.id);
 
   return updatedPost;
+}
+
+async function waitForInstagramContainer({
+  containerId,
+  accessToken,
+  version
+}: {
+  containerId: string;
+  accessToken: string;
+  version: string;
+}) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const url = new URL(`https://graph.instagram.com/${version}/${containerId}`);
+    url.searchParams.set("fields", "status_code,status");
+    url.searchParams.set("access_token", accessToken);
+    const response = await fetch(url, { cache: "no-store" });
+    const data = await response.json() as GraphResponse;
+    if (!response.ok) throw new Error(data.error?.message ?? "Instagram n’a pas pu vérifier le média.");
+    if (data.status_code === "FINISHED" || data.status_code === "PUBLISHED") return;
+    if (data.status_code === "ERROR" || data.status_code === "EXPIRED") {
+      throw new Error(data.status || "Instagram n’a pas pu préparer le média.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+  }
+  throw new Error("Instagram prépare encore le média. La publication sera retentée au prochain passage.");
 }
