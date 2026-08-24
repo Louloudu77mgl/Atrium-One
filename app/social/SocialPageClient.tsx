@@ -325,7 +325,7 @@ export function SocialPageClient({
     connectionWatcher = window.setInterval(async () => {
       try {
         const response = await fetch("/api/instagram/status", { cache: "no-store" });
-        const data = await response.json() as { status?: string };
+        const data = await response.json() as { status?: string; lastError?: string | null };
 
         if (response.ok && data.status === "connected") {
           finishConnection("connected");
@@ -333,7 +333,7 @@ export function SocialPageClient({
         }
 
         if (response.ok && data.status === "error") {
-          finishConnection("error", "Instagram n’a pas pu finaliser la connexion. Vérifiez les autorisations puis réessayez.");
+          finishConnection("error", data.lastError ?? "Instagram n’a pas pu finaliser la connexion. Vérifiez les autorisations puis réessayez.");
           return;
         }
       } catch {}

@@ -27,7 +27,8 @@ export async function GET() {
     {
       status: connection?.status ?? "disconnected",
       username: connection?.instagram_username ?? null,
-      connectedAt: connection?.connected_at ?? null
+      connectedAt: connection?.connected_at ?? null,
+      lastError: connection?.last_error ?? null
     },
     {
       headers: {

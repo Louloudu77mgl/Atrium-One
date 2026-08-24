@@ -1,12 +1,23 @@
 import { cookies } from "next/headers";
+import { getConfiguredAppOrigin } from "@/lib/app-origin";
 
 export const instagramOAuthStateCookie = "atrium_instagram_oauth_state";
-const productionInstagramRedirectUri = "https://atrium-one-self.vercel.app/api/instagram/callback";
 
 export function getInstagramRedirectUri(origin: string) {
-  return process.env.NODE_ENV === "production"
-    ? productionInstagramRedirectUri
-    : new URL("/api/instagram/callback", origin).toString();
+  const configuredRedirectUri = (
+    process.env.INSTAGRAM_REDIRECT_URI
+    ?? process.env.META_REDIRECT_URI
+  )?.trim();
+
+  if (configuredRedirectUri) {
+    return configuredRedirectUri;
+  }
+
+  const appOrigin = process.env.NODE_ENV === "production"
+    ? getConfiguredAppOrigin()
+    : origin;
+
+  return new URL("/api/instagram/callback", appOrigin).toString();
 }
 
 export function getInstagramOAuthConfig(redirectUriOverride?: string) {

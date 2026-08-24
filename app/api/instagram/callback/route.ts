@@ -34,12 +34,16 @@ export async function GET(request: Request) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const oauthError = url.searchParams.get("error");
+  const oauthErrorDescription = url.searchParams.get("error_description")
+    ?? url.searchParams.get("error_message")
+    ?? url.searchParams.get("error_reason");
 
   console.info("[instagram/callback] oauth_returned", {
     origin,
     hasCode: Boolean(code),
     hasState: Boolean(state),
-    oauthError: oauthError ?? null
+    oauthError: oauthError ?? null,
+    oauthErrorDescription: oauthErrorDescription ?? null
   });
 
   if (!hasSupabaseEnv()) {
@@ -70,10 +74,11 @@ export async function GET(request: Request) {
   }
 
   if (oauthError) {
-    await recordInstagramError(merchant, "La connexion Instagram n’a pas été autorisée.");
+    const message = mapOAuthError(oauthError, oauthErrorDescription);
+    await recordInstagramError(merchant, message);
     return createOAuthCompletionResponse(origin, {
       status: "error",
-      message: "La connexion Instagram n’a pas été autorisée."
+      message
     });
   }
 
@@ -186,6 +191,20 @@ export async function GET(request: Request) {
       ? "Votre compte Instagram est connecté."
       : "Instagram est autorisé, mais le compte professionnel doit encore être vérifié."
   });
+}
+
+function mapOAuthError(error: string, description?: string | null) {
+  const source = `${error} ${description ?? ""}`.toLocaleLowerCase("fr-FR");
+  if (source.includes("access_denied") || source.includes("declined") || source.includes("denied")) {
+    return "L’autorisation Instagram a été refusée ou annulée.";
+  }
+  if (source.includes("scope") || source.includes("permission")) {
+    return "Meta n’a pas accordé les autorisations Instagram nécessaires à la publication.";
+  }
+  if (source.includes("professional") || source.includes("business")) {
+    return "Le compte Instagram doit être configuré en compte professionnel.";
+  }
+  return description?.trim() || "La connexion Instagram n’a pas été autorisée.";
 }
 
 function createOAuthCompletionResponse(

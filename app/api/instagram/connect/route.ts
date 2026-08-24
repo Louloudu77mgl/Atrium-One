@@ -52,6 +52,8 @@ export async function GET(request: Request) {
 
   const url = new URL("https://www.instagram.com/oauth/authorize");
   url.searchParams.set("force_reauth", "true");
+  url.searchParams.set("force_authentication", "1");
+  url.searchParams.set("enable_fb_login", "0");
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("redirect_uri", config.redirectUri);
   url.searchParams.set("state", state);
@@ -60,10 +62,7 @@ export async function GET(request: Request) {
     "scope",
     [
       "instagram_business_basic",
-      "instagram_business_content_publish",
-      "instagram_business_manage_comments",
-      "instagram_business_manage_messages",
-      "instagram_business_manage_insights"
+      "instagram_business_content_publish"
     ].join(",")
   );
 
