@@ -1,4 +1,6 @@
 import sharp from "sharp";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { fitEstimatedText } from "@/lib/social-editor/layout-safety";
@@ -9,6 +11,15 @@ type OpenAIImageBody = {
   data?: { b64_json?: string }[];
   error?: { message?: string };
 };
+
+let embeddedSocialFont: string | null = null;
+
+function getEmbeddedSocialFont() {
+  if (embeddedSocialFont) return embeddedSocialFont;
+  const font = readFileSync(join(process.cwd(), "node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf"));
+  embeddedSocialFont = font.toString("base64");
+  return embeddedSocialFont;
+}
 
 export async function composeAndStoreSocialPostVisual({
   merchant,
@@ -44,7 +55,8 @@ export async function composeAndStoreSocialPostVisual({
   const background = brand?.secondary_color ?? "#F3E8FF";
   const primary = brand?.primary_color ?? "#4C1D95";
   const accent = brand?.accent_color ?? "#A855F7";
-  const selectedFont = brand?.social_font_family ?? "Sora";
+  const selectedFont = "AtriumGeist";
+  const fontFace = `@font-face{font-family:'AtriumGeist';src:url(data:font/ttf;base64,${getEmbeddedSocialFont()}) format('truetype');font-style:normal;font-weight:100 900;}`;
   const showLogo = Boolean(brand?.show_logo_on_social_posts && merchant.logo_url);
   const logoPosition = brand?.social_logo_position ?? "top_left";
   const logoAtBottom = logoPosition.startsWith("bottom");
@@ -107,6 +119,7 @@ export async function composeAndStoreSocialPostVisual({
   const overlay = Buffer.from(`
     <svg width="1080" height="1080" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
       <defs>
+        <style>${fontFace}</style>
         <radialGradient id="vignette" cx="50%" cy="42%" r="72%">
           <stop offset="50%" stop-color="#120E1C" stop-opacity="0"/>
           <stop offset="100%" stop-color="#120E1C" stop-opacity="0.42"/>
@@ -115,9 +128,9 @@ export async function composeAndStoreSocialPostVisual({
       </defs>
       <rect width="1080" height="1080" fill="url(#vignette)"/>
       <rect width="1080" height="1080" fill="url(#shade)"/>
-      <text text-anchor="${layout.anchor}" font-family="${escapeXml(selectedFont)}, Arial, Helvetica, sans-serif" font-size="${hookFit.fontSize}" font-weight="800" fill="#FFFFFF" letter-spacing="-1.5" paint-order="stroke" stroke="${escapeXml(primary)}" stroke-opacity="0.28" stroke-width="3">${hookMarkup}</text>
+      <text text-anchor="${layout.anchor}" font-family="${selectedFont}" font-size="${hookFit.fontSize}" font-weight="800" fill="#FFFFFF" letter-spacing="-1.5" paint-order="stroke" stroke="${escapeXml(primary)}" stroke-opacity="0.28" stroke-width="3">${hookMarkup}</text>
       <rect x="${layout.accentX}" y="${layout.accentY}" width="116" height="6" rx="3" fill="${escapeXml(accent)}"/>
-      <text text-anchor="${layout.anchor}" font-family="${escapeXml(selectedFont)}, Arial, Helvetica, sans-serif" font-size="${subtitleFit.fontSize}" font-weight="500" fill="#FFFFFF">${subtitleMarkup}</text>
+      <text text-anchor="${layout.anchor}" font-family="${selectedFont}" font-size="${subtitleFit.fontSize}" font-weight="500" fill="#FFFFFF">${subtitleMarkup}</text>
     </svg>
   `);
   const composites: { input: Buffer; top: number; left: number }[] = [{ input: overlay, top: 0, left: 0 }];

@@ -51,7 +51,7 @@ export async function publishPostToInstagram({
   }
 
   const version = process.env.INSTAGRAM_GRAPH_API_VERSION ?? "v23.0";
-  const caption = [post.caption, post.hashtags.map((tag) => tag.startsWith("#") ? tag : `#${tag}`).join(" ")].filter(Boolean).join("\n\n");
+  const caption = [post.caption, post.cta, post.hashtags.map((tag) => tag.startsWith("#") ? tag : `#${tag}`).join(" ")].filter(Boolean).join("\n\n");
 
   const createResponse = await fetch(`https://graph.instagram.com/${version}/${connection.instagram_account_id}/media`, {
     method: "POST",
