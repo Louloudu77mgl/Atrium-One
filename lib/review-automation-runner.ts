@@ -1,5 +1,6 @@
 import { getGoogleOAuthConfig } from "@/lib/google-oauth";
 import {
+  listAutomationExecutionLogs,
   listStoredAutomationFlows,
   saveAutomationExecutionLog,
   type StoredAutomationFlow
@@ -98,10 +99,11 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
   let results: AutomationResult[];
 
   try {
-    const [{ data: merchant, error: merchantError }, { data: connection, error: connectionError }, storedFlows] = await Promise.all([
+    const [{ data: merchant, error: merchantError }, { data: connection, error: connectionError }, storedFlows, executionLogs] = await Promise.all([
       supabase.from("merchants").select("*").eq("id", merchantId).maybeSingle(),
       supabase.from("google_connections").select("*").eq("merchant_id", merchantId).eq("status", "connected").maybeSingle(),
-      listStoredAutomationFlows(merchantId).catch(() => [])
+      listStoredAutomationFlows(merchantId).catch(() => []),
+      listAutomationExecutionLogs(merchantId, 500).catch(() => [])
     ]);
 
     if (merchantError) throw new Error(merchantError.message);
@@ -113,12 +115,15 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
 
     if (!activeReviewFlows.length) {
       results = [{ merchant_id: merchantId, status: "skipped", message: "Aucun scénario Avis actif n’est enregistré pour ce compte." }];
-    } else if (activeReviewFlows.length > 1) {
-      results = [{ merchant_id: merchantId, status: "error", message: "Plusieurs scénarios Avis sont actifs. Désactivez-en un pour éviter une double réponse." }];
     } else if (!merchant || !connection?.google_location_id) {
       results = [{ merchant_id: merchantId, status: "skipped", message: "Google Business non connecté." }];
     } else {
-      results = await processMerchantReviews({ merchant, connection, flow: activeReviewFlows[0], limit });
+      const completedExecutions = new Set(
+        executionLogs
+          .filter((log) => log.review_name && log.flow_id && ["published", "drafted", "skipped"].includes(log.status))
+          .map((log) => `${log.review_name}:${log.flow_id}`)
+      );
+      results = await processMerchantReviews({ merchant, connection, flows: activeReviewFlows, completedExecutions, limit });
     }
   } catch (error) {
     results = [{
@@ -160,12 +165,14 @@ function defaultResultMessage(status: AutomationResult["status"]) {
 async function processMerchantReviews({
   merchant,
   connection,
-  flow,
+  flows,
+  completedExecutions,
   limit
 }: {
   merchant: MerchantRow;
   connection: GoogleConnectionRow;
-  flow: StoredAutomationFlow;
+  flows: StoredAutomationFlow[];
+  completedExecutions: Set<string>;
   limit: number;
 }) {
   const supabase = createSupabaseAdminClient();
@@ -185,21 +192,27 @@ async function processMerchantReviews({
   for (const review of candidates) {
     try {
       const rating = ratings[review.starRating ?? ""] ?? 3;
-      const plan = buildReviewFlowPlan(flow, rating);
-      if (plan.action === "disabled") {
+      const plans = flows
+        .filter((flow) => !completedExecutions.has(`${review.name}:${flow.id}`))
+        .map((flow) => buildReviewFlowPlan(flow, rating))
+        .filter((plan) => plan.action !== "disabled");
+      if (!plans.length) {
+        const alreadyHandled = flows.some((flow) => completedExecutions.has(`${review.name}:${flow.id}`));
         results.push({
           merchant_id: merchant.id,
           review_name: review.name,
           customer_name: getGoogleReviewerName(review),
           rating,
           status: "skipped",
-          message: "Aucun chemin connecté du scénario actif ne correspond à cet avis.",
-          flow_id: flow.id,
-          flow_title: flow.title
+          message: alreadyHandled
+            ? "Cet avis a déjà été traité par les scénarios actifs."
+            : "Aucun chemin connecté des scénarios actifs ne correspond à cet avis."
         });
         continue;
       }
-      results.push(await processGoogleReview({ merchant, review, accessToken, plan }));
+      for (const plan of plans) {
+        results.push(await processGoogleReview({ merchant, review, accessToken, plan }));
+      }
     } catch (error) {
       results.push({
         merchant_id: merchant.id,
@@ -246,9 +259,7 @@ async function processGoogleReview({
   if (existingReply?.is_edited) {
     return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Réponse modifiée manuellement : publication automatique ignorée.", flow_id: plan.flow.id, flow_title: plan.flow.title };
   }
-  if (existingReply && ["published", "published_auto", "published_manual"].includes(existingReply.status)) {
-    return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Réponse déjà publiée : aucune double exécution.", flow_id: plan.flow.id, flow_title: plan.flow.title };
-  }
+  const replyAlreadyPublished = Boolean(existingReply && ["published", "published_auto", "published_manual"].includes(existingReply.status));
   if (existingReply && plan.action === "validation") {
     return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Réponse déjà préparée et en attente de l’action prévue dans le flow.", flow_id: plan.flow.id, flow_title: plan.flow.title };
   }
@@ -307,6 +318,10 @@ async function processGoogleReview({
 
     if (node.type === "publish_review_reply") {
       if (!replyHtml || !replyId) throw new Error("Le flow tente de publier avant que Hans ait généré une réponse.");
+      if (replyAlreadyPublished || googlePublished) {
+        steps.push(step(node, "skipped", "Une réponse est déjà publiée sur Google ; aucune double publication."));
+        continue;
+      }
       if (plan.action !== "automatic" || node.mode !== "automatic") {
         await updateReviewStatus(localReview.id, "generated");
         steps.push(step(node, "waiting", "Publication en attente, conformément au mode de cette card."));
@@ -451,6 +466,10 @@ async function processGoogleReview({
         errorCount ? `${errorCount} action(s) en erreur` : ""
       ].filter(Boolean).join(" ; ");
       return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "published", message: details ? `Réponse Google publiée ; ${details}.` : `Scénario « ${plan.flow.title} » exécuté jusqu’au bout.`, flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
+    }
+
+    if (replyAlreadyPublished) {
+      return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "published", message: `Scénario « ${plan.flow.title} » exécuté ; la réponse Google existante n’a pas été republiée.`, flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
     }
 
     if (replyHtml) {

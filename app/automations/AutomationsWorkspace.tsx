@@ -343,12 +343,8 @@ export function AutomationsWorkspace({
     next.validationIssues = validateFlow(currentAutomation, capabilities);
     next.status = next.validationIssues.some((issue) => issue.level === "error") ? "incomplete" : "active";
     setToolbarFeedback(next.status === "active" ? "Flow validé, activation en cours" : "Activation impossible : corrigez les erreurs signalées");
-    const competingReviewFlows = next.status === "active" && next.nodes.some((node) => node.type === "google_review")
-      ? automations.filter((item) => item.id !== next.id && item.status === "active" && item.nodes.some((node) => node.type === "google_review"))
-      : [];
     setAutomations((items) => items.map((automation) => {
       if (automation.id === next.id) return { ...next, updatedAt: new Date().toISOString() };
-      if (competingReviewFlows.some((flow) => flow.id === automation.id)) return { ...automation, status: "paused", updatedAt: new Date().toISOString() };
       return automation;
     }));
 
@@ -365,7 +361,6 @@ export function AutomationsWorkspace({
     setAutosaveLabel("Activation serveur en cours...");
 
     try {
-      await Promise.all(competingReviewFlows.map((flow) => saveAutomationFlow({ ...flow, status: "paused", updatedAt: new Date().toISOString() })));
       await saveAutomationFlow(next);
       const response = await fetch("/api/settings/automation", {
         method: "POST",
@@ -508,18 +503,13 @@ export function AutomationsWorkspace({
     }
 
     const previousAutomations = automations;
-    const competingReviewFlows = shouldEnable && automation.nodes.some((node) => node.type === "google_review")
-      ? automations.filter((item) => item.id !== automationId && item.status === "active" && item.nodes.some((node) => node.type === "google_review"))
-      : [];
     setAutomations((items) => items.map((item) => {
       if (item.id === automationId) return { ...item, status: shouldEnable ? "active" : "paused", validationIssues: issues, updatedAt: new Date().toISOString() };
-      if (competingReviewFlows.some((flow) => flow.id === item.id)) return { ...item, status: "paused", updatedAt: new Date().toISOString() };
       return item;
     }));
     setHistoryFeedback(shouldEnable ? "Scénario activé." : "Scénario désactivé.");
 
     try {
-      await Promise.all(competingReviewFlows.map((flow) => saveAutomationFlow({ ...flow, status: "paused", updatedAt: new Date().toISOString() })));
       await syncScenarioStatus(automation, shouldEnable);
     } catch (error) {
       setAutomations(previousAutomations);
