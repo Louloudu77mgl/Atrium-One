@@ -1,15 +1,19 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { InstagramConnectionRow, MerchantRow } from "@/lib/supabase/types";
+import type { Database, InstagramConnectionRow, MerchantRow } from "@/lib/supabase/types";
 
-export async function getInstagramConnection(merchant?: MerchantRow | null): Promise<InstagramConnectionRow | null> {
+export async function getInstagramConnection(
+  merchant?: MerchantRow | null,
+  databaseClient?: SupabaseClient<Database>
+): Promise<InstagramConnectionRow | null> {
   const currentMerchant = merchant ?? (await getMerchant());
 
   if (!currentMerchant) {
     return null;
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = databaseClient ?? await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("instagram_connections")
     .select("*")

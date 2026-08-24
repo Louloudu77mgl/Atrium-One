@@ -17,7 +17,7 @@ export async function publishPostToInstagram({
   instagramConnection?: InstagramConnectionRow | null;
   supabaseClient?: Awaited<ReturnType<typeof createServerSupabaseClient>>;
 }) {
-  const connection = instagramConnection ?? await getInstagramConnection(merchant);
+  const connection = instagramConnection ?? await getInstagramConnection(merchant, supabaseClient);
 
   if (connection?.status !== "connected" || !connection.instagram_account_id || !connection.access_token_encrypted) {
     throw new Error("La connexion Instagram n’est pas encore active. Vous pouvez créer un brouillon et publier plus tard.");
