@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAutomationSettings } from "@/lib/automation-settings";
 import { getReviewAutomationDecision } from "@/lib/review-automation";
+import { HANS_REVIEW_REPLY_INSTRUCTIONS } from "@/lib/hans-review-reply-prompt";
 import { sanitizeHansHtml } from "@/lib/sanitize-hans-html";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -138,14 +139,7 @@ export async function POST(request: Request) {
     `Ton de réponse souhaité: ${responseTone}`,
     `Nom du client: ${authorName || "non renseigné"}`,
     `Note de l'avis: ${rating}/5`,
-    `Avis client: ${reviewText}`,
-    `Signature obligatoire: <p>L’équipe ${merchantName === "votre boutique" ? "de votre boutique" : merchantName}</p>`,
-    "",
-    "Rédige une réponse Google en français, prête à afficher dans l'interface.",
-    "La réponse doit donner l'impression qu'une personne de la boutique a vraiment lu l'avis.",
-    "Reprends explicitement 1 à 3 éléments concrets du commentaire client, sans en inventer.",
-    "Réponds à la joie, la douleur, la déception, l'attente ou le point précis exprimé par le client.",
-    "Adapte fortement la réponse à la note, au sentiment et au contenu réel de l'avis."
+    `Avis client: ${reviewText}`
   ].join("\n");
 
   const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
@@ -156,10 +150,9 @@ export async function POST(request: Request) {
     },
     body: JSON.stringify({
       model,
-      instructions:
-        "Tu es Hans, l'agent IA d'AtriumOne. Tu aides les commerçants de proximité à répondre à leurs avis Google avec chaleur, empathie et précision. Ta réponse doit donner l'impression qu'elle a été écrite par quelqu'un qui a vraiment lu l'avis. Reprends les détails concrets du commentaire client. La réponse doit être personnalisée, humaine, professionnelle et rassurante.\n\nObjectif principal :\n- ne jamais produire une réponse générique ou passe-partout\n- répondre concrètement à la joie, la douleur, la déception, l'attente ou le problème du client\n- reprendre explicitement 1 à 3 éléments concrets de l'avis client\n- adapter fortement la réponse à la note, au sentiment et au contenu réel de l'avis\n- rester humain, commerçant, naturel, jamais robotique\n\nMéthode obligatoire, sans l'afficher :\n1. Repère le prénom ou le nom du client si fourni.\n2. Repère l'émotion principale : joie, satisfaction, déception, frustration, colère, inquiétude, attente ou nuance.\n3. Repère 1 à 3 détails concrets dans l'avis : produit, bouquet, livraison, retard, fraîcheur, accueil, prix, commande, conseil, attente, service, occasion, geste apprécié ou problème cité.\n4. Rédige une réponse qui répond précisément à ces détails, sans inventer d'information absente de l'avis.\n\nRègles générales :\n- ton chaleureux, professionnel et adapté au ton demandé\n- 3 à 6 paragraphes courts si nécessaire\n- remercier le client de façon sincère\n- utiliser le prénom ou le nom du client si disponible\n- ne jamais inventer un détail absent de l'avis\n- éviter les phrases vagues si elles ne sont pas reliées à un détail concret\n- ne pas utiliser de formule froide comme « Nous prenons note »\n- ne pas faire de promesse irréaliste\n- ne jamais mentionner l'IA ou AtriumOne dans la réponse finale\n\nAvis négatif :\n- remercier sincèrement le client\n- reconnaître précisément le problème évoqué\n- formuler des excuses naturelles si l'expérience n'a pas été à la hauteur\n- expliquer brièvement que ce n'est pas le niveau attendu par la boutique\n- proposer une solution ou une prise de contact concrète\n- montrer que l'avis aide la boutique à s'améliorer\n- ne jamais être défensif, agressif ou accusateur\n\nAvis positif :\n- remercier chaleureusement le client\n- reprendre les détails positifs cités dans l'avis\n- valoriser l'équipe, le savoir-faire, l'accueil, le conseil ou le produit concerné\n- inviter le client à revenir naturellement\n\nAvis neutre :\n- remercier le client\n- reconnaître le point positif éventuel\n- répondre au point d'amélioration avec précision\n- proposer une meilleure expérience la prochaine fois\n\nStructure conseillée :\n- <p>Bonjour [prénom ou nom],</p>\n- <p>Remerciement sincère + reprise d'un détail concret de l'avis.</p>\n- <p>Réponse précise à la joie, la douleur ou le point d'amélioration.</p>\n- <p>Solution, invitation ou prochaine étape adaptée.</p>\n- signature obligatoire\n\nFormat de sortie obligatoire :\n- retourne uniquement du HTML simple, sans Markdown ni texte hors balises\n- HTML autorisé uniquement : <p>, <br>, <strong>, <em>\n- aucun attribut HTML, aucune classe CSS\n- interdit : <script>, <style>, iframe, liens externes, images\n- la signature est toujours le dernier paragraphe exact : <p>L’équipe [merchant_name]</p>\n- si merchant_name est absent, utiliser : <p>L’équipe de votre boutique</p>",
+      instructions: HANS_REVIEW_REPLY_INSTRUCTIONS,
       input: prompt,
-      max_output_tokens: 700
+      max_output_tokens: 300
     })
   });
 

@@ -1,4 +1,5 @@
 import { getGoogleOAuthConfig } from "@/lib/google-oauth";
+import { HANS_REVIEW_REPLY_INSTRUCTIONS } from "@/lib/hans-review-reply-prompt";
 import {
   listAutomationExecutionLogs,
   listStoredAutomationFlows,
@@ -673,17 +674,16 @@ async function generateHansReply({
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
-      instructions: "Tu rédiges une réponse Google Business humaine, précise et professionnelle en français. Reprends uniquement les détails réellement présents dans l’avis. Ne mentionne jamais l’IA. Retourne uniquement du HTML simple avec les balises p, br, strong ou em.",
+      instructions: HANS_REVIEW_REPLY_INSTRUCTIONS,
       input: [
         `Commerce : ${merchant.business_name}`,
         `Activité : ${merchant.business_type}`,
         `Client : ${author}`,
         `Note : ${rating}/5`,
         `Avis : ${reviewText}`,
-        `Ton demandé par le scénario : ${tone ?? merchant.response_tone ?? "chaleureux"}`,
-        `Termine exactement par : <p>L’équipe ${merchant.business_name}</p>`
+        `Ton demandé par le scénario : ${tone ?? merchant.response_tone ?? "chaleureux"}`
       ].join("\n"),
-      max_output_tokens: 700
+      max_output_tokens: 300
     }),
     cache: "no-store"
   });
