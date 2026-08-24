@@ -340,68 +340,88 @@ async function processGoogleReview({
     }
 
     if (node.type === "prepare_instagram") {
-      socialPost = await createTriggeredSocialDraft({
-        merchant,
-        theme: String(node.config.theme ?? "Avis client"),
-        source: `Avis Google ${rating}/5 : ${reviewText}`,
-        supabaseClient: supabase
-      });
-      steps.push(step(node, "success", `Brouillon Instagram « ${socialPost.title} » créé.`));
+      try {
+        socialPost = await createTriggeredSocialDraft({
+          merchant,
+          theme: String(node.config.theme ?? "Avis client"),
+          source: `Avis Google ${rating}/5 : ${reviewText}`,
+          supabaseClient: supabase
+        });
+        steps.push(step(node, "success", `Brouillon Instagram « ${socialPost.title} » créé.`));
+      } catch (error) {
+        socialPost = null;
+        steps.push(step(node, "error", error instanceof Error ? error.message : "Préparation Instagram impossible."));
+      }
       continue;
     }
 
     if (node.type === "publish_instagram") {
-      if (!socialPost) throw new Error("Le flow tente de publier sur Instagram avant de préparer la publication.");
+      if (!socialPost) {
+        steps.push(step(node, "skipped", "Publication Instagram ignorée car aucun brouillon n’a pu être préparé."));
+        continue;
+      }
       if (node.mode !== "automatic") {
         steps.push(step(node, "waiting", "Publication Instagram enregistrée en brouillon, conformément au mode de cette card."));
         continue;
       }
-      socialPost = await publishPostToInstagram({ merchant, post: socialPost, supabaseClient: supabase });
-      steps.push(step(node, "success", "Publication publiée sur Instagram."));
+      try {
+        socialPost = await publishPostToInstagram({ merchant, post: socialPost, supabaseClient: supabase });
+        steps.push(step(node, "success", "Publication publiée sur Instagram."));
+      } catch (error) {
+        steps.push(step(node, "error", error instanceof Error ? error.message : "Publication Instagram impossible."));
+      }
       continue;
     }
 
     if (node.type === "generate_email") {
-      const dashboard = await getEmailingDashboardData(merchant, [], supabase);
-      const goal = String(node.config.goal ?? "Partager une actualité avec les clients");
-      const content = await generateEmailWithHans({
-        merchant,
-        brand: dashboard.brand,
-        brief: `${goal}. Point de départ : un avis Google ${rating}/5 vient d’être reçu.`,
-        campaignType: goal.toLocaleLowerCase("fr-FR").includes("réactiv") ? "reactivation" : "newsletter",
-        segmentLabel: "Tous les clients consentants"
-      });
-      const configuredSubject = plan.nodes.find((candidate) => candidate.type === "send_email")?.config.subject;
-      if (configuredSubject) content.subject = String(configuredSubject).slice(0, 120);
-      const recipients = createEmailRecipients(dashboard.subscribers);
-      emailCampaign = await createEmailCampaign({
-        merchant_id: merchant.id,
-        name: content.subject,
-        campaign_type: goal.toLocaleLowerCase("fr-FR").includes("réactiv") ? "reactivation" : "newsletter",
-        brief: goal,
-        segment_rules: [{ id: "all_customers" }],
-        segment_mode: "all",
-        segment_label: "Tous les clients consentants",
-        recipient_count: recipients.length,
-        recipients,
-        content,
-        status: "draft",
-        scheduled_at: null,
-        sent_at: null,
-        sent_count: 0,
-        open_count: 0,
-        click_count: 0,
-        open_rate: 0,
-        click_rate: 0,
-        provider_message_ids: [],
-        error_message: null
-      });
-      steps.push(step(node, "success", `E-mail « ${content.subject} » généré pour ${recipients.length} client(s) consentant(s).`));
+      try {
+        const dashboard = await getEmailingDashboardData(merchant, [], supabase);
+        const goal = String(node.config.goal ?? "Partager une actualité avec les clients");
+        const content = await generateEmailWithHans({
+          merchant,
+          brand: dashboard.brand,
+          brief: `${goal}. Point de départ : un avis Google ${rating}/5 vient d’être reçu.`,
+          campaignType: goal.toLocaleLowerCase("fr-FR").includes("réactiv") ? "reactivation" : "newsletter",
+          segmentLabel: "Tous les clients consentants"
+        });
+        const configuredSubject = plan.nodes.find((candidate) => candidate.type === "send_email")?.config.subject;
+        if (configuredSubject) content.subject = String(configuredSubject).slice(0, 120);
+        const recipients = createEmailRecipients(dashboard.subscribers);
+        emailCampaign = await createEmailCampaign({
+          merchant_id: merchant.id,
+          name: content.subject,
+          campaign_type: goal.toLocaleLowerCase("fr-FR").includes("réactiv") ? "reactivation" : "newsletter",
+          brief: goal,
+          segment_rules: [{ id: "all_customers" }],
+          segment_mode: "all",
+          segment_label: "Tous les clients consentants",
+          recipient_count: recipients.length,
+          recipients,
+          content,
+          status: "draft",
+          scheduled_at: null,
+          sent_at: null,
+          sent_count: 0,
+          open_count: 0,
+          click_count: 0,
+          open_rate: 0,
+          click_rate: 0,
+          provider_message_ids: [],
+          error_message: null
+        });
+        steps.push(step(node, "success", `E-mail « ${content.subject} » généré pour ${recipients.length} client(s) consentant(s).`));
+      } catch (error) {
+        emailCampaign = null;
+        steps.push(step(node, "error", error instanceof Error ? error.message : "Génération de l’e-mail impossible."));
+      }
       continue;
     }
 
     if (node.type === "send_email") {
-      if (!emailCampaign) throw new Error("Le flow tente d’envoyer un e-mail avant que Hans ait créé la campagne.");
+      if (!emailCampaign) {
+        steps.push(step(node, "skipped", "Envoi ignoré car aucune campagne e-mail n’a pu être créée."));
+        continue;
+      }
       if (node.mode !== "automatic") {
         steps.push(step(node, "waiting", "E-mail conservé en brouillon, conformément au mode de cette card."));
         continue;
@@ -410,13 +430,17 @@ async function processGoogleReview({
         steps.push(step(node, "waiting", "Aucun client consentant : la campagne reste en brouillon."));
         continue;
       }
-      emailCampaign = await dispatchEmailCampaign({
-        campaign: emailCampaign,
-        merchant,
-        origin: getApplicationOrigin(),
-        supabaseClient: supabase
-      });
-      steps.push(step(node, "success", `E-mail envoyé à ${emailCampaign.sent_count} client(s).`));
+      try {
+        emailCampaign = await dispatchEmailCampaign({
+          campaign: emailCampaign,
+          merchant,
+          origin: getApplicationOrigin(),
+          supabaseClient: supabase
+        });
+        steps.push(step(node, "success", `E-mail envoyé à ${emailCampaign.sent_count} client(s).`));
+      } catch (error) {
+        steps.push(step(node, "error", error instanceof Error ? error.message : "Envoi de l’e-mail impossible."));
+      }
       continue;
     }
 
@@ -430,7 +454,12 @@ async function processGoogleReview({
 
     if (googlePublished) {
       const waitingCount = steps.filter((current) => current.status === "waiting").length;
-      return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "published", message: waitingCount ? `Scénario « ${plan.flow.title} » exécuté ; ${waitingCount} action(s) attendent une validation.` : `Scénario « ${plan.flow.title} » exécuté jusqu’au bout.`, flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
+      const errorCount = steps.filter((current) => current.status === "error").length;
+      const details = [
+        waitingCount ? `${waitingCount} action(s) attendent une validation` : "",
+        errorCount ? `${errorCount} action(s) en erreur` : ""
+      ].filter(Boolean).join(" ; ");
+      return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "published", message: details ? `Réponse Google publiée ; ${details}.` : `Scénario « ${plan.flow.title} » exécuté jusqu’au bout.`, flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
     }
 
     if (replyHtml) {
