@@ -15,6 +15,65 @@ export type AutomationExecutionLog = {
   status: "published" | "drafted" | "skipped" | "error";
   message: string;
   created_at: string;
+  flow_id?: string | null;
+  flow_title?: string | null;
+  steps?: Array<{
+    node_id: string;
+    node_type: string;
+    title: string;
+    status: "success" | "waiting" | "skipped" | "error";
+    result: string;
+  }>;
+};
+
+export type StoredAutomationFlow = {
+  id: string;
+  title: string;
+  description: string;
+  summary: string;
+  channel: string;
+  category?: string;
+  installMinutes?: number;
+  difficulty?: "Simple" | "Intermédiaire" | "Avancé";
+  illustration?: string;
+  status: "active" | "paused" | "draft" | "error" | "incomplete";
+  source: "template" | "manual" | "hans" | "existing";
+  nodes: Array<{
+    id: string;
+    type: string;
+    category: "trigger" | "condition" | "action" | "delay" | "control";
+    title: string;
+    description: string;
+    icon: string;
+    color: string;
+    x: number;
+    y: number;
+    width?: number;
+    config: Record<string, string | number | boolean>;
+    mode?: "automatic" | "semi_automatic" | "draft_only";
+    status?: "idle" | "ready" | "warning" | "error";
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    branch: "default" | "yes" | "no";
+    label?: string;
+  }>;
+  updatedAt: string;
+  lastSavedLabel?: string;
+  version: number;
+  validationIssues: Array<{
+    id: string;
+    level: "error" | "warning";
+    message: string;
+    nodeId?: string;
+    actionLabel?: string;
+    actionHref?: string;
+  }>;
+  executionHistory: unknown[];
+  merchant_id?: string;
+  saved_at?: string;
 };
 
 type StoredAutomationSettings = Partial<MerchantAutomationSettingsRow> & {
@@ -120,4 +179,55 @@ export async function listAutomationExecutionLogs(merchantId: string, limit = 10
   return logs
     .filter((log): log is AutomationExecutionLog => Boolean(log && log.merchant_id === merchantId))
     .sort((left, right) => right.created_at.localeCompare(left.created_at));
+}
+
+function safeFlowId(flowId: string) {
+  const normalized = flowId.trim().replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 160);
+  if (!normalized) throw new Error("Identifiant de scénario invalide.");
+  return normalized;
+}
+
+export async function saveStoredAutomationFlow(merchantId: string, flow: StoredAutomationFlow) {
+  const stored: StoredAutomationFlow = {
+    ...flow,
+    merchant_id: merchantId,
+    saved_at: new Date().toISOString(),
+    executionHistory: []
+  };
+  await uploadJson(`merchants/${merchantId}/flows/${safeFlowId(flow.id)}.json`, stored, true);
+  return stored;
+}
+
+export async function listStoredAutomationFlows(merchantId: string) {
+  await ensureAutomationBucket();
+  const supabase = createSupabaseAdminClient();
+  const prefix = `merchants/${merchantId}/flows`;
+  const { data, error } = await supabase.storage.from(AUTOMATION_BUCKET).list(prefix, {
+    limit: 200,
+    sortBy: { column: "created_at", order: "asc" }
+  });
+  if (error) throw new Error(error.message);
+
+  const flows = await Promise.all(
+    (data ?? [])
+      .filter((item) => item.name.endsWith(".json"))
+      .map((item) => downloadJson<StoredAutomationFlow>(`${prefix}/${item.name}`))
+  );
+
+  return flows.filter((flow): flow is StoredAutomationFlow => Boolean(
+    flow &&
+    flow.merchant_id === merchantId &&
+    typeof flow.id === "string" &&
+    Array.isArray(flow.nodes) &&
+    Array.isArray(flow.edges)
+  ));
+}
+
+export async function deleteStoredAutomationFlow(merchantId: string, flowId: string) {
+  await ensureAutomationBucket();
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase.storage
+    .from(AUTOMATION_BUCKET)
+    .remove([`merchants/${merchantId}/flows/${safeFlowId(flowId)}.json`]);
+  if (error) throw new Error(error.message);
 }

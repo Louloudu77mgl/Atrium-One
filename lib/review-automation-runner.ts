@@ -1,6 +1,10 @@
 import { getGoogleOAuthConfig } from "@/lib/google-oauth";
-import { getReviewAutomationDecision } from "@/lib/review-automation";
-import { getStoredAutomationSettings, saveAutomationExecutionLog } from "@/lib/automation-execution-store";
+import {
+  getStoredAutomationSettings,
+  listStoredAutomationFlows,
+  saveAutomationExecutionLog,
+  type StoredAutomationFlow
+} from "@/lib/automation-execution-store";
 import { hansHtmlToPlainText, sanitizeHansHtml } from "@/lib/sanitize-hans-html";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { GoogleConnectionRow, MerchantAutomationSettingsRow, MerchantRow } from "@/lib/supabase/types";
@@ -35,6 +39,24 @@ export type AutomationResult = {
   rating?: number;
   status: "published" | "drafted" | "skipped" | "error";
   message?: string;
+  flow_id?: string;
+  flow_title?: string;
+  steps?: AutomationResultStep[];
+};
+
+type AutomationResultStep = {
+  node_id: string;
+  node_type: string;
+  title: string;
+  status: "success" | "waiting" | "skipped" | "error";
+  result: string;
+};
+
+type ReviewFlowPlan = {
+  flow: StoredAutomationFlow;
+  nodes: StoredAutomationFlow["nodes"];
+  action: "automatic" | "validation" | "disabled";
+  tone: string | null;
 };
 
 const ratings: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
@@ -70,11 +92,12 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
   let results: AutomationResult[];
 
   try {
-    const [{ data: databaseSettings, error: settingsError }, { data: merchant, error: merchantError }, { data: connection, error: connectionError }, storedSettings] = await Promise.all([
+    const [{ data: databaseSettings, error: settingsError }, { data: merchant, error: merchantError }, { data: connection, error: connectionError }, storedSettings, storedFlows] = await Promise.all([
       supabase.from("merchant_automation_settings").select("*").eq("merchant_id", merchantId).maybeSingle(),
       supabase.from("merchants").select("*").eq("id", merchantId).maybeSingle(),
       supabase.from("google_connections").select("*").eq("merchant_id", merchantId).eq("status", "connected").maybeSingle(),
-      getStoredAutomationSettings(merchantId).catch(() => null)
+      getStoredAutomationSettings(merchantId).catch(() => null),
+      listStoredAutomationFlows(merchantId).catch(() => [])
     ]);
 
     if (settingsError) throw new Error(settingsError.message);
@@ -85,12 +108,18 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
       ? { ...databaseSettings, ...storedSettings, id: databaseSettings.id, merchant_id: databaseSettings.merchant_id, created_at: databaseSettings.created_at }
       : null;
 
+    const activeReviewFlows = storedFlows
+      .filter((flow) => flow.status === "active" && flow.nodes.some((node) => node.type === "google_review"))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
     if (!settings?.reviews_auto_reply_enabled) {
       results = [{ merchant_id: merchantId, status: "skipped", message: "Automatisation des avis désactivée." }];
+    } else if (!activeReviewFlows.length) {
+      results = [{ merchant_id: merchantId, status: "skipped", message: "Aucun scénario Avis actif n’est enregistré pour ce compte." }];
     } else if (!merchant || !connection?.google_location_id) {
       results = [{ merchant_id: merchantId, status: "skipped", message: "Google Business non connecté." }];
     } else {
-      results = await processMerchantReviews({ merchant, connection, settings, limit });
+      results = await processMerchantReviews({ merchant, connection, settings, flows: activeReviewFlows, limit });
     }
   } catch (error) {
     results = [{
@@ -108,7 +137,10 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
     customer_name: result.customer_name ?? null,
     rating: result.rating ?? null,
     status: result.status,
-    message: result.message ?? defaultResultMessage(result.status)
+    message: result.message ?? defaultResultMessage(result.status),
+    flow_id: result.flow_id ?? null,
+    flow_title: result.flow_title ?? null,
+    steps: result.steps
   }).catch((error) => {
     console.error("[review-automation] execution_log_failed", {
       merchantId: result.merchant_id,
@@ -130,11 +162,13 @@ async function processMerchantReviews({
   merchant,
   connection,
   settings,
+  flows,
   limit
 }: {
   merchant: MerchantRow;
   connection: GoogleConnectionRow;
   settings: MerchantAutomationSettingsRow;
+  flows: StoredAutomationFlow[];
   limit: number;
 }) {
   const supabase = createSupabaseAdminClient();
@@ -145,7 +179,10 @@ async function processMerchantReviews({
     .eq("merchant_id", merchant.id);
 
   const reviews = await listGoogleReviews(accessToken, connection.google_location_id as string);
-  const activationTime = new Date(settings.updated_at ?? settings.created_at).getTime();
+  const activationTime = Math.min(
+    new Date(settings.updated_at ?? settings.created_at).getTime(),
+    ...flows.map((flow) => new Date(flow.updatedAt).getTime())
+  );
   const candidates = reviews
     .filter((review) => !review.reviewReply?.comment && review.name && review.createTime)
     .filter((review) => new Date(review.createTime as string).getTime() >= activationTime)
@@ -155,7 +192,21 @@ async function processMerchantReviews({
 
   for (const review of candidates) {
     try {
-      results.push(await processGoogleReview({ merchant, settings, review, accessToken }));
+      const rating = ratings[review.starRating ?? ""] ?? 3;
+      const plans = flows.map((flow) => buildReviewFlowPlan(flow, rating));
+      const plan = plans.find((candidate) => candidate.action !== "disabled");
+      if (!plan) {
+        results.push({
+          merchant_id: merchant.id,
+          review_name: review.name,
+          customer_name: getGoogleReviewerName(review),
+          rating,
+          status: "skipped",
+          message: "Aucun chemin actif du scénario ne correspond à cet avis."
+        });
+        continue;
+      }
+      results.push(await processGoogleReview({ merchant, review, accessToken, plan }));
     } catch (error) {
       results.push({
         merchant_id: merchant.id,
@@ -177,24 +228,18 @@ async function processMerchantReviews({
 
 async function processGoogleReview({
   merchant,
-  settings,
   review,
-  accessToken
+  accessToken,
+  plan
 }: {
   merchant: MerchantRow;
-  settings: MerchantAutomationSettingsRow;
   review: GoogleReview;
   accessToken: string;
+  plan: ReviewFlowPlan;
 }): Promise<AutomationResult> {
   const supabase = createSupabaseAdminClient();
   const rating = ratings[review.starRating ?? ""] ?? 3;
   const reviewText = review.comment?.trim() || "Avis sans commentaire";
-  const decision = getReviewAutomationDecision({ rating, reviewText, settings });
-
-  if (decision.action === "disabled") {
-    return { merchant_id: merchant.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Automatisation désactivée pour cette note." };
-  }
-
   const localReview = await findOrCreateReview({ merchant, review, rating, reviewText });
   const { data: existingReply, error: existingReplyError } = await supabase
     .from("generated_replies")
@@ -206,49 +251,177 @@ async function processGoogleReview({
 
   if (existingReplyError) throw new Error(existingReplyError.message);
   if (existingReply?.is_edited) {
-    return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Réponse modifiée manuellement : publication automatique ignorée." };
+    return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Réponse modifiée manuellement : publication automatique ignorée.", flow_id: plan.flow.id, flow_title: plan.flow.title };
+  }
+  if (existingReply && ["published", "published_auto", "published_manual"].includes(existingReply.status)) {
+    return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Réponse déjà publiée : aucune double exécution.", flow_id: plan.flow.id, flow_title: plan.flow.title };
+  }
+  if (existingReply && plan.action === "validation") {
+    return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Réponse déjà préparée et en attente de l’action prévue dans le flow.", flow_id: plan.flow.id, flow_title: plan.flow.title };
   }
 
-  const replyHtml = existingReply?.reply_text || await generateHansReply({ merchant, review, rating, reviewText });
+  let replyHtml = existingReply?.reply_text ?? null;
   let replyId = existingReply?.id;
+  const steps: AutomationResultStep[] = [];
+  let activeNode: StoredAutomationFlow["nodes"][number] | null = null;
 
-  if (!replyId) {
-    const { data: insertedReply, error: insertError } = await supabase
-      .from("generated_replies")
-      .insert({
-        review_id: localReview.id,
-        generated_text: replyHtml,
-        reply_text: replyHtml,
-        status: "generated",
-        is_edited: false,
-        edited_at: null
-      })
-      .select("id")
-      .single();
-    if (insertError) throw new Error(insertError.message);
-    replyId = insertedReply.id;
-  }
+  try {
+    for (const node of plan.nodes) {
+      activeNode = node;
+    if (node.type === "google_review") {
+      steps.push(step(node, "success", `Avis ${rating}/5 reçu pour ce compte.`));
+      continue;
+    }
 
-  if (decision.requiresValidation || decision.blockedBySafety) {
-    await updateReviewStatus(localReview.id, "generated");
+    if (node.type === "review_rating_gte") {
+      const threshold = Number(node.config.rating ?? 4);
+      steps.push(step(node, "success", rating >= threshold ? `Condition validée : ${rating} ≥ ${threshold}.` : `Condition non validée : ${rating} < ${threshold}.`));
+      continue;
+    }
+
+    if (node.type === "generate_review_reply") {
+      if (!replyHtml) {
+        replyHtml = await generateHansReply({ merchant, review, rating, reviewText, tone: String(node.config.tone ?? plan.tone ?? merchant.response_tone ?? "chaleureux") });
+      }
+      if (!replyId) {
+        const { data: insertedReply, error: insertError } = await supabase
+          .from("generated_replies")
+          .insert({
+            review_id: localReview.id,
+            generated_text: replyHtml,
+            reply_text: replyHtml,
+            status: "generated",
+            is_edited: false,
+            edited_at: null
+          })
+          .select("id")
+          .single();
+        if (insertError) throw new Error(insertError.message);
+        replyId = insertedReply.id;
+      }
+      steps.push(step(node, "success", `Réponse générée avec le ton ${String(node.config.tone ?? plan.tone ?? "configuré")}.`));
+      continue;
+    }
+
+    if (node.type === "notify_merchant") {
+      await updateReviewStatus(localReview.id, "generated");
+      steps.push(step(node, "success", String(node.config.message ?? "Notification disponible dans AtriumOne.")));
+      continue;
+    }
+
+    if (node.type === "publish_review_reply") {
+      if (!replyHtml || !replyId) throw new Error("Le flow tente de publier avant que Hans ait généré une réponse.");
+      if (plan.action !== "automatic" || node.mode !== "automatic") {
+        await updateReviewStatus(localReview.id, "generated");
+        steps.push(step(node, "waiting", "Publication en attente, conformément au mode de cette card."));
+        return {
+          merchant_id: merchant.id,
+          local_review_id: localReview.id,
+          review_name: review.name,
+          customer_name: getGoogleReviewerName(review),
+          rating,
+          status: "drafted",
+          message: "Le scénario a préparé la réponse et attend l’action prévue dans le flow.",
+          flow_id: plan.flow.id,
+          flow_title: plan.flow.title,
+          steps
+        };
+      }
+
+      await publishGoogleReply({ reviewName: review.name as string, replyHtml, replyId, reviewId: localReview.id, accessToken });
+      steps.push(step(node, "success", "Réponse publiée sur Google."));
+      return {
+        merchant_id: merchant.id,
+        local_review_id: localReview.id,
+        review_name: review.name,
+        customer_name: getGoogleReviewerName(review),
+        rating,
+        status: "published",
+        message: `Scénario « ${plan.flow.title} » exécuté : réponse publiée sur Google.`,
+        flow_id: plan.flow.id,
+        flow_title: plan.flow.title,
+        steps
+      };
+    }
+
+    if (node.type === "stop_flow") {
+      steps.push(step(node, "skipped", "Scénario arrêté par cette card."));
+      return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Scénario arrêté par le flow.", flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
+    }
+
+    throw new Error(`La card « ${node.title} » (${node.type}) n’a pas d’exécuteur compatible avec le déclencheur Avis Google.`);
+    }
+
+    if (replyHtml) {
+      await updateReviewStatus(localReview.id, "generated");
+      return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "drafted", message: "Le flow a généré une réponse mais ne contient aucune card de publication.", flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
+    }
+
+    return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Le chemin exécuté ne contient aucune action de réponse.", flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erreur inconnue";
+    if (activeNode && !steps.some((current) => current.node_id === activeNode?.id && current.status === "error")) {
+      steps.push(step(activeNode, "error", message));
+    }
     return {
       merchant_id: merchant.id,
       local_review_id: localReview.id,
       review_name: review.name,
       customer_name: getGoogleReviewerName(review),
       rating,
-      status: "drafted",
-      message: decision.blockedBySafety ? `Mot sensible détecté : ${decision.sensitiveKeyword}` : "Validation humaine requise par le workflow."
+      status: "error",
+      message,
+      flow_id: plan.flow.id,
+      flow_title: plan.flow.title,
+      steps
     };
   }
+}
 
+function buildReviewFlowPlan(flow: StoredAutomationFlow, rating: number): ReviewFlowPlan {
+  const nodesById = new Map(flow.nodes.map((node) => [node.id, node]));
+  const nodes: StoredAutomationFlow["nodes"] = [];
+  const visited = new Set<string>();
+  let current = flow.nodes.find((node) => node.type === "google_review");
+  let requiresValidation = false;
+  let action: ReviewFlowPlan["action"] = "disabled";
+  let tone: string | null = null;
+
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    nodes.push(current);
+
+    if (current.type === "stop_flow") break;
+    if (current.type === "generate_review_reply") tone = String(current.config.tone ?? "Chaleureux");
+    if (current.category === "action" && current.mode !== "automatic") requiresValidation = true;
+    if (current.type === "publish_review_reply") {
+      action = current.mode === "automatic" && !requiresValidation ? "automatic" : "validation";
+      break;
+    }
+
+    let branch: "default" | "yes" | "no" = "default";
+    if (current.category === "condition") {
+      if (current.type !== "review_rating_gte") return { flow, nodes, action: "disabled", tone };
+      branch = rating >= Number(current.config.rating ?? 4) ? "yes" : "no";
+    }
+    const edge = flow.edges.find((candidate) => candidate.source === current?.id && candidate.branch === branch);
+    current = edge ? nodesById.get(edge.target) : undefined;
+  }
+
+  if (action === "disabled" && nodes.some((node) => node.type === "generate_review_reply")) action = "validation";
+  return { flow, nodes, action, tone };
+}
+
+function step(node: StoredAutomationFlow["nodes"][number], status: AutomationResultStep["status"], result: string): AutomationResultStep {
+  return { node_id: node.id, node_type: node.type, title: node.title, status, result };
+}
+
+async function publishGoogleReply({ reviewName, replyHtml, replyId, reviewId, accessToken }: { reviewName: string; replyHtml: string; replyId: string; reviewId: string; accessToken: string }) {
+  const supabase = createSupabaseAdminClient();
   const plainReply = hansHtmlToPlainText(replyHtml);
-  const publishResponse = await fetch(`https://mybusiness.googleapis.com/v4/${review.name}/reply`, {
+  const publishResponse = await fetch(`https://mybusiness.googleapis.com/v4/${reviewName}/reply`, {
     method: "PUT",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json"
-    },
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ comment: plainReply }),
     cache: "no-store"
   });
@@ -263,17 +436,7 @@ async function processGoogleReview({
     const fallback = await supabase.from("generated_replies").update({ status: "published" }).eq("id", replyId);
     if (fallback.error) throw new Error(fallback.error.message);
   }
-  await updateReviewStatus(localReview.id, "published_auto");
-
-  return {
-    merchant_id: merchant.id,
-    local_review_id: localReview.id,
-    review_name: review.name,
-    customer_name: getGoogleReviewerName(review),
-    rating,
-    status: "published",
-    message: "Réponse publiée automatiquement sur Google."
-  };
+  await updateReviewStatus(reviewId, "published_auto");
 }
 
 function getGoogleReviewerName(review: GoogleReview) {
@@ -367,12 +530,14 @@ async function generateHansReply({
   merchant,
   review,
   rating,
-  reviewText
+  reviewText,
+  tone
 }: {
   merchant: MerchantRow;
   review: GoogleReview;
   rating: number;
   reviewText: string;
+  tone?: string;
 }) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY manquante.");
@@ -389,7 +554,7 @@ async function generateHansReply({
         `Client : ${author}`,
         `Note : ${rating}/5`,
         `Avis : ${reviewText}`,
-        `Ton : ${merchant.response_tone ?? "chaleureux"}`,
+        `Ton demandé par le scénario : ${tone ?? merchant.response_tone ?? "chaleureux"}`,
         `Termine exactement par : <p>L’équipe ${merchant.business_name}</p>`
       ].join("\n"),
       max_output_tokens: 700

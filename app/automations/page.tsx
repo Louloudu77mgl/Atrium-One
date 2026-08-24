@@ -1,7 +1,7 @@
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 import { getAppShellData } from "@/lib/app-shell-data";
-import { listAutomationExecutionLogs } from "@/lib/automation-execution-store";
+import { listAutomationExecutionLogs, listStoredAutomationFlows } from "@/lib/automation-execution-store";
 import { getAutomationSettings } from "@/lib/automation-settings";
 import { appShellStyles } from "@/lib/design-system";
 import { getEmailingDashboardData } from "@/lib/emailing-data";
@@ -27,6 +27,7 @@ export default async function AutomationsPage({
   const instagramConnection = merchant ? await getInstagramConnection(merchant) : null;
   const socialPosts = merchant ? await getSocialPosts(merchant) : [];
   const automationRuns = merchant ? await listAutomationExecutionLogs(merchant.id).catch(() => []) : [];
+  const storedFlows = merchant ? await listStoredAutomationFlows(merchant.id).catch(() => []) : [];
   const emailingData = await getEmailingDashboardData(merchant, reviews);
 
   return (
@@ -44,6 +45,7 @@ export default async function AutomationsPage({
             instagramConfigured={hasInstagramOAuthConfig()}
             settings={settings}
             automationRuns={automationRuns}
+            storedFlows={storedFlows}
             socialPosts={socialPosts}
             emailSubscribersCount={emailingData.subscribers.length}
             emailCampaignsCount={emailingData.campaigns.length}

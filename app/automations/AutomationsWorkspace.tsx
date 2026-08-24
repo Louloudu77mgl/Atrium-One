@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
-import type { AutomationExecutionLog } from "@/lib/automation-execution-store";
+import type { AutomationExecutionLog, StoredAutomationFlow } from "@/lib/automation-execution-store";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewCounters } from "@/lib/review-counters";
+import { getAutomationActionForRating, getConfiguredAutomationMode } from "@/lib/review-automation";
 import type { GoogleConnectionRow, InstagramConnectionRow, MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { AutomationCanvas } from "./automation-builder/AutomationCanvas";
 import { AutomationHistory } from "./automation-builder/AutomationHistory";
@@ -37,6 +38,7 @@ export function AutomationsWorkspace({
   instagramConfigured,
   settings,
   automationRuns,
+  storedFlows,
   socialPosts,
   emailSubscribersCount,
   emailCampaignsCount,
@@ -50,6 +52,7 @@ export function AutomationsWorkspace({
   instagramConfigured: boolean;
   settings: MerchantAutomationSettingsRow | null;
   automationRuns: AutomationExecutionLog[];
+  storedFlows: StoredAutomationFlow[];
   socialPosts: SocialPostRow[];
   emailSubscribersCount: number;
   emailCampaignsCount: number;
@@ -61,8 +64,8 @@ export function AutomationsWorkspace({
   const storageKey = `atriumone:workflow-builder:${merchantId}`;
   const templates = useMemo(() => buildTemplates({ businessName: merchant?.business_name ?? "votre commerce" }), [merchant?.business_name]);
   const [view, setView] = useState<AutomationView>("library");
-  const [automations, setAutomations] = useState<AutomationFlow[]>(() =>
-    buildExistingAutomations({
+  const [automations, setAutomations] = useState<AutomationFlow[]>(() => {
+    const defaults = buildExistingAutomations({
       merchant,
       settings,
       automationRuns,
@@ -75,8 +78,9 @@ export function AutomationsWorkspace({
       googleConnected: googleConnection?.status === "connected",
       instagramConnected: instagramConnection?.status === "connected",
       templates
-    })
-  );
+    });
+    return mergeStoredFlows({ defaults, storedFlows, reviews, automationRuns });
+  });
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -138,10 +142,11 @@ export function AutomationsWorkspace({
         recentTypes?: string[];
       };
       if (Array.isArray(parsed.automations)) {
-        setAutomations((current) => [
-          ...current.filter((automation) => automation.source === "existing"),
-          ...parsed.automations!.filter((automation) => automation.source !== "existing")
-        ]);
+        setAutomations((current) => {
+          const currentIds = new Set(current.map((automation) => automation.id));
+          const localOnly = parsed.automations!.filter((automation) => automation.source !== "existing" && !currentIds.has(automation.id));
+          return [...current, ...localOnly];
+        });
       }
       if (parsed.selectedAutomationId) setSelectedAutomationId(parsed.selectedAutomationId);
       if (parsed.view) setView(parsed.view);
@@ -153,9 +158,19 @@ export function AutomationsWorkspace({
   }, [storageKey]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey, JSON.stringify({ automations, selectedAutomationId, view, favoriteTypes, recentTypes }));
-    setAutosaveLabel(`Sauvegardé à ${new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`);
-  }, [automations, favoriteTypes, recentTypes, selectedAutomationId, storageKey, view]);
+    window.localStorage.setItem(storageKey, JSON.stringify({ selectedAutomationId, view, favoriteTypes, recentTypes }));
+  }, [favoriteTypes, recentTypes, selectedAutomationId, storageKey, view]);
+
+  useEffect(() => {
+    if (!merchant || !automations.length) return;
+    setAutosaveLabel("Sauvegarde serveur en cours…");
+    const timeout = window.setTimeout(() => {
+      void Promise.all(automations.map(saveAutomationFlow))
+        .then(() => setAutosaveLabel(`Sauvegardé sur le compte à ${new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`))
+        .catch((error) => setAutosaveLabel(error instanceof Error ? error.message : "Sauvegarde serveur impossible"));
+    }, 650);
+    return () => window.clearTimeout(timeout);
+  }, [automations, merchant]);
 
   useEffect(() => {
     if (view !== "workflow") return;
@@ -342,6 +357,7 @@ export function AutomationsWorkspace({
     setAutosaveLabel("Activation serveur en cours...");
 
     try {
+      await saveAutomationFlow(next);
       const response = await fetch("/api/settings/automation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -501,6 +517,9 @@ export function AutomationsWorkspace({
 
     try {
       if (automation.status === "active") await syncScenarioStatus(automation, false);
+      const response = await fetch(`/api/automations/flows?id=${encodeURIComponent(automation.id)}`, { method: "DELETE" });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Suppression serveur impossible.");
       setAutomations((items) => items.filter((item) => item.id !== automationId));
       if (selectedAutomationId === automationId) setSelectedAutomationId(null);
       if (selectedRun?.automationId === automationId) setSelectedRunId(null);
@@ -513,11 +532,21 @@ export function AutomationsWorkspace({
   async function syncScenarioStatus(automation: AutomationFlow, enabled: boolean) {
     const hasReviews = automation.nodes.some((node) => node.type === "google_review");
     const hasInstagram = automation.nodes.some((node) => node.type === "publish_instagram");
+    const storedFlow = { ...automation, status: enabled ? "active" as const : "paused" as const, updatedAt: new Date().toISOString() };
+    await saveAutomationFlow(storedFlow);
     if (!hasReviews && !hasInstagram) return;
+
+    const otherActiveReviewFlow = automations.find((item) =>
+      item.id !== automation.id &&
+      item.status === "active" &&
+      item.nodes.some((node) => node.type === "google_review")
+    );
 
     const payload = hasReviews
       ? enabled
         ? { ...deriveReviewAutomationSettings(automation), reviews_auto_reply_enabled: true }
+        : otherActiveReviewFlow
+          ? { ...deriveReviewAutomationSettings(otherActiveReviewFlow), reviews_auto_reply_enabled: true }
         : {
             reviews_auto_reply_enabled: false,
             review_automation_mode: "disabled",
@@ -934,6 +963,50 @@ export function AutomationsWorkspace({
   );
 }
 
+async function saveAutomationFlow(flow: AutomationFlow) {
+  const response = await fetch("/api/automations/flows", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flow })
+  });
+  const data = await response.json() as { error?: string };
+  if (!response.ok) throw new Error(data.error ?? "Sauvegarde serveur du scénario impossible.");
+}
+
+function mergeStoredFlows({
+  defaults,
+  storedFlows,
+  reviews,
+  automationRuns
+}: {
+  defaults: AutomationFlow[];
+  storedFlows: StoredAutomationFlow[];
+  reviews: Review[];
+  automationRuns: AutomationExecutionLog[];
+}) {
+  if (!storedFlows.length) return defaults;
+
+  const restored = storedFlows.map((stored) => {
+    const flow = { ...stored, executionHistory: [] } as unknown as AutomationFlow;
+    if (flow.nodes.some((node) => node.type === "google_review")) {
+      const flowRuns = automationRuns.filter((run) => run.flow_id === flow.id || (!run.flow_id && flow.id === "existing-reviews"));
+      flow.executionHistory = buildRealReviewHistory(reviews, flowRuns, flow);
+    }
+    return flow;
+  });
+  const restoredIds = new Set(restored.map((flow) => flow.id));
+  const hasStoredReviewFlow = restored.some((flow) => flow.nodes.some((node) => node.type === "google_review"));
+  const hasStoredInstagramFlow = restored.some((flow) => flow.nodes.some((node) => node.type === "publish_instagram"));
+  return [
+    ...restored,
+    ...defaults.filter((flow) =>
+      !restoredIds.has(flow.id) &&
+      !(hasStoredReviewFlow && flow.id === "existing-reviews") &&
+      !(hasStoredInstagramFlow && flow.id === "existing-instagram")
+    )
+  ];
+}
+
 function buildExistingAutomations({
   settings,
   automationRuns,
@@ -964,9 +1037,18 @@ function buildExistingAutomations({
   reviewsTemplate.id = "existing-reviews";
   reviewsTemplate.source = "existing";
   reviewsTemplate.status = googleConnected
-    ? settings?.reviews_auto_reply_enabled && settings.review_automation_mode !== "disabled" ? "active" : "draft"
+    ? settings?.reviews_auto_reply_enabled ? "active" : "draft"
     : "incomplete";
   reviewsTemplate.summary = `${reviewCounters.pending} avis à traiter, ${reviewCounters.answered} déjà publiés.`;
+  if (settings?.reviews_auto_reply_enabled && getConfiguredAutomationMode(settings) === "automatic_guarded") {
+    const actions = [1, 2, 3, 4, 5].map((rating) => getAutomationActionForRating(rating, settings, "automatic"));
+    if (actions.every((action) => action === "automatic")) {
+      reviewsTemplate.nodes = reviewsTemplate.nodes.map((node) =>
+        node.category === "action" ? { ...node, mode: "automatic" as const } : node
+      );
+      reviewsTemplate.description = "Hans suit automatiquement chaque card du scénario puis publie la réponse sur Google.";
+    }
+  }
 
   const instagramTemplate = cloneFlow(templates.find((item) => item.id === "template-instagram") ?? templates[1]);
   instagramTemplate.id = "existing-instagram";
@@ -1089,6 +1171,15 @@ function buildStoredRunSteps(
   generateNode: string,
   publishNode: string
 ): ExecutionRecord["steps"] {
+  if (run.steps?.length) {
+    return run.steps.map((current, index) => ({
+      id: `${run.id}-step-${index + 1}`,
+      nodeId: current.node_id,
+      title: current.title,
+      result: current.result
+    }));
+  }
+
   if (!run.review_name) {
     return [{ id: `${run.id}-check`, nodeId: triggerNode, title: "Contrôle Google", result: run.message }];
   }
