@@ -61,9 +61,12 @@ export function EmailingClient({ merchant, brand, subscribers, initialCampaigns,
       {gmailConnectedNotice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">✓ Gmail est connecté. Vos campagnes partiront depuis {providerAddress ?? "l’adresse choisie"}.</div> : null}
       {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">✓ {notice}</div> : null}
       <div className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border px-4 py-4 ${providerReady ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
-        <div>
-          <div className={`text-sm font-black ${providerReady ? "text-emerald-900" : "text-amber-900"}`}>{providerReady ? "Gmail connecté" : providerStatus === "error" ? "Connexion Gmail à renouveler" : "Connectez votre adresse Gmail"}</div>
-          <div className={`mt-0.5 text-xs font-medium ${providerReady ? "text-emerald-800" : "text-amber-800"}`}>{providerReady ? `Les campagnes sont envoyées directement depuis ${providerAddress}.` : providerError || "Chaque campagne partira depuis votre propre adresse Gmail."}</div>
+        <div className="flex min-w-0 items-center gap-4">
+          {providerReady ? <GmailAtriumConnectionVisual /> : <GmailMark className="h-14 w-14" />}
+          <div className="min-w-0">
+            <div className={`text-sm font-black ${providerReady ? "text-emerald-900" : "text-amber-900"}`}>{providerReady ? "Gmail connecté" : providerStatus === "error" ? "Connexion Gmail à renouveler" : "Connectez votre adresse Gmail"}</div>
+            <div className={`mt-0.5 text-xs font-medium ${providerReady ? "text-emerald-800" : "text-amber-800"}`}>{providerReady ? `Les campagnes sont envoyées directement depuis ${providerAddress}.` : providerError || "Chaque campagne partira depuis votre propre adresse Gmail."}</div>
+          </div>
         </div>
         <div className="flex items-center gap-3"><span className={providerReady ? badgeStyles.hans : badgeStyles.warning}>{providerReady ? "Prêt à envoyer" : "À connecter"}</span><GmailConnectionActions connected={providerReady} /></div>
       </div>
@@ -74,6 +77,36 @@ export function EmailingClient({ merchant, brand, subscribers, initialCampaigns,
         {campaigns.length ? <div className="overflow-x-auto"><table className="w-full min-w-[960px] text-left"><thead className="bg-[#FBFAFD] text-[10px] font-black uppercase tracking-[0.09em] text-[#8B7AA8]"><tr><th className="px-5 py-3">Nom</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Segment</th><th className="px-4 py-3">Envoyés</th><th className="px-4 py-3">Ouverture</th><th className="px-4 py-3">Clic</th><th className="px-4 py-3">Statut</th><th className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#EEEAF3]">{campaigns.map((campaign) => <tr key={campaign.id} className="text-sm hover:bg-[#FBFAFD]"><td className="px-5 py-4"><div className="font-black text-[#211432]">{campaign.name}</div><div className="mt-1 text-[11px] font-medium text-[#8B7AA8]">{campaign.recipient_count} destinataire{campaign.recipient_count > 1 ? "s" : ""}</div></td><td className="px-4 py-4 text-xs font-semibold text-[#6B617F]">{formatDate(campaign.scheduled_at ?? campaign.sent_at ?? campaign.created_at)}</td><td className="max-w-[250px] px-4 py-4 text-xs font-semibold text-[#6B617F]"><span className="line-clamp-2">{campaign.segment_label}</span></td><td className="px-4 py-4 font-black text-[#211432]">{campaign.sent_count}</td><td className="px-4 py-4 font-black text-[#211432]">{campaign.open_rate} %</td><td className="px-4 py-4 font-black text-[#211432]">{campaign.click_rate} %</td><td className="px-4 py-4"><span className={campaign.status === "sent" ? badgeStyles.hans : campaign.status === "failed" ? badgeStyles.danger : campaign.status === "scheduled" ? badgeStyles.warning : badgeStyles.neutral}>{statusLabels[campaign.status]}</span>{campaign.error_message ? <div className="mt-1 max-w-[180px] text-[10px] text-red-600">{campaign.error_message}</div> : null}</td><td className="px-5 py-4">{campaign.status !== "sent" && campaign.status !== "sending" ? <button type="button" onClick={() => editCampaign(campaign)} className={buttonStyles.tertiary}>Reprendre</button> : <span className="text-xs font-semibold text-[#9B91A8]">Terminée</span>}</td></tr>)}</tbody></table></div> : <div className={`${surfaceStyles.empty} m-5 px-5 py-10 text-center`}><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#7C3AED]"><Icon name="mail" className="h-6 w-6" /></div><div className="mt-3 text-sm font-black text-[#211432]">Aucune campagne pour le moment</div><p className="mt-1 text-xs font-medium text-[#7A7188]">Votre première campagne se crée en quelques minutes avec Hans.</p></div>}
       </section>
       <EmailCampaignWizard open={wizardOpen} merchant={merchant} subscribers={subscribers} providerReady={providerReady} initialContent={initialContent} editingCampaign={editingCampaign} onClose={() => setWizardOpen(false)} onCreated={created} />
+    </div>
+  );
+}
+
+function GmailAtriumConnectionVisual() {
+  return (
+    <div className="flex shrink-0 items-center" aria-label="Gmail connecté à AtriumOne">
+      <GmailMark className="h-14 w-14" />
+      <div className="relative mx-[-2px] h-[3px] w-8 bg-[linear-gradient(90deg,#4285F4,#6D3FC0)]">
+        <span className="absolute left-1/2 top-1/2 flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-[#35A764] text-white shadow-sm">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
+        </span>
+      </div>
+      <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-[18px] border border-[#E2D7F3] bg-white p-2.5 shadow-[0_10px_26px_rgba(76,29,149,0.14)]">
+        <img src="/atriumone-logo.webp" alt="AtriumOne" className="h-full w-full object-contain" />
+      </div>
+    </div>
+  );
+}
+
+function GmailMark({ className }: { className?: string }) {
+  return (
+    <div className={`flex shrink-0 items-center justify-center rounded-[18px] border border-[#E6E9EF] bg-white p-2.5 shadow-[0_10px_26px_rgba(66,133,244,0.16)] ${className ?? ""}`}>
+      <svg viewBox="0 0 48 48" className="h-full w-full" aria-hidden="true">
+        <path fill="#4285F4" d="M6 38V14.7l6.8 5.1V38H6Z" />
+        <path fill="#34A853" d="M35.2 38V19.8l6.8-5.1V38h-6.8Z" />
+        <path fill="#EA4335" d="M6.8 10.6c1.5-1.1 3.5-1 4.9.1L24 20l12.3-9.3c1.4-1.1 3.4-1.2 4.9-.1.5.4.8.8.8 1.4v2.7L24 28.2 6 14.7V12c0-.6.3-1 .8-1.4Z" />
+        <path fill="#FBBC04" d="m6 14.7 6.8 5.1v-4L6 10.7v4Z" />
+        <path fill="#C5221F" d="m35.2 19.8 6.8-5.1v-4l-6.8 5.1v4Z" />
+      </svg>
     </div>
   );
 }
