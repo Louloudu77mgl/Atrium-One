@@ -1,13 +1,18 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getGoogleOAuthConfig } from "@/lib/google-oauth";
 import { upsertGoogleConnection } from "@/lib/google-connections";
-import type { GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
+import type { Database, GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
 
 type RefreshResponse = {
   access_token?: string;
   error_description?: string;
 };
 
-export async function getFreshGoogleAccessToken(connection: GoogleConnectionRow, merchant: MerchantRow) {
+export async function getFreshGoogleAccessToken(
+  connection: GoogleConnectionRow,
+  merchant: MerchantRow,
+  databaseClient?: SupabaseClient<Database>
+) {
   if (!connection.refresh_token_encrypted) {
     if (connection.access_token_encrypted) return connection.access_token_encrypted;
     throw new Error("Aucun token Google disponible. Reconnectez Google Business.");
@@ -36,7 +41,7 @@ export async function getFreshGoogleAccessToken(connection: GoogleConnectionRow,
     access_token_encrypted: data.access_token,
     status: "connected",
     last_error: null
-  }, merchant);
+  }, merchant, databaseClient);
 
   return data.access_token;
 }

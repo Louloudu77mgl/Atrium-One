@@ -94,6 +94,8 @@ export default async function IntegrationsPage({
                   <div>OAuth configuré : <strong className="text-[#211432]">{googleDiagnostic.oauthConfigured ? "oui" : "non"}</strong></div>
                   <div>Token disponible : <strong className="text-[#211432]">{googleDiagnostic.tokenAvailable ? "oui" : "non"}</strong></div>
                   <div>Fiche connectée : <strong className="text-[#211432]">{googleDiagnostic.locationConnected ? "oui" : "non"}</strong></div>
+                  <div>Synchronisation des avis : <strong className="text-[#211432]">{googleLocationConnected ? "automatique" : "en attente de la fiche"}</strong></div>
+                  {googleConnection?.last_sync_at ? <div>Dernière récupération : <strong className="text-[#211432]">{new Date(googleConnection.last_sync_at).toLocaleString("fr-FR")}</strong></div> : null}
                 </div>
                 {!googleConnection ? (
                   <div className="mt-4 rounded-2xl border border-[#FED7AA] bg-[#FFF7ED] p-4 text-sm leading-6 text-[#9A3412]">
@@ -115,7 +117,7 @@ export default async function IntegrationsPage({
                   {googleConnected ? (
                     <form action="/api/google/sync" method="post">
                       <button type="submit" className="inline-flex items-center justify-center rounded-lg bg-[#F3E8FF] px-4 py-2.5 text-sm font-semibold text-[#4C1D95] transition hover:bg-[#E9D5FF]">
-                        {googleLocationConnected ? "Synchroniser les avis" : "Finaliser et synchroniser"}
+                        {googleLocationConnected ? "Actualiser maintenant (optionnel)" : "Finaliser la fiche"}
                       </button>
                     </form>
                   ) : null}

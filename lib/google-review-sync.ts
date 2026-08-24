@@ -1,7 +1,8 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getFreshGoogleAccessToken } from "@/lib/google-tokens";
 import { upsertGoogleConnection } from "@/lib/google-connections";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { GoogleConnectionRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
+import type { Database, GoogleConnectionRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
 
 type GoogleReview = {
   name?: string;
@@ -29,13 +30,17 @@ type ReviewsResponse = {
 
 const ratings: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 
-export async function syncGoogleBusinessReviews(connection: GoogleConnectionRow, merchant: MerchantRow) {
+export async function syncGoogleBusinessReviews(
+  connection: GoogleConnectionRow,
+  merchant: MerchantRow,
+  databaseClient?: SupabaseClient<Database>
+) {
   if (!connection.google_location_id?.startsWith("accounts/")) {
     throw new Error("Identifiant de fiche Google incomplet. Reconnectez la fiche pour lancer la synchronisation réelle.");
   }
 
-  const accessToken = await getFreshGoogleAccessToken(connection, merchant);
-  const supabase = await createServerSupabaseClient();
+  const accessToken = await getFreshGoogleAccessToken(connection, merchant, databaseClient);
+  const supabase = databaseClient ?? await createServerSupabaseClient();
   let pageToken: string | undefined;
   let imported = 0;
 
@@ -103,7 +108,7 @@ export async function syncGoogleBusinessReviews(connection: GoogleConnectionRow,
     last_sync_at: new Date().toISOString(),
     last_error: null,
     status: "connected"
-  }, merchant);
+  }, merchant, databaseClient);
 
   return imported;
 }
@@ -120,12 +125,11 @@ async function findExistingGoogleReview({
   createdAt?: string;
 }) {
   const bySourceReviewId = await supabase
-        .from("reviews")
-        .select("id")
+    .from("reviews")
+    .select("id")
     .eq("merchant_id", merchantId)
-        .eq("source", "google")
     .eq("source_review_id", sourceReviewId)
-        .maybeSingle();
+    .maybeSingle();
 
   if (!bySourceReviewId.error) {
     return bySourceReviewId.data;
@@ -139,7 +143,6 @@ async function findExistingGoogleReview({
     .from("reviews")
     .select("id")
     .eq("merchant_id", merchantId)
-    .eq("source", "google")
     .eq("created_at", createdAt)
     .maybeSingle();
 

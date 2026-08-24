@@ -1,7 +1,7 @@
 import { getAutomationSettings } from "@/lib/automation-settings";
 import { redirect } from "next/navigation";
 import { ReviewsPageClient } from "./ReviewsPageClient";
-import { getGoogleConnection } from "@/lib/google-connections";
+import { getGoogleConnectionWithAutoSync } from "@/lib/google-review-auto-sync";
 import { getMerchant } from "@/lib/merchants";
 import { reviews as mockReviews } from "@/lib/mock-data";
 import { getReviews } from "@/lib/reviews";
@@ -28,9 +28,9 @@ export default async function ReviewsPage() {
     redirect("/onboarding");
   }
 
-  const [reviews, googleConnection, automationSettings] = await Promise.all([
+  const googleConnection = await getGoogleConnectionWithAutoSync(merchant);
+  const [reviews, automationSettings] = await Promise.all([
     getReviews(),
-    getGoogleConnection(merchant),
     getAutomationSettings(merchant)
   ]);
 

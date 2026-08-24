@@ -1,17 +1,21 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
+import type { Database, GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
 
 const optionalGoogleConnectionColumns = ["granted_scopes", "last_error"] as const;
 
-export async function getGoogleConnection(merchant?: MerchantRow | null): Promise<GoogleConnectionRow | null> {
+export async function getGoogleConnection(
+  merchant?: MerchantRow | null,
+  databaseClient?: SupabaseClient<Database>
+): Promise<GoogleConnectionRow | null> {
   const currentMerchant = merchant ?? (await getMerchant());
 
   if (!currentMerchant) {
     return null;
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = databaseClient ?? await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("google_connections")
     .select("*")
@@ -31,7 +35,8 @@ export async function getGoogleConnection(merchant?: MerchantRow | null): Promis
 
 export async function upsertGoogleConnection(
   payload: Partial<GoogleConnectionRow> & Pick<GoogleConnectionRow, "merchant_id">,
-  merchant?: MerchantRow | null
+  merchant?: MerchantRow | null,
+  databaseClient?: SupabaseClient<Database>
 ) {
   const currentMerchant = merchant ?? (await getMerchant());
 
@@ -39,8 +44,8 @@ export async function upsertGoogleConnection(
     throw new Error("Commerce introuvable.");
   }
 
-  const supabase = await createServerSupabaseClient();
-  const existing = await getGoogleConnection(currentMerchant);
+  const supabase = databaseClient ?? await createServerSupabaseClient();
+  const existing = await getGoogleConnection(currentMerchant, supabase);
   const nextPayload = {
     ...payload,
     merchant_id: currentMerchant.id
