@@ -7,7 +7,7 @@ const AUTOMATION_BUCKET = "automation-data";
 export type AutomationExecutionLog = {
   id: string;
   merchant_id: string;
-  automation_key: "google_reviews";
+  automation_key: "google_reviews" | "flow_event";
   local_review_id?: string | null;
   review_name?: string | null;
   customer_name?: string | null;

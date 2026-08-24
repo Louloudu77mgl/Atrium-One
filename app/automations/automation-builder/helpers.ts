@@ -2,6 +2,16 @@
 
 import type { AutomationEdge, AutomationFlow, AutomationNodeData, ExecutionRecord, TestScenario, ValidationIssue } from "./types";
 
+const supportedNodeTypes = new Set([
+  "new_customer", "new_visit", "new_reward", "google_review",
+  "marketing_consent", "review_rating_gte", "reward_count",
+  "send_email", "generate_email", "prepare_instagram", "publish_instagram",
+  "generate_review_reply", "publish_review_reply", "notify_merchant",
+  "stop_flow", "limit_once"
+]);
+const reviewOnlyNodeTypes = new Set(["review_rating_gte", "generate_review_reply", "publish_review_reply"]);
+const customerOnlyNodeTypes = new Set(["marketing_consent", "reward_count"]);
+
 export function cloneFlow(flow: AutomationFlow): AutomationFlow {
   return JSON.parse(JSON.stringify(flow)) as AutomationFlow;
 }
@@ -19,8 +29,23 @@ export function validateFlow(
   if (!triggers.length) {
     issues.push({ id: "missing-trigger", level: "error", message: "Ajoutez au moins un déclencheur pour démarrer cette automatisation." });
   }
+  if (triggers.length > 1) {
+    issues.push({ id: "multiple-triggers", level: "error", message: "Un scénario doit avoir un seul déclencheur. Créez un second scénario pour l’autre événement." });
+  }
+  const triggerType = triggers[0]?.type;
+  const hasInstagramPreparation = flow.nodes.some((node) => node.type === "prepare_instagram");
+  const hasReviewReplyGeneration = flow.nodes.some((node) => node.type === "generate_review_reply");
 
   for (const node of flow.nodes) {
+    if (!supportedNodeTypes.has(node.type)) {
+      issues.push({ id: `unsupported-${node.id}`, level: "error", message: `La card « ${node.title} » appartient à une ancienne version et n’a pas d’exécution fiable. Remplacez-la par un bloc disponible dans la bibliothèque.`, nodeId: node.id });
+    }
+    if (triggerType === "google_review" && customerOnlyNodeTypes.has(node.type)) {
+      issues.push({ id: `incompatible-review-${node.id}`, level: "error", message: `${node.title} nécessite un client RCU et ne peut pas suivre un avis Google.`, nodeId: node.id });
+    }
+    if (triggerType && triggerType !== "google_review" && reviewOnlyNodeTypes.has(node.type)) {
+      issues.push({ id: `incompatible-customer-${node.id}`, level: "error", message: `${node.title} nécessite le déclencheur Nouvel avis Google.`, nodeId: node.id });
+    }
     if (!incoming.get(node.id) && node.category !== "trigger") {
       issues.push({ id: `unlinked-in-${node.id}`, level: "error", message: `${node.title} n’est relié à aucune étape précédente.`, nodeId: node.id });
     }
@@ -39,9 +64,15 @@ export function validateFlow(
     if (node.type === "publish_instagram" && !capabilities.instagramConnected) {
       issues.push({ id: `instagram-${node.id}`, level: "error", message: "Instagram doit être connecté avant d’activer ce bloc.", nodeId: node.id, actionLabel: "Connecter Instagram", actionHref: "/social?connect=instagram" });
     }
+    if (node.type === "publish_instagram" && !hasInstagramPreparation) {
+      issues.push({ id: `instagram-source-${node.id}`, level: "error", message: "Ajoutez une card « Préparer une publication Instagram » avant de publier.", nodeId: node.id });
+    }
 
     if ((node.type === "google_review" || node.type === "publish_review_reply") && !capabilities.googleConnected) {
       issues.push({ id: `google-${node.id}`, level: "error", message: "Google Business Profile doit être connecté avant d’activer ce bloc.", nodeId: node.id, actionLabel: "Connecter Google", actionHref: "/integrations" });
+    }
+    if (node.type === "publish_review_reply" && !hasReviewReplyGeneration) {
+      issues.push({ id: `review-source-${node.id}`, level: "error", message: "Ajoutez une card « Générer une réponse à un avis » avant la publication Google.", nodeId: node.id });
     }
 
     if (["send_email", "send_newsletter", "prepare_newsletter", "generate_email"].includes(node.type)) {

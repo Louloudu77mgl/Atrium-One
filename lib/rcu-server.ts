@@ -1,7 +1,9 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "crypto";
+import { after } from "next/server";
+import { runAutomationEvent, type AutomationEvent } from "@/lib/automation-event-runner";
 import { playRcuGame } from "@/lib/rcu-game-server";
 import { getRcuVisitDay } from "@/lib/rcu-game-server";
-import { getOrCreateStoredRcuWallet, getRcuCustomerKey, saveStoredRcuLead } from "@/lib/rcu-store";
+import { getOrCreateStoredRcuWallet, getRcuCustomerKey, listStoredRcuGameRecords, listStoredRcuLeads, saveStoredRcuLead } from "@/lib/rcu-store";
 import { normalizeFrenchPhone } from "@/lib/sms";
 import type { RcuProgram } from "@/lib/rcu";
 import { normalizeRcuVisitCode } from "@/lib/rcu";
@@ -97,8 +99,11 @@ export async function submitRcuLead({
   }
   const customerKey = getRcuCustomerKey(form.merchant_id, phone, email);
   const submittedAt = new Date().toISOString();
+  const existingLeads = await listStoredRcuLeads(form.merchant_id);
+  const isNewCustomer = !existingLeads.some((lead) => getRcuCustomerKey(form.merchant_id, lead.phone, lead.email) === customerKey);
+  const leadId = randomUUID();
   const leadPromise = saveStoredRcuLead({
-    id: randomUUID(),
+    id: leadId,
     form_id: form.id,
     form_slug: form.slug,
     form_title: form.title,
@@ -141,6 +146,38 @@ export async function submitRcuLead({
     lastName,
     reviewConfirmed: payload.review_confirmed === true
   });
+
+  if (!game.duplicate) {
+    after(async () => {
+      try {
+        const customerGames = await listStoredRcuGameRecords(form.merchant_id, { customerKey });
+        const rewards = customerGames.reduce((total, record) => total
+          + (record.result.unlockedRewards?.length ?? 0)
+          + (record.result.rewardUnlocked ? 1 : 0)
+          + (record.result.wheelPrize && !/rien|retentez|rejouez/i.test(record.result.wheelPrize) ? 1 : 0), 0);
+        const customer: AutomationEvent["customer"] = {
+          id: customerKey,
+          firstName,
+          lastName,
+          email: email || null,
+          phone,
+          consentEmail,
+          consentSms,
+          source: "RCU",
+          rewards
+        };
+        const events: AutomationEvent[] = [
+          ...(isNewCustomer ? [{ merchantId: form.merchant_id, id: `${leadId}:new_customer`, type: "new_customer" as const, occurredAt: submittedAt, customer }] : []),
+          { merchantId: form.merchant_id, id: `${game.record.id}:new_visit`, type: "new_visit", occurredAt: game.record.occurred_at, customer, details: { program: form.title } }
+        ];
+        const rewardUnlocked = Boolean(game.record.result.rewardUnlocked || game.record.result.unlockedRewards?.length || (game.record.result.wheelPrize && !/rien|retentez|rejouez/i.test(game.record.result.wheelPrize)));
+        if (rewardUnlocked) events.push({ merchantId: form.merchant_id, id: `${game.record.id}:new_reward`, type: "new_reward", occurredAt: game.record.occurred_at, customer, details: { rewards } });
+        await Promise.all(events.map((event) => runAutomationEvent(event)));
+      } catch (error) {
+        console.error("[rcu/automation] event_failed", { merchantId: form.merchant_id, customerKey, message: error instanceof Error ? error.message : "Erreur inconnue" });
+      }
+    });
+  }
 
   return {
     promoCode: form.discount_label ? promoCode : null,

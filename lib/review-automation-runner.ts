@@ -313,7 +313,15 @@ async function processGoogleReview({
 
     if (node.type === "notify_merchant") {
       await updateReviewStatus(localReview.id, "generated");
-      steps.push(step(node, "success", String(node.config.message ?? "Notification disponible dans AtriumOne.")));
+      const body = String(node.config.message ?? "Une automatisation Avis nécessite votre attention.");
+      const notification = await supabase.from("notifications").insert({ merchant_id: merchant.id, title: plan.flow.title, body, type: "hans_task_done", read: false });
+      if (notification.error) throw new Error(notification.error.message);
+      steps.push(step(node, "success", "Notification créée dans AtriumOne."));
+      continue;
+    }
+
+    if (node.type === "limit_once") {
+      steps.push(step(node, "success", "Exécution unique garantie pour cet avis et ce scénario."));
       continue;
     }
 
@@ -426,8 +434,39 @@ async function processGoogleReview({
 
     if (node.type === "send_email") {
       if (!emailCampaign) {
-        steps.push(step(node, "skipped", "Envoi ignoré car aucune campagne e-mail n’a pu être créée."));
-        continue;
+        try {
+          const dashboard = await getEmailingDashboardData(merchant, [], supabase);
+          const goal = String(node.config.goal ?? "Partager une information avec les clients consentants");
+          const content = await generateEmailWithHans({ merchant, brand: dashboard.brand, brief: goal, campaignType: "other", segmentLabel: "Tous les clients consentants" });
+          if (node.config.subject) content.subject = String(node.config.subject).slice(0, 120);
+          const recipients = createEmailRecipients(dashboard.subscribers);
+          emailCampaign = await createEmailCampaign({
+            merchant_id: merchant.id,
+            name: content.subject,
+            campaign_type: "other",
+            brief: goal,
+            segment_rules: [{ id: "all_customers" }],
+            segment_mode: "all",
+            segment_label: "Tous les clients consentants",
+            recipient_count: recipients.length,
+            recipients,
+            content,
+            status: "draft",
+            scheduled_at: null,
+            sent_at: null,
+            sent_count: 0,
+            open_count: 0,
+            click_count: 0,
+            open_rate: 0,
+            click_rate: 0,
+            provider_message_ids: [],
+            error_message: null
+          });
+          steps.push(step(node, "success", `E-mail « ${content.subject} » créé pour ${recipients.length} client(s) consentant(s).`));
+        } catch (error) {
+          steps.push(step(node, "error", error instanceof Error ? error.message : "Création de l’e-mail impossible."));
+          continue;
+        }
       }
       if (node.mode !== "automatic") {
         steps.push(step(node, "waiting", "E-mail conservé en brouillon, conformément au mode de cette card."));

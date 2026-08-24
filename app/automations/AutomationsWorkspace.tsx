@@ -348,31 +348,30 @@ export function AutomationsWorkspace({
       return automation;
     }));
 
-    if (next.status !== "active" || !next.nodes.some((node) => node.type === "google_review")) {
+    if (next.status !== "active") {
       return;
     }
 
+    const hasGoogleReviewTrigger = next.nodes.some((node) => node.type === "google_review");
     const hasReplyGeneration = next.nodes.some((node) => node.type === "generate_review_reply");
-
-    if (!hasReplyGeneration) {
-      return;
-    }
 
     setAutosaveLabel("Activation serveur en cours...");
 
     try {
       await saveAutomationFlow(next);
-      const response = await fetch("/api/settings/automation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...deriveReviewAutomationSettings(next),
-          reviews_auto_reply_enabled: true
-        })
-      });
-      const data = await response.json() as { error?: string };
-      if (!response.ok) {
-        throw new Error(data.error ?? "Activation serveur impossible.");
+      if (hasGoogleReviewTrigger && hasReplyGeneration) {
+        const response = await fetch("/api/settings/automation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...deriveReviewAutomationSettings(next),
+            reviews_auto_reply_enabled: true
+          })
+        });
+        const data = await response.json() as { error?: string };
+        if (!response.ok) {
+          throw new Error(data.error ?? "Activation serveur impossible.");
+        }
       }
       setAutosaveLabel("Automatisation active côté serveur");
       setToolbarFeedback("Automatisation active côté serveur");
@@ -1038,21 +1037,25 @@ function mergeStoredFlows({
 
   const restored = storedFlows.map((stored) => {
     const flow = { ...stored, executionHistory: [] } as unknown as AutomationFlow;
+    const flowRuns = automationRuns.filter((run) => run.flow_id === flow.id || (!run.flow_id && flow.id === "existing-reviews"));
     if (flow.nodes.some((node) => node.type === "google_review")) {
-      const flowRuns = automationRuns.filter((run) => run.flow_id === flow.id || (!run.flow_id && flow.id === "existing-reviews"));
       flow.executionHistory = buildRealReviewHistory(reviews, flowRuns, flow);
+    } else {
+      flow.executionHistory = buildEventFlowHistory(flowRuns, flow);
     }
     return flow;
   });
   const restoredIds = new Set(restored.map((flow) => flow.id));
   const hasStoredReviewFlow = restored.some((flow) => flow.nodes.some((node) => node.type === "google_review"));
   const hasStoredInstagramFlow = restored.some((flow) => flow.nodes.some((node) => node.type === "publish_instagram"));
+  const hasStoredCustomerFlow = restored.some((flow) => flow.nodes.some((node) => ["new_customer", "new_visit", "new_reward"].includes(node.type)));
   return [
     ...restored,
     ...defaults.filter((flow) =>
       !restoredIds.has(flow.id) &&
       !(hasStoredReviewFlow && flow.id === "existing-reviews") &&
-      !(hasStoredInstagramFlow && flow.id === "existing-instagram")
+      !(hasStoredInstagramFlow && flow.id === "existing-instagram") &&
+      !(hasStoredCustomerFlow && flow.id === "existing-welcome")
     )
   ];
 }
@@ -1096,44 +1099,43 @@ function buildExistingAutomations({
   instagramTemplate.summary = "Hans peut préparer vos publications dès que vous activez le flow.";
   instagramTemplate.installMinutes = 4;
 
-  const newsletterTemplate = cloneFlow(templates.find((item) => item.id === "template-newsletter") ?? templates[2]);
-  newsletterTemplate.id = "existing-newsletter";
-  newsletterTemplate.source = "existing";
-  newsletterTemplate.status = emailProviderReady && emailSubscribersCount > 0 ? "draft" : "incomplete";
-  newsletterTemplate.summary = `${emailSubscribersCount} contact(s) consenti(s) · ${emailCampaignsCount} campagne(s) déjà créées.`;
-  newsletterTemplate.installMinutes = 5;
+  const welcomeTemplate = cloneFlow(templates.find((item) => item.id === "template-welcome") ?? templates[1]);
+  welcomeTemplate.id = "existing-welcome";
+  welcomeTemplate.source = "existing";
+  welcomeTemplate.status = emailProviderReady ? "draft" : "incomplete";
+  welcomeTemplate.summary = `${emailSubscribersCount} contact(s) consenti(s) · ${emailCampaignsCount} campagne(s) déjà créées.`;
+  welcomeTemplate.installMinutes = 4;
 
-  const emptyHistory = [reviewsTemplate, instagramTemplate, newsletterTemplate].map((automation) => ({
+  const emptyHistory = [reviewsTemplate, instagramTemplate, welcomeTemplate].map((automation) => ({
     ...automation,
     executionHistory: automation.executionHistory.length ? automation.executionHistory : []
   }));
 
   emptyHistory[0].executionHistory = buildRealReviewHistory(reviews, automationRuns, emptyHistory[0]);
 
-  if (socialPosts[0]?.updated_at) {
-    emptyHistory[1].executionHistory = [{
-      id: "seed-instagram-run",
-      createdAt: socialPosts[0].updated_at,
-      customerName: "Planning social",
-      triggerLabel: "Nouvelle semaine",
-      status: "success",
-      durationLabel: "18 s",
-      inputData: {
-        declencheur: "Nouvelle semaine",
-        publicationsPrevues: settings?.social_posts_per_cycle ?? 1
-      },
-      outputData: {
-        resultat: "Publications préparées et transmises pour validation"
-      },
-      steps: [
-        { id: "seed-ig-1", nodeId: emptyHistory[1].nodes[0]?.id ?? "trigger", title: "Nouvelle semaine", result: "Planning lancé" },
-        { id: "seed-ig-2", nodeId: emptyHistory[1].nodes[1]?.id ?? "action", title: "Hans génère une idée", result: "Deux idées générées" },
-        { id: "seed-ig-3", nodeId: emptyHistory[1].nodes[4]?.id ?? "action", title: "Validation du commerçant", result: "Validation reçue" }
-      ]
-    }];
-  }
-
   return emptyHistory;
+}
+
+function buildEventFlowHistory(runs: AutomationExecutionLog[], automation: AutomationFlow): ExecutionRecord[] {
+  const trigger = automation.nodes.find((node) => node.category === "trigger");
+  return runs.map((run) => ({
+    id: run.id,
+    createdAt: run.created_at,
+    customerName: run.customer_name ?? "Client RCU",
+    triggerLabel: trigger?.title ?? "Événement client",
+    status: mapAutomationRunStatus(run.status),
+    durationLabel: "Temps réel",
+    inputData: { client: run.customer_name ?? "Non renseigné", evenement: run.review_name ?? null },
+    outputData: { resultat: run.message },
+    steps: run.steps?.map((step, index) => ({ id: `${run.id}-step-${index + 1}`, nodeId: step.node_id, title: step.title, result: step.result })) ?? []
+  })).sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, 30);
+}
+
+function mapAutomationRunStatus(status: AutomationExecutionLog["status"]): ExecutionRecord["status"] {
+  if (status === "published") return "success";
+  if (status === "drafted") return "validation_required";
+  if (status === "error") return "failed";
+  return "cancelled";
 }
 
 function buildRealReviewHistory(
@@ -1239,9 +1241,9 @@ function buildHansFlow(prompt: string, templates: AutomationFlow[], theme: strin
   const normalized = prompt.toLocaleLowerCase("fr-FR");
   let flow = cloneFlow(templates[0]);
   if (normalized.includes("instagram") || theme === "Réseaux sociaux") flow = cloneFlow(templates.find((item) => item.id === "template-instagram") ?? templates[0]);
-  else if (normalized.includes("newsletter") || theme === "Emails") flow = cloneFlow(templates.find((item) => item.id === "template-newsletter") ?? templates[0]);
+  else if (normalized.includes("email") || normalized.includes("e-mail") || normalized.includes("bienvenue") || theme === "Emails") flow = cloneFlow(templates.find((item) => item.id === "template-welcome") ?? templates[0]);
   else if (normalized.includes("avis") || theme === "Avis") flow = cloneFlow(templates.find((item) => item.id === "template-reviews") ?? templates[0]);
-  else if (normalized.includes("30 jours") || normalized.includes("revenu")) flow = cloneFlow(templates.find((item) => item.id === "template-reactivation") ?? templates[0]);
+  else if (normalized.includes("récompense") || normalized.includes("fidel")) flow = cloneFlow(templates.find((item) => item.id === "template-loyalty") ?? templates[0]);
 
   flow.id = `automation-${Date.now()}`;
   flow.source = "hans";

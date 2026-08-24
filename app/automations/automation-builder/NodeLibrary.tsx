@@ -11,9 +11,7 @@ const TABS = [
   "Google",
   "Emails",
   "CRM",
-  "Calendrier",
   "Conditions",
-  "Attente",
   "Notifications",
   "Favoris",
   "Récents"
@@ -125,6 +123,5 @@ function matchesTab(item: (typeof NODE_LIBRARY)[number]["items"][number], tab: (
   if (tab === "Récents") return recentTypes.includes(item.type);
   if (tab === "Déclencheurs") return item.category === "trigger";
   if (tab === "Conditions") return item.category === "condition" || item.category === "control";
-  if (tab === "Attente") return item.category === "delay";
   return item.provider === tab || item.tags?.includes(tab.toLocaleLowerCase("fr-FR")) || false;
 }

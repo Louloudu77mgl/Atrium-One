@@ -86,9 +86,9 @@ export function NodeConfigPanel({
         <label className="block">
           <span className="mb-1 block text-[12px] font-bold text-[#6E6A76]">Niveau d’automatisation</span>
           <select className={inputClass} value={selectedNode.mode ?? "semi_automatic"} onChange={(event) => onModeChange(selectedNode.id, event.target.value as AutomationNodeData["mode"])}>
-            <option value="automatic">Automatique</option>
-            <option value="semi_automatic">Semi-automatique</option>
-            <option value="draft_only">Suggestion uniquement</option>
+            <option value="automatic">Exécuter automatiquement</option>
+            <option value="semi_automatic">Créer un brouillon à valider</option>
+            <option value="draft_only">Suggestion uniquement, sans envoi</option>
           </select>
         </label>
       ) : null}
