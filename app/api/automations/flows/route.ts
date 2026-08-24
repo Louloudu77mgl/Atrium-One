@@ -65,6 +65,8 @@ function isValidFlow(flow: StoredAutomationFlow | undefined): flow is StoredAuto
     typeof flow.id === "string" &&
     flow.id.length <= 160 &&
     typeof flow.title === "string" &&
+    flow.title.trim().length > 0 &&
+    flow.title.trim().length <= 100 &&
     Array.isArray(flow.nodes) &&
     flow.nodes.length <= 100 &&
     flow.nodes.every((node) => typeof node.id === "string" && typeof node.type === "string" && typeof node.category === "string") &&

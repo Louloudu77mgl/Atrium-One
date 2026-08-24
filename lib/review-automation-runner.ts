@@ -1,6 +1,5 @@
 import { getGoogleOAuthConfig } from "@/lib/google-oauth";
 import {
-  getStoredAutomationSettings,
   listStoredAutomationFlows,
   saveAutomationExecutionLog,
   type StoredAutomationFlow
@@ -14,7 +13,7 @@ import { createEmailCampaign, createEmailRecipients } from "@/lib/emailing-store
 import { dispatchEmailCampaign } from "@/lib/emailing-provider";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { EmailCampaignRecord } from "@/lib/emailing-types";
-import type { GoogleConnectionRow, MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
+import type { GoogleConnectionRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 
 type GoogleReview = {
   name?: string;
@@ -70,25 +69,25 @@ const ratings: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIV
 
 export async function runReviewAutomations(limit = 5) {
   const supabase = createSupabaseAdminClient();
-  const { data: settingsRows, error: settingsError } = await supabase
-    .from("merchant_automation_settings")
-    .select("*")
-    .eq("reviews_auto_reply_enabled", true)
+  const { data: connections, error: connectionsError } = await supabase
+    .from("google_connections")
+    .select("merchant_id")
+    .eq("status", "connected")
     .order("updated_at", { ascending: true });
 
-  if (settingsError) {
-    throw new Error(settingsError.message);
+  if (connectionsError) {
+    throw new Error(connectionsError.message);
   }
 
   const results: AutomationResult[] = [];
 
-  for (const settings of settingsRows ?? []) {
+  for (const connection of connections ?? []) {
     if (results.filter((result) => result.status !== "skipped").length >= limit) {
       break;
     }
 
     const available = Math.max(0, limit - results.filter((result) => result.status !== "skipped").length);
-    results.push(...await runReviewAutomationsForMerchant(settings.merchant_id, available));
+    results.push(...await runReviewAutomationsForMerchant(connection.merchant_id, available));
   }
 
   return results;
@@ -99,34 +98,27 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
   let results: AutomationResult[];
 
   try {
-    const [{ data: databaseSettings, error: settingsError }, { data: merchant, error: merchantError }, { data: connection, error: connectionError }, storedSettings, storedFlows] = await Promise.all([
-      supabase.from("merchant_automation_settings").select("*").eq("merchant_id", merchantId).maybeSingle(),
+    const [{ data: merchant, error: merchantError }, { data: connection, error: connectionError }, storedFlows] = await Promise.all([
       supabase.from("merchants").select("*").eq("id", merchantId).maybeSingle(),
       supabase.from("google_connections").select("*").eq("merchant_id", merchantId).eq("status", "connected").maybeSingle(),
-      getStoredAutomationSettings(merchantId).catch(() => null),
       listStoredAutomationFlows(merchantId).catch(() => [])
     ]);
 
-    if (settingsError) throw new Error(settingsError.message);
     if (merchantError) throw new Error(merchantError.message);
     if (connectionError) throw new Error(connectionError.message);
-
-    const settings = databaseSettings
-      ? { ...databaseSettings, ...storedSettings, id: databaseSettings.id, merchant_id: databaseSettings.merchant_id, created_at: databaseSettings.created_at }
-      : null;
 
     const activeReviewFlows = storedFlows
       .filter((flow) => flow.status === "active" && flow.nodes.some((node) => node.type === "google_review"))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
-    if (!settings?.reviews_auto_reply_enabled) {
-      results = [{ merchant_id: merchantId, status: "skipped", message: "Automatisation des avis désactivée." }];
-    } else if (!activeReviewFlows.length) {
+    if (!activeReviewFlows.length) {
       results = [{ merchant_id: merchantId, status: "skipped", message: "Aucun scénario Avis actif n’est enregistré pour ce compte." }];
+    } else if (activeReviewFlows.length > 1) {
+      results = [{ merchant_id: merchantId, status: "error", message: "Plusieurs scénarios Avis sont actifs. Désactivez-en un pour éviter une double réponse." }];
     } else if (!merchant || !connection?.google_location_id) {
       results = [{ merchant_id: merchantId, status: "skipped", message: "Google Business non connecté." }];
     } else {
-      results = await processMerchantReviews({ merchant, connection, settings, flows: activeReviewFlows, limit });
+      results = await processMerchantReviews({ merchant, connection, flow: activeReviewFlows[0], limit });
     }
   } catch (error) {
     results = [{
@@ -168,14 +160,12 @@ function defaultResultMessage(status: AutomationResult["status"]) {
 async function processMerchantReviews({
   merchant,
   connection,
-  settings,
-  flows,
+  flow,
   limit
 }: {
   merchant: MerchantRow;
   connection: GoogleConnectionRow;
-  settings: MerchantAutomationSettingsRow;
-  flows: StoredAutomationFlow[];
+  flow: StoredAutomationFlow;
   limit: number;
 }) {
   const supabase = createSupabaseAdminClient();
@@ -195,16 +185,17 @@ async function processMerchantReviews({
   for (const review of candidates) {
     try {
       const rating = ratings[review.starRating ?? ""] ?? 3;
-      const plans = flows.map((flow) => buildReviewFlowPlan(flow, rating));
-      const plan = plans.find((candidate) => candidate.action !== "disabled");
-      if (!plan) {
+      const plan = buildReviewFlowPlan(flow, rating);
+      if (plan.action === "disabled") {
         results.push({
           merchant_id: merchant.id,
           review_name: review.name,
           customer_name: getGoogleReviewerName(review),
           rating,
           status: "skipped",
-          message: "Aucun chemin actif du scénario ne correspond à cet avis."
+          message: "Aucun chemin connecté du scénario actif ne correspond à cet avis.",
+          flow_id: flow.id,
+          flow_title: flow.title
         });
         continue;
       }

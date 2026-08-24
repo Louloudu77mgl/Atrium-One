@@ -197,13 +197,19 @@ function safeFlowId(flowId: string) {
 }
 
 export async function saveStoredAutomationFlow(merchantId: string, flow: StoredAutomationFlow) {
+  const path = `merchants/${merchantId}/flows/${safeFlowId(flow.id)}.json`;
+  const existing = await downloadJson<StoredAutomationFlow>(path);
+  if (existing?.updatedAt && flow.updatedAt && existing.updatedAt > flow.updatedAt) {
+    throw new Error("Une version plus récente de cette automatisation existe déjà. Rechargez la page avant de poursuivre.");
+  }
   const stored: StoredAutomationFlow = {
     ...flow,
+    title: flow.title.trim(),
     merchant_id: merchantId,
     saved_at: new Date().toISOString(),
     executionHistory: []
   };
-  await uploadJson(`merchants/${merchantId}/flows/${safeFlowId(flow.id)}.json`, stored, true);
+  await uploadJson(path, stored, true);
   return stored;
 }
 

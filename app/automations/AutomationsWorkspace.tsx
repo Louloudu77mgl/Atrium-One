@@ -5,7 +5,6 @@ import { Icon } from "@/components/icons";
 import type { AutomationExecutionLog, StoredAutomationFlow } from "@/lib/automation-execution-store";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewCounters } from "@/lib/review-counters";
-import { getAutomationActionForRating, getConfiguredAutomationMode } from "@/lib/review-automation";
 import type { GoogleConnectionRow, InstagramConnectionRow, MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { AutomationCanvas } from "./automation-builder/AutomationCanvas";
 import { AutomationHistory } from "./automation-builder/AutomationHistory";
@@ -107,6 +106,8 @@ export function AutomationsWorkspace({
   const [creationStep, setCreationStep] = useState<1 | 2 | 3>(1);
   const [creationMode, setCreationMode] = useState<"template" | "manual" | "hans">("template");
   const [creationTheme, setCreationTheme] = useState("Réseaux sociaux");
+  const [renamingAutomationId, setRenamingAutomationId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const currentAutomation = useMemo(() => automations.find((item) => item.id === selectedAutomationId) ?? null, [automations, selectedAutomationId]);
   const currentIssues = currentAutomation?.validationIssues ?? [];
@@ -342,7 +343,14 @@ export function AutomationsWorkspace({
     next.validationIssues = validateFlow(currentAutomation, capabilities);
     next.status = next.validationIssues.some((issue) => issue.level === "error") ? "incomplete" : "active";
     setToolbarFeedback(next.status === "active" ? "Flow validé, activation en cours" : "Activation impossible : corrigez les erreurs signalées");
-    replaceCurrentAutomation(next);
+    const competingReviewFlows = next.status === "active" && next.nodes.some((node) => node.type === "google_review")
+      ? automations.filter((item) => item.id !== next.id && item.status === "active" && item.nodes.some((node) => node.type === "google_review"))
+      : [];
+    setAutomations((items) => items.map((automation) => {
+      if (automation.id === next.id) return { ...next, updatedAt: new Date().toISOString() };
+      if (competingReviewFlows.some((flow) => flow.id === automation.id)) return { ...automation, status: "paused", updatedAt: new Date().toISOString() };
+      return automation;
+    }));
 
     if (next.status !== "active" || !next.nodes.some((node) => node.type === "google_review")) {
       return;
@@ -357,6 +365,7 @@ export function AutomationsWorkspace({
     setAutosaveLabel("Activation serveur en cours...");
 
     try {
+      await Promise.all(competingReviewFlows.map((flow) => saveAutomationFlow({ ...flow, status: "paused", updatedAt: new Date().toISOString() })));
       await saveAutomationFlow(next);
       const response = await fetch("/api/settings/automation", {
         method: "POST",
@@ -498,15 +507,46 @@ export function AutomationsWorkspace({
       return;
     }
 
-    const previousStatus = automation.status;
-    setAutomations((items) => items.map((item) => item.id === automationId ? { ...item, status: shouldEnable ? "active" : "paused", validationIssues: issues } : item));
+    const previousAutomations = automations;
+    const competingReviewFlows = shouldEnable && automation.nodes.some((node) => node.type === "google_review")
+      ? automations.filter((item) => item.id !== automationId && item.status === "active" && item.nodes.some((node) => node.type === "google_review"))
+      : [];
+    setAutomations((items) => items.map((item) => {
+      if (item.id === automationId) return { ...item, status: shouldEnable ? "active" : "paused", validationIssues: issues, updatedAt: new Date().toISOString() };
+      if (competingReviewFlows.some((flow) => flow.id === item.id)) return { ...item, status: "paused", updatedAt: new Date().toISOString() };
+      return item;
+    }));
     setHistoryFeedback(shouldEnable ? "Scénario activé." : "Scénario désactivé.");
 
     try {
+      await Promise.all(competingReviewFlows.map((flow) => saveAutomationFlow({ ...flow, status: "paused", updatedAt: new Date().toISOString() })));
       await syncScenarioStatus(automation, shouldEnable);
     } catch (error) {
-      setAutomations((items) => items.map((item) => item.id === automationId ? { ...item, status: previousStatus } : item));
+      setAutomations(previousAutomations);
       setHistoryFeedback(error instanceof Error ? error.message : "Impossible de modifier ce scénario.");
+    }
+  }
+
+  function startRename(automation: AutomationFlow) {
+    setRenamingAutomationId(automation.id);
+    setRenameValue(automation.title);
+  }
+
+  async function confirmRename() {
+    const title = renameValue.trim();
+    const automation = automations.find((item) => item.id === renamingAutomationId);
+    if (!automation || !title || title.length > 100) return;
+    const renamed = { ...automation, title, updatedAt: new Date().toISOString() };
+    setAutomations((items) => items.map((item) => item.id === renamed.id ? renamed : item));
+    setAutosaveLabel("Sauvegarde du nouveau nom…");
+    try {
+      await saveAutomationFlow(renamed);
+      setRenamingAutomationId(null);
+      setRenameValue("");
+      setAutosaveLabel(`Nouveau nom sauvegardé à ${new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`);
+      setHistoryFeedback("Automatisation renommée.");
+    } catch (error) {
+      setAutosaveLabel(error instanceof Error ? error.message : "Impossible de renommer l’automatisation.");
     }
   }
 
@@ -664,6 +704,7 @@ export function AutomationsWorkspace({
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#EBE6DF] pt-4">
                     <button type="button" onClick={(event) => { event.stopPropagation(); openWorkflow(automation); }} className="rounded-[10px] bg-[#2B1A4A] px-4 py-2 text-sm font-semibold text-white">Ouvrir</button>
                     <div className="flex items-center gap-2">
+                      <button type="button" onClick={(event) => { event.stopPropagation(); startRename(automation); }} className="rounded-[10px] border border-[#DDD3F3] px-3 py-2 text-[12px] font-semibold text-[#5B2A9E]">Renommer</button>
                       <span className="text-[11px] font-semibold text-[#6E6A76]">{automation.status === "active" ? "Actif" : "Inactif"}</span>
                       <button
                         type="button"
@@ -708,6 +749,7 @@ export function AutomationsWorkspace({
                       <td className="px-4 py-4 font-black text-[#211432]">{automation.executionHistory.reduce((count, run) => count + run.steps.length, 0)}</td>
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => startRename(automation)} className="rounded-[10px] border border-[#DDD3F3] px-3 py-2 text-[12px] font-semibold text-[#5B2A9E]">Renommer</button>
                           <button
                             type="button"
                             role="switch"
@@ -781,6 +823,7 @@ export function AutomationsWorkspace({
                 setView("automations");
               }}
               onActivate={activateCurrentFlow}
+              onRename={() => currentAutomation && startRename(currentAutomation)}
               onRecenter={recenterCanvas}
               autosaveLabel={autosaveLabel}
               feedback={toolbarFeedback}
@@ -931,6 +974,23 @@ export function AutomationsWorkspace({
       ) : null}
 
       <TestFlowPanel open={testOpen} scenario={testScenario} result={testResult} onScenarioChange={setTestScenario} onRun={runTest} onClose={() => setTestOpen(false)} />
+      {renamingAutomationId ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#17131F]/45 p-4" onMouseDown={() => setRenamingAutomationId(null)}>
+          <form
+            className="w-full max-w-md rounded-[28px] border border-[#EBE6DF] bg-white p-6 shadow-[0_24px_70px_rgba(23,19,31,0.2)]"
+            onMouseDown={(event) => event.stopPropagation()}
+            onSubmit={(event) => { event.preventDefault(); void confirmRename(); }}
+          >
+            <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#8B7AA8]">Nom de l’automatisation</div>
+            <h2 className="mt-2 text-[22px] font-extrabold text-[#17131F]">Renommer ce scénario</h2>
+            <input autoFocus maxLength={100} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} className={`${inputClass} mt-5`} />
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setRenamingAutomationId(null)} className="rounded-[12px] border border-[#EBE6DF] px-4 py-2.5 text-sm font-semibold text-[#17131F]">Annuler</button>
+              <button type="submit" disabled={!renameValue.trim()} className="rounded-[12px] bg-[#2B1A4A] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {createOpen ? (
         <CreateAutomationModal
           step={creationStep}
@@ -1036,25 +1096,14 @@ function buildExistingAutomations({
   const reviewsTemplate = cloneFlow(templates.find((item) => item.id === "template-reviews") ?? templates[0]);
   reviewsTemplate.id = "existing-reviews";
   reviewsTemplate.source = "existing";
-  reviewsTemplate.status = googleConnected
-    ? settings?.reviews_auto_reply_enabled ? "active" : "draft"
-    : "incomplete";
+  reviewsTemplate.status = googleConnected ? "draft" : "incomplete";
   reviewsTemplate.summary = `${reviewCounters.pending} avis à traiter, ${reviewCounters.answered} déjà publiés.`;
-  if (settings?.reviews_auto_reply_enabled && getConfiguredAutomationMode(settings) === "automatic_guarded") {
-    const actions = [1, 2, 3, 4, 5].map((rating) => getAutomationActionForRating(rating, settings, "automatic"));
-    if (actions.every((action) => action === "automatic")) {
-      reviewsTemplate.nodes = reviewsTemplate.nodes.map((node) =>
-        node.category === "action" ? { ...node, mode: "automatic" as const } : node
-      );
-      reviewsTemplate.description = "Hans suit automatiquement chaque card du scénario puis publie la réponse sur Google.";
-    }
-  }
 
   const instagramTemplate = cloneFlow(templates.find((item) => item.id === "template-instagram") ?? templates[1]);
   instagramTemplate.id = "existing-instagram";
   instagramTemplate.source = "existing";
-  instagramTemplate.status = instagramConnected ? (settings?.social_auto_publish_enabled ? "active" : "draft") : "incomplete";
-  instagramTemplate.summary = settings?.social_auto_publish_enabled ? `${settings.social_posts_per_cycle ?? 1} publication(s) prévues toutes les ${settings.social_cycle_weeks ?? 1} semaine(s).` : "Hans peut préparer vos publications dès que vous activez le flow.";
+  instagramTemplate.status = instagramConnected ? "draft" : "incomplete";
+  instagramTemplate.summary = "Hans peut préparer vos publications dès que vous activez le flow.";
   instagramTemplate.installMinutes = 4;
 
   const newsletterTemplate = cloneFlow(templates.find((item) => item.id === "template-newsletter") ?? templates[2]);

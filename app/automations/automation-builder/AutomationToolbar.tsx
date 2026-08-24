@@ -16,6 +16,7 @@ export function AutomationToolbar({
   onHistory,
   onBack,
   onActivate,
+  onRename,
   onRecenter,
   autosaveLabel,
   feedback
@@ -35,6 +36,7 @@ export function AutomationToolbar({
   onHistory: () => void;
   onBack: () => void;
   onActivate: () => void;
+  onRename: () => void;
   onRecenter: () => void;
   autosaveLabel: string;
   feedback?: string | null;
@@ -57,7 +59,10 @@ export function AutomationToolbar({
           </svg>
         </button>
         <div className="min-w-0">
-          <div className="truncate text-[18px] font-extrabold text-[#17131F]">{title}</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-[18px] font-extrabold text-[#17131F]">{title}</div>
+            <button type="button" onClick={onRename} className="shrink-0 rounded-full border border-[#DDD3F3] px-2.5 py-1 text-[11px] font-bold text-[#5B2A9E] hover:bg-[#F8F5FF]">Renommer</button>
+          </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${active ? "bg-[#EAF7EE] text-[#237A44]" : "bg-[#F1ECFB] text-[#5B2A9E]"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-[#35A764]" : "bg-[#7C4DCB]"}`} />
