@@ -334,7 +334,6 @@ export function AutomationsWorkspace({
     }
 
     const hasReplyGeneration = next.nodes.some((node) => node.type === "generate_review_reply");
-    const automaticPublish = next.nodes.some((node) => node.type === "publish_review_reply" && node.mode === "automatic");
 
     if (!hasReplyGeneration) {
       return;
@@ -347,14 +346,8 @@ export function AutomationsWorkspace({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          reviews_auto_reply_enabled: true,
-          review_automation_mode: automaticPublish ? "automatic_guarded" : "semi_automatic",
-          reviews_five_star_action: automaticPublish ? "automatic" : "validation",
-          reviews_four_star_action: automaticPublish ? "automatic" : "validation",
-          reviews_three_star_action: "validation",
-          reviews_one_two_star_action: "disabled",
-          always_validate_negative_reviews: true,
-          block_sensitive_reviews: true
+          ...deriveReviewAutomationSettings(next),
+          reviews_auto_reply_enabled: true
         })
       });
       const data = await response.json() as { error?: string };
@@ -522,12 +515,20 @@ export function AutomationsWorkspace({
     const hasInstagram = automation.nodes.some((node) => node.type === "publish_instagram");
     if (!hasReviews && !hasInstagram) return;
 
-    const automaticReviews = automation.nodes.some((node) => node.type === "publish_review_reply" && node.mode === "automatic");
     const payload = hasReviews
-      ? {
-          reviews_auto_reply_enabled: enabled,
-          review_automation_mode: enabled ? (automaticReviews ? "automatic_guarded" : "semi_automatic") : "disabled"
-        }
+      ? enabled
+        ? { ...deriveReviewAutomationSettings(automation), reviews_auto_reply_enabled: true }
+        : {
+            reviews_auto_reply_enabled: false,
+            review_automation_mode: "disabled",
+            reviews_five_star_action: "disabled",
+            reviews_four_star_action: "disabled",
+            reviews_three_star_action: "disabled",
+            reviews_one_two_star_action: "disabled",
+            always_validate_negative_reviews: false,
+            block_sensitive_reviews: false,
+            sensitive_keywords: []
+          }
       : {
           social_auto_publish_enabled: enabled
         };
@@ -1131,6 +1132,53 @@ function groupAutomations(automations: AutomationFlow[]) {
     error: automations.filter((item) => item.status === "error"),
     incomplete: automations.filter((item) => item.status === "incomplete")
   };
+}
+
+function deriveReviewAutomationSettings(flow: AutomationFlow) {
+  const actions = new Map<number, "disabled" | "validation" | "automatic">(
+    [1, 2, 3, 4, 5].map((rating) => [rating, resolveReviewActionForRating(flow, rating)])
+  );
+  const configuredActions = [...actions.values()];
+  const hasAutomaticAction = configuredActions.includes("automatic");
+  const hasValidationAction = configuredActions.includes("validation");
+
+  return {
+    review_automation_mode: hasAutomaticAction ? "automatic_guarded" as const : hasValidationAction ? "semi_automatic" as const : "disabled" as const,
+    reviews_five_star_action: actions.get(5) ?? "disabled",
+    reviews_four_star_action: actions.get(4) ?? "disabled",
+    reviews_three_star_action: actions.get(3) ?? "disabled",
+    reviews_one_two_star_action: actions.get(2) === actions.get(1) ? actions.get(2) ?? "disabled" : "disabled",
+    always_validate_negative_reviews: false,
+    block_sensitive_reviews: false,
+    sensitive_keywords: [] as string[]
+  };
+}
+
+function resolveReviewActionForRating(flow: AutomationFlow, rating: number): "disabled" | "validation" | "automatic" {
+  const nodes = new Map(flow.nodes.map((node) => [node.id, node]));
+  let current = flow.nodes.find((node) => node.type === "google_review");
+  let requiresValidation = false;
+  const visited = new Set<string>();
+
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+
+    if (current.type === "stop_flow") return "disabled";
+    if (current.category === "action" && current.mode !== "automatic") requiresValidation = true;
+    if (current.type === "publish_review_reply") {
+      return current.mode === "automatic" && !requiresValidation ? "automatic" : "validation";
+    }
+
+    let branch: "default" | "yes" | "no" = "default";
+    if (current.type === "review_rating_gte") {
+      branch = rating >= Number(current.config.rating ?? 4) ? "yes" : "no";
+    }
+
+    const nextEdge = flow.edges.find((edge) => edge.source === current?.id && edge.branch === branch);
+    current = nextEdge ? nodes.get(nextEdge.target) : undefined;
+  }
+
+  return requiresValidation ? "validation" : "disabled";
 }
 
 function nextRunLabel(automation: AutomationFlow) {

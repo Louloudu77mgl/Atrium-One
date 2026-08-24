@@ -4,6 +4,7 @@ import { getStoredAutomationSettings, saveStoredAutomationSettings } from "@/lib
 import { getMerchant } from "@/lib/merchants";
 import {
   DEFAULT_SENSITIVE_KEYWORDS,
+  getConfiguredAutomationMode,
   getAutomationSummary,
   normalizeAutomationAction,
   normalizeAutomationMode,
@@ -18,13 +19,13 @@ import type { MerchantAutomationSettingsRow, MerchantRow } from "@/lib/supabase/
 export const DEFAULT_AUTOMATION_SETTINGS = {
   reviews_auto_reply_enabled: false,
   review_automation_mode: "disabled" as ReviewAutomationMode,
-  reviews_five_star_action: "automatic" as ReviewAutomationAction,
-  reviews_four_star_action: "validation" as ReviewAutomationAction,
-  reviews_three_star_action: "validation" as ReviewAutomationAction,
+  reviews_five_star_action: "disabled" as ReviewAutomationAction,
+  reviews_four_star_action: "disabled" as ReviewAutomationAction,
+  reviews_three_star_action: "disabled" as ReviewAutomationAction,
   reviews_one_two_star_action: "disabled" as ReviewAutomationAction,
-  always_validate_negative_reviews: true,
-  block_sensitive_reviews: true,
-  sensitive_keywords: [...DEFAULT_SENSITIVE_KEYWORDS],
+  always_validate_negative_reviews: false,
+  block_sensitive_reviews: false,
+  sensitive_keywords: [] as string[],
   social_auto_publish_enabled: false,
   social_auto_publish_live: false,
   social_posts_per_week: 1,
@@ -89,7 +90,7 @@ export function getSocialAutomationCadence(settings?: Partial<MerchantAutomation
 }
 
 export function getReviewAutomationMode(settings?: Partial<MerchantAutomationSettingsRow> | null) {
-  return normalizeAutomationMode(settings?.review_automation_mode);
+  return getConfiguredAutomationMode(settings);
 }
 
 export function getReviewAutomationSummary(settings?: Partial<MerchantAutomationSettingsRow> | null) {
@@ -262,9 +263,9 @@ export async function updateAutomationSettings(formData: FormData) {
   try {
     await upsertAutomationSettings({
       review_automation_mode: normalizeAutomationMode(String(formData.get("review_automation_mode") ?? "disabled")),
-      reviews_five_star_action: normalizeAutomationAction(String(formData.get("reviews_five_star_action") ?? "automatic"), "automatic"),
-      reviews_four_star_action: normalizeAutomationAction(String(formData.get("reviews_four_star_action") ?? "validation"), "validation"),
-      reviews_three_star_action: normalizeAutomationAction(String(formData.get("reviews_three_star_action") ?? "validation"), "validation"),
+      reviews_five_star_action: normalizeAutomationAction(String(formData.get("reviews_five_star_action") ?? "disabled"), "disabled"),
+      reviews_four_star_action: normalizeAutomationAction(String(formData.get("reviews_four_star_action") ?? "disabled"), "disabled"),
+      reviews_three_star_action: normalizeAutomationAction(String(formData.get("reviews_three_star_action") ?? "disabled"), "disabled"),
       reviews_one_two_star_action: normalizeAutomationAction(String(formData.get("reviews_one_two_star_action") ?? "disabled"), "disabled"),
       always_validate_negative_reviews: formData.get("always_validate_negative_reviews") === "on",
       block_sensitive_reviews: formData.get("block_sensitive_reviews") === "on",

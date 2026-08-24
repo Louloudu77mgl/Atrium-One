@@ -189,17 +189,7 @@ async function processGoogleReview({
   const supabase = createSupabaseAdminClient();
   const rating = ratings[review.starRating ?? ""] ?? 3;
   const reviewText = review.comment?.trim() || "Avis sans commentaire";
-  const effectiveSettings = {
-    ...settings,
-    review_automation_mode: settings.review_automation_mode ?? "automatic_guarded",
-    reviews_five_star_action: settings.reviews_five_star_action ?? "automatic",
-    reviews_four_star_action: settings.reviews_four_star_action ?? "automatic",
-    reviews_three_star_action: settings.reviews_three_star_action ?? "validation",
-    reviews_one_two_star_action: settings.reviews_one_two_star_action ?? "disabled",
-    always_validate_negative_reviews: settings.always_validate_negative_reviews ?? true,
-    block_sensitive_reviews: settings.block_sensitive_reviews ?? true
-  };
-  const decision = getReviewAutomationDecision({ rating, reviewText, settings: effectiveSettings });
+  const decision = getReviewAutomationDecision({ rating, reviewText, settings });
 
   if (decision.action === "disabled") {
     return { merchant_id: merchant.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Automatisation désactivée pour cette note." };

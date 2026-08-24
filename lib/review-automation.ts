@@ -35,6 +35,15 @@ export function normalizeAutomationMode(value: string | null | undefined): Revie
   return "disabled";
 }
 
+export function getConfiguredAutomationMode(settings?: Partial<MerchantAutomationSettingsRow> | null): ReviewAutomationMode {
+  const explicitMode = normalizeAutomationMode(settings?.review_automation_mode);
+  if (explicitMode !== "disabled" || settings?.review_automation_mode === "disabled") {
+    return explicitMode;
+  }
+
+  return settings?.reviews_auto_reply_enabled === true ? "automatic_guarded" : "disabled";
+}
+
 export function normalizeAutomationAction(value: string | null | undefined, fallback: ReviewAutomationAction): ReviewAutomationAction {
   if (value === "disabled" || value === "validation" || value === "automatic") {
     return value;
@@ -60,21 +69,22 @@ export function findSensitiveKeyword(reviewText: string, settings?: Partial<Merc
 
 export function getAutomationActionForRating(
   rating: number,
-  settings?: Partial<MerchantAutomationSettingsRow> | null
+  settings?: Partial<MerchantAutomationSettingsRow> | null,
+  fallback: ReviewAutomationAction = "disabled"
 ): ReviewAutomationAction {
   if (rating >= 5) {
-    return normalizeAutomationAction(settings?.reviews_five_star_action, "automatic");
+    return normalizeAutomationAction(settings?.reviews_five_star_action, fallback);
   }
 
   if (rating === 4) {
-    return normalizeAutomationAction(settings?.reviews_four_star_action, "validation");
+    return normalizeAutomationAction(settings?.reviews_four_star_action, fallback);
   }
 
   if (rating === 3) {
-    return normalizeAutomationAction(settings?.reviews_three_star_action, "validation");
+    return normalizeAutomationAction(settings?.reviews_three_star_action, fallback);
   }
 
-  return normalizeAutomationAction(settings?.reviews_one_two_star_action, "disabled");
+  return normalizeAutomationAction(settings?.reviews_one_two_star_action, fallback);
 }
 
 export function getReviewAutomationDecision({
@@ -86,17 +96,7 @@ export function getReviewAutomationDecision({
   reviewText: string;
   settings?: Partial<MerchantAutomationSettingsRow> | null;
 }): ReviewAutomationDecision {
-  const mode = normalizeAutomationMode(settings?.review_automation_mode);
-  const sensitiveKeyword = settings?.block_sensitive_reviews === false ? null : findSensitiveKeyword(reviewText, settings);
-
-  if (sensitiveKeyword) {
-    return {
-      action: "validation",
-      requiresValidation: true,
-      blockedBySafety: true,
-      sensitiveKeyword
-    };
-  }
+  const mode = getConfiguredAutomationMode(settings);
 
   if (mode === "disabled") {
     return {
@@ -107,10 +107,20 @@ export function getReviewAutomationDecision({
     };
   }
 
-  const ratingAction = getAutomationActionForRating(rating, settings);
-  const alwaysValidateNegative = settings?.always_validate_negative_reviews ?? true;
+  const fallbackAction: ReviewAutomationAction = mode === "semi_automatic" ? "validation" : "automatic";
+  const ratingAction = getAutomationActionForRating(rating, settings, fallbackAction);
+  const sensitiveKeyword = settings?.block_sensitive_reviews === true ? findSensitiveKeyword(reviewText, settings) : null;
 
-  if (alwaysValidateNegative && rating <= 2) {
+  if (sensitiveKeyword) {
+    return {
+      action: "validation",
+      requiresValidation: true,
+      blockedBySafety: true,
+      sensitiveKeyword
+    };
+  }
+
+  if (settings?.always_validate_negative_reviews === true && rating <= 2) {
     return {
       action: "validation",
       requiresValidation: true,
@@ -155,24 +165,26 @@ export function getReviewAutomationDecision({
 }
 
 export function getAutomationSummary(settings?: Partial<MerchantAutomationSettingsRow> | null) {
-  const mode = normalizeAutomationMode(settings?.review_automation_mode);
+  const mode = getConfiguredAutomationMode(settings);
   const parts: string[] = [];
 
   if (mode === "disabled") {
     return "Automatisation désactivée : Hans prépare des brouillons, mais ne publie rien sans votre accord.";
   }
 
-  if (normalizeAutomationAction(settings?.reviews_five_star_action, "automatic") === "automatic") {
+  const fallbackAction: ReviewAutomationAction = mode === "semi_automatic" ? "validation" : "automatic";
+
+  if (normalizeAutomationAction(settings?.reviews_five_star_action, fallbackAction) === "automatic") {
     parts.push("répond automatiquement aux avis 5 étoiles");
   } else {
     parts.push("prépare les avis 5 étoiles pour validation");
   }
 
-  if ((settings?.always_validate_negative_reviews ?? true) === true) {
+  if (settings?.always_validate_negative_reviews === true) {
     parts.push("demande toujours votre validation pour les avis négatifs");
   }
 
-  if ((settings?.block_sensitive_reviews ?? true) === true) {
+  if (settings?.block_sensitive_reviews === true) {
     parts.push("bloque les avis sensibles pour relecture");
   }
 
