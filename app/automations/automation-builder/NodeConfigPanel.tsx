@@ -27,6 +27,8 @@ export function NodeConfigPanel({
   const nodeIssues = issues.filter((issue) => issue.nodeId === selectedNode.id);
   const primaryFields = libraryItem?.fields.slice(0, 2) ?? [];
   const advancedFields = libraryItem?.fields.slice(2) ?? [];
+  const saveLabel = flow.lastSavedLabel ?? "Sauvegarde en cours";
+  const flowSaved = saveLabel.startsWith("Sauvegardé") || saveLabel.includes("prêt");
 
   return (
     <aside className="space-y-4 rounded-[28px] border border-[#EBE6DF] bg-white p-5 shadow-[0_12px_30px_rgba(23,19,31,0.07)]">
@@ -111,8 +113,11 @@ export function NodeConfigPanel({
 
       <div className="rounded-[18px] bg-[#F6F3EF] p-4 text-[13px] leading-6 text-[#6E6A76]">
         Flow : <span className="font-semibold text-[#17131F]">{flow.title}</span><br />
-        Version : <span className="font-semibold text-[#17131F]">v{flow.version}</span><br />
-        Sauvegarde : <span className="font-semibold text-[#17131F]">{flow.lastSavedLabel ?? "En cours"}</span>
+        Version : <span className="font-semibold text-[#17131F]">v{flow.version}</span>
+        <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${flowSaved ? "border-[#BFE4CA] bg-[#F0FAF3] text-[#237A44]" : "border-[#DCCEF2] bg-[#F8F5FF] text-[#5B2A9E]"}`}>
+          {flowSaved ? <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg> : <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#7C4DCB]" />}
+          {saveLabel}
+        </div>
       </div>
     </aside>
   );
