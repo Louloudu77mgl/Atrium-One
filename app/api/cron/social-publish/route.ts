@@ -42,13 +42,12 @@ async function runScheduledPublications(request: Request) {
 
   const results = await Promise.all((posts ?? []).map(async (row) => {
     const queuedAt = new Date();
-    const confirmationAt = new Date(queuedAt.getTime() + 5 * 60 * 1000).toISOString();
     const { data: queuedPost, error: claimError } = await supabase
       .from("social_posts")
       .update({
         status: "ready",
         scheduled_at: null,
-        published_at: confirmationAt,
+        published_at: null,
         error_message: null,
         updated_at: queuedAt.toISOString(),
         last_saved_at: queuedAt.toISOString()

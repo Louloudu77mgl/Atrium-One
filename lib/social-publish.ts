@@ -1,6 +1,7 @@
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { validateDesignDocumentLayout } from "@/lib/social-editor/layout-safety";
 import { isEditorDocument } from "@/lib/social-editor/types";
+import { getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import type { InstagramConnectionRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -28,11 +29,6 @@ export async function publishPostToInstagram({
     throw new Error("La connexion Instagram n’est pas encore active. Vous pouvez créer un brouillon et publier plus tard.");
   }
 
-  const generatedDocument = post.builder_state && typeof post.builder_state === "object" && !Array.isArray(post.builder_state)
-    ? post.builder_state as Record<string, unknown>
-    : null;
-  const requiresComposedVisual = (generatedDocument?.version === 2 || generatedDocument?.version === "html-editor-v1") && Boolean(post.visual_text);
-
   if (isEditorDocument(post.builder_state)) {
     const layoutErrors = validateDesignDocumentLayout(post.builder_state);
     if (layoutErrors.length > 0) {
@@ -40,14 +36,10 @@ export async function publishPostToInstagram({
     }
   }
 
-  if (requiresComposedVisual && !post.visual_url) {
-    throw new Error("Le visuel final avec texte doit être exporté avant la publication Instagram.");
-  }
+  const imageUrl = getPublishableInstagramImageUrl(post);
 
-  const imageUrl = post.visual_url ?? post.image_url;
-
-  if (!imageUrl || !imageUrl.startsWith("https://")) {
-    throw new Error("Ajoutez d’abord une image publique pour publier sur Instagram.");
+  if (!imageUrl) {
+    throw new Error("Finalisez le visuel avant de le publier sur Instagram.");
   }
 
   const version = process.env.INSTAGRAM_GRAPH_API_VERSION ?? "v23.0";

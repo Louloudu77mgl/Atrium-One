@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { getMerchant } from "@/lib/merchants";
 import { getMerchantMediaAssets } from "@/lib/social-gallery";
+import { getInstagramConnection } from "@/lib/instagram-connections";
+import { getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SocialPostRow } from "@/lib/supabase/types";
 
@@ -101,10 +103,31 @@ export async function PATCH(
   const now = new Date().toISOString();
   const { data: existingPost } = await supabase
     .from("social_posts")
-    .select("status,published_at,scheduled_at")
+    .select("status,published_at,scheduled_at,builder_state,visual_text,visual_url,image_url")
     .eq("id", postId)
     .eq("merchant_id", merchant.id)
     .maybeSingle();
+
+  if (!existingPost) {
+    return NextResponse.json({ error: "Post introuvable." }, { status: 404 });
+  }
+
+  if (payload.status === "scheduled") {
+    const scheduledAt = payload.scheduled_at ? new Date(payload.scheduled_at) : null;
+    if (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+      return NextResponse.json({ error: "Choisissez une date de publication future." }, { status: 400 });
+    }
+
+    const prospectivePost = { ...existingPost, ...payload } as SocialPostRow;
+    if (!getPublishableInstagramImageUrl(prospectivePost)) {
+      return NextResponse.json({ error: "Finalisez le visuel avant de le planifier." }, { status: 409 });
+    }
+
+    const instagramConnection = await getInstagramConnection(merchant, supabase);
+    if (instagramConnection?.status !== "connected") {
+      return NextResponse.json({ error: "Connectez Instagram avant de planifier cette publication." }, { status: 409 });
+    }
+  }
   const nextUpdate = {
     ...payload,
     updated_at: now,

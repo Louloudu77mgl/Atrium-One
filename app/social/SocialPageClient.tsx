@@ -8,7 +8,7 @@ import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { buildCreatePostHref } from "@/lib/social-recommendations";
-import { getPostStatusLabel } from "@/lib/social-post-utils";
+import { getPostStatusLabel, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
 import type { MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
@@ -237,8 +237,8 @@ export function SocialPageClient({
       showToast("Choisissez une date future.", "error");
       return;
     }
-    if (!hasFinalPng(post)) {
-      router.push(buildEditorActionHref(post.id, "schedule", scheduledAt.toISOString()));
+    if (!getPublishableInstagramImageUrl(post)) {
+      showToast("Finalisez d’abord le visuel pour pouvoir le planifier.", "error");
       return;
     }
     if (busyId === postId) return;
@@ -260,7 +260,7 @@ export function SocialPageClient({
       setOpenMenuId(null);
       setShareMenuId(null);
       setPostCategory("scheduled");
-      showToast("Post planifié", "success");
+      showToast("Publication planifiée", "success");
     } catch (error) {
       showToast(getUserErrorMessage(error, "Planification impossible."), "error");
     } finally {
