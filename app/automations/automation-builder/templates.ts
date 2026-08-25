@@ -16,7 +16,10 @@ export const NODE_LIBRARY: Array<{ title: string; category: string; items: NodeL
       item("new_customer", "trigger", "Nouveau client inscrit au RCU", "Se déclenche immédiatement lors de la première inscription d’un client au RCU.", "sparkle", purple, [], { source: "RCU" }, undefined, undefined, "CRM", ["clients", "crm"]),
       item("new_visit", "trigger", "Nouvelle visite RCU validée", "Se déclenche immédiatement quand une nouvelle visite RCU est enregistrée.", "store", purple, [], {}, undefined, undefined, "Commerce", ["commerce", "clients"]),
       item("new_reward", "trigger", "Nouvelle récompense gagnée", "Quand un client gagne une récompense.", "party", purple, [], {}, undefined, undefined, "CRM", ["crm", "clients"]),
-      item("google_review", "trigger", "Nouvel avis Google", "Se déclenche à l’arrivée d’un nouvel avis Google synchronisé.", "star", purple, [], {}, undefined, undefined, "Google", ["google", "avis"])
+      item("google_review", "trigger", "Veille des avis Google", "Recherche les nouveaux avis au rythme choisi, puis lance ce scénario uniquement lors d’une veille prévue.", "star", purple, [
+        { key: "interval_count", label: "Tous les", type: "number" },
+        { key: "interval_unit", label: "Période", type: "select", options: ["jour(s)", "semaine(s)"] }
+      ], { interval_count: 1, interval_unit: "jour(s)" }, undefined, undefined, "Google", ["google", "avis", "veille"])
     ]
   },
   {
@@ -93,14 +96,14 @@ function templateInstagram(businessName: string) {
 }
 
 function templateReviews(businessName: string) {
-  const first = node("google_review", "Nouvel avis Google", 80, 240);
+  const first = node("google_review", "Veille des avis Google", 80, 240, { interval_count: 1, interval_unit: "jour(s)" });
   const condition = node("review_rating_gte", "Vérifier la note", 400, 240, { rating: 4 });
   const positive = node("generate_review_reply", "Hans génère une réponse", 740, 120, { tone: "Chaleureux" }, "automatic");
   const publishPositive = node("publish_review_reply", "Publication automatique", 1060, 120, {}, "automatic");
   const negativeDraft = node("generate_review_reply", "Hans prépare une réponse", 740, 360, { tone: "Professionnel" }, "semi_automatic");
   const notify = node("notify_merchant", "Validation manuelle", 1060, 360, { message: `${businessName} : validation d’un avis sensible` }, "draft_only");
   const publishNegative = node("publish_review_reply", "Publication après validation", 1380, 360, {}, "semi_automatic");
-  return flow("template-reviews", "Répondre automatiquement aux avis", "Google", "Hans répond automatiquement aux avis positifs et vous laisse valider les réponses sensibles.", [first, condition, positive, publishPositive, negativeDraft, notify, publishNegative], [
+  return flow("template-reviews", "Répondre aux avis selon votre rythme", "Google", "Vous choisissez la fréquence de veille. À chaque passage, Hans suit exactement les étapes et validations de ce scénario.", [first, condition, positive, publishPositive, negativeDraft, notify, publishNegative], [
     edge(first, condition),
     edge(condition, positive, "yes", "Oui"),
     edge(positive, publishPositive),

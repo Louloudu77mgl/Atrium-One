@@ -71,6 +71,16 @@ export function validateFlow(
     if ((node.type === "google_review" || node.type === "publish_review_reply") && !capabilities.googleConnected) {
       issues.push({ id: `google-${node.id}`, level: "error", message: "Google Business Profile doit être connecté avant d’activer ce bloc.", nodeId: node.id, actionLabel: "Connecter Google", actionHref: "/integrations" });
     }
+    if (node.type === "google_review") {
+      const interval = Number(node.config.interval_count);
+      const unit = String(node.config.interval_unit ?? "");
+      if (!Number.isFinite(interval) || interval < 1 || interval > 52) {
+        issues.push({ id: `review-cadence-${node.id}`, level: "error", message: "La veille des avis doit être comprise entre 1 et 52 périodes.", nodeId: node.id });
+      }
+      if (!unit.startsWith("jour") && !unit.startsWith("semaine")) {
+        issues.push({ id: `review-cadence-unit-${node.id}`, level: "error", message: "Choisissez une veille en jours ou en semaines.", nodeId: node.id });
+      }
+    }
     if (node.type === "publish_review_reply" && !hasReviewReplyGeneration) {
       issues.push({ id: `review-source-${node.id}`, level: "error", message: "Ajoutez une card « Générer une réponse à un avis » avant la publication Google.", nodeId: node.id });
     }

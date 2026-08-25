@@ -1316,7 +1316,11 @@ function resolveReviewActionForRating(flow: AutomationFlow, rating: number): "di
 function nextRunLabel(automation: AutomationFlow) {
   if (automation.title.includes("Instagram")) return "Lundi prochain · 09:00";
   if (automation.title.includes("Newsletter")) return "Mois prochain · 10:00";
-  if (automation.title.includes("avis")) return "À l’arrivée du prochain avis";
+  const reviewWatch = automation.nodes.find((node) => node.type === "google_review");
+  if (reviewWatch) {
+    if (!reviewWatch.config.interval_count || !reviewWatch.config.interval_unit) return "Fréquence à choisir";
+    return `Tous les ${Math.max(1, Number(reviewWatch.config.interval_count))} ${String(reviewWatch.config.interval_unit)}`;
+  }
   return "À définir";
 }
 

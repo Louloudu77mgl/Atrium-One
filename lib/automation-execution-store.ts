@@ -85,6 +85,12 @@ export type StoredGoogleReviewIndex = {
   synced_at: string;
 };
 
+export type StoredAutomationFlowRuntimeState = {
+  merchant_id: string;
+  flow_id: string;
+  last_checked_at: string;
+};
+
 type StoredAutomationSettings = Partial<MerchantAutomationSettingsRow> & {
   merchant_id: string;
   updated_at: string;
@@ -236,6 +242,26 @@ export async function listStoredAutomationFlows(merchantId: string) {
     Array.isArray(flow.nodes) &&
     Array.isArray(flow.edges)
   ));
+}
+
+export async function getStoredAutomationFlowRuntimeState(merchantId: string, flowId: string) {
+  return downloadJson<StoredAutomationFlowRuntimeState>(
+    `merchants/${merchantId}/flow-state/${safeFlowId(flowId)}.json`
+  );
+}
+
+export async function saveStoredAutomationFlowRuntimeState(
+  merchantId: string,
+  flowId: string,
+  lastCheckedAt = new Date().toISOString()
+) {
+  const state: StoredAutomationFlowRuntimeState = {
+    merchant_id: merchantId,
+    flow_id: flowId,
+    last_checked_at: lastCheckedAt
+  };
+  await uploadJson(`merchants/${merchantId}/flow-state/${safeFlowId(flowId)}.json`, state, true);
+  return state;
 }
 
 export async function deleteStoredAutomationFlow(merchantId: string, flowId: string) {

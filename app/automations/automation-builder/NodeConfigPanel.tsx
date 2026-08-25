@@ -52,6 +52,7 @@ export function NodeConfigPanel({
               className={inputClass}
               type={field.type === "number" ? "number" : "text"}
               value={String(selectedNode.config[field.key] ?? "")}
+              min={field.type === "number" ? 1 : undefined}
               onChange={(event) => onChange(selectedNode.id, field.key, field.type === "number" ? Number(event.target.value) : event.target.value)}
             />
           )}

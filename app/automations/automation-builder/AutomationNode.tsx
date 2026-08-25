@@ -47,12 +47,18 @@ export function AutomationNode({
 
       <div className="space-y-3 px-5 py-4">
         <div className="space-y-1 text-[12.5px] text-[#6E6A76]">
-          {Object.entries(node.config).slice(0, 2).map(([key, value]) => (
+          {node.type === "google_review" ? (
+            <div>
+              <span className="font-semibold text-[#17131F]">Rythme :</span> {node.config.interval_count && node.config.interval_unit
+                ? `Tous les ${Math.max(1, Number(node.config.interval_count))} ${String(node.config.interval_unit)}`
+                : "À configurer"}
+            </div>
+          ) : Object.entries(node.config).slice(0, 2).map(([key, value]) => (
             <div key={key}>
               <span className="font-semibold text-[#17131F]">{humanizeKey(key)} :</span> {String(value)}
             </div>
           ))}
-          {!Object.keys(node.config).length ? <span>Aucune configuration pour le moment.</span> : null}
+          {node.type !== "google_review" && !Object.keys(node.config).length ? <span>Aucune configuration pour le moment.</span> : null}
         </div>
         <div className="flex items-center justify-between">
           <div className="inline-flex rounded-full bg-[#F6F3EF] px-3 py-1.5 text-[11px] font-semibold text-[#6E6A76]">

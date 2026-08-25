@@ -3,7 +3,9 @@ import { HANS_REVIEW_REPLY_INSTRUCTIONS } from "@/lib/hans-review-reply-prompt";
 import {
   listAutomationExecutionLogs,
   listStoredAutomationFlows,
+  getStoredAutomationFlowRuntimeState,
   saveAutomationExecutionLog,
+  saveStoredAutomationFlowRuntimeState,
   type StoredAutomationFlow
 } from "@/lib/automation-execution-store";
 import { hansHtmlToPlainText, sanitizeHansHtml } from "@/lib/sanitize-hans-html";
@@ -119,12 +121,32 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
     } else if (!merchant || !connection?.google_location_id) {
       results = [{ merchant_id: merchantId, status: "skipped", message: "Google Business non connecté." }];
     } else {
-      const completedExecutions = new Set(
-        executionLogs
-          .filter((log) => log.review_name && log.flow_id && ["published", "drafted", "skipped"].includes(log.status))
-          .map((log) => `${log.review_name}:${log.flow_id}`)
+      const now = new Date();
+      const configuredFlows = activeReviewFlows.filter(hasConfiguredReviewWatch);
+      const runtimeStates = await Promise.all(configuredFlows.map((flow) =>
+        getStoredAutomationFlowRuntimeState(merchantId, flow.id).catch(() => null)
+      ));
+      const dueFlows = configuredFlows.filter((flow, index) =>
+        isReviewWatchDue(flow, runtimeStates[index]?.last_checked_at ?? flow.updatedAt, now)
       );
-      results = await processMerchantReviews({ merchant, connection, flows: activeReviewFlows, completedExecutions, limit });
+
+      if (!configuredFlows.length) {
+        results = [{ merchant_id: merchantId, status: "skipped", message: "Choisissez la fréquence de la veille Avis dans le scénario actif." }];
+      } else if (!dueFlows.length) {
+        results = [{ merchant_id: merchantId, status: "skipped", message: "Aucune veille Avis n’est prévue aujourd’hui." }];
+      } else {
+        const completedExecutions = new Set(
+          executionLogs
+            .filter((log) => log.review_name && log.flow_id && ["published", "drafted", "skipped"].includes(log.status))
+            .map((log) => `${log.review_name}:${log.flow_id}`)
+        );
+        results = await processMerchantReviews({ merchant, connection, flows: dueFlows, completedExecutions, limit });
+        if (!results.some((result) => result.status === "error")) {
+          await Promise.all(dueFlows.map((flow) =>
+            saveStoredAutomationFlowRuntimeState(merchantId, flow.id, now.toISOString())
+          ));
+        }
+      }
     }
   } catch (error) {
     results = [{
@@ -154,6 +176,23 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
   })));
 
   return results;
+}
+
+function hasConfiguredReviewWatch(flow: StoredAutomationFlow) {
+  const trigger = flow.nodes.find((node) => node.type === "google_review");
+  const count = Number(trigger?.config.interval_count);
+  const unit = String(trigger?.config.interval_unit ?? "").toLocaleLowerCase("fr-FR");
+  return Number.isFinite(count) && count >= 1 && count <= 52 && (unit.startsWith("jour") || unit.startsWith("semaine"));
+}
+
+function isReviewWatchDue(flow: StoredAutomationFlow, lastCheckedAt: string, now: Date) {
+  const trigger = flow.nodes.find((node) => node.type === "google_review");
+  const count = Math.min(52, Math.max(1, Math.floor(Number(trigger?.config.interval_count ?? 1) || 1)));
+  const unit = String(trigger?.config.interval_unit ?? "jour(s)").toLocaleLowerCase("fr-FR");
+  const intervalDays = unit.startsWith("semaine") ? count * 7 : count;
+  const anchor = new Date(lastCheckedAt);
+  if (Number.isNaN(anchor.getTime())) return true;
+  return now.getTime() >= anchor.getTime() + intervalDays * 24 * 60 * 60 * 1000;
 }
 
 function defaultResultMessage(status: AutomationResult["status"]) {
