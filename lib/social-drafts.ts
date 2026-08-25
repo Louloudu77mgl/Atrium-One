@@ -68,8 +68,21 @@ function limitWords(value: string, maxWords: number, maxCharacters: number) {
   return limitText(value.split(/\s+/).filter(Boolean).slice(0, maxWords).join(" "), maxCharacters);
 }
 
+const reviewReplyLanguage = [
+  /merci\s+(?:beaucoup\s+)?pour\s+(?:votre|ce)\s+(?:retour|avis|commentaire|témoignage|partage)/i,
+  /merci\s+d['’]avoir\s+(?:partagé|pris\s+le\s+temps)/i,
+  /nous\s+sommes\s+ravis\s+d['’](?:apprendre|entendre)/i,
+  /votre\s+satisfaction\s+est\s+notre\s+priorité/i,
+  /au\s+plaisir\s+de\s+vous\s+accueillir\s+à\s+nouveau/i
+];
+
+function soundsLikeReviewReply(value: string) {
+  return reviewReplyLanguage.some((pattern) => pattern.test(value));
+}
+
 function fallbackDraft(payload: DraftIdeaInput, merchantName: string): GeneratedDraftContent {
-  const angle = limitText(payload.angle || "Découvrez ce que nos clients apprécient le plus.", 150);
+  const requestedAngle = payload.angle || "Découvrez ce que nos clients apprécient le plus.";
+  const angle = limitText(soundsLikeReviewReply(requestedAngle) ? "Découvrez une facette de notre savoir-faire en boutique." : requestedAngle, 150);
   const personalizedSubtitle = `Une expérience pensée dans les moindres détails, à découvrir chez ${merchantName}.`;
   const visualSubtitle = personalizedSubtitle.length <= 110
     ? personalizedSubtitle
@@ -79,7 +92,7 @@ function fallbackDraft(payload: DraftIdeaInput, merchantName: string): Generated
     title: limitText(payload.title || "Un conseil utile", 64),
     caption: `✨ ${angle} Venez le découvrir chez ${merchantName}.`,
     cta: "Venez nous voir",
-    hashtags: ["#commerceLocal", "#proximite", "#avisClients"],
+    hashtags: ["#commerceLocal", "#proximite", "#savoirFaire"],
     visualPrompt: "Une seule scène forte, chaleureuse et lumineuse, avec un sujet principal clairement identifiable et beaucoup d’espace négatif pour une accroche courte.",
     visualHook: limitWords(payload.title || "À découvrir", 6, 40),
     visualSubtitle,
@@ -96,7 +109,8 @@ function validateDraft(raw: unknown, fallback: GeneratedDraftContent): Generated
   const hashtags = Array.isArray(candidate.hashtags)
     ? candidate.hashtags.map((tag) => (typeof tag === "string" ? tag.trim() : "")).filter(Boolean).slice(0, 5)
     : fallback.hashtags;
-  const caption = limitText(typeof candidate.caption === "string" && candidate.caption.trim() ? candidate.caption : fallback.caption, 320);
+  const proposedCaption = typeof candidate.caption === "string" && candidate.caption.trim() ? candidate.caption : fallback.caption;
+  const caption = limitText(soundsLikeReviewReply(proposedCaption) ? fallback.caption : proposedCaption, 320);
   const candidateSubtitle = (
     typeof candidate.visualSubtitle === "string" && candidate.visualSubtitle.trim()
       ? candidate.visualSubtitle
@@ -106,6 +120,7 @@ function validateDraft(raw: unknown, fallback: GeneratedDraftContent): Generated
   const normalizedSubtitle = candidateSubtitle.toLocaleLowerCase("fr-FR");
   const visualSubtitle = candidateSubtitle.length < 55
     || candidateSubtitle.length > 110
+    || soundsLikeReviewReply(candidateSubtitle)
     || !/[.!?]$/.test(candidateSubtitle)
     || candidateSubtitle.includes("…")
     || candidateSubtitle.includes("...")
@@ -115,12 +130,12 @@ function validateDraft(raw: unknown, fallback: GeneratedDraftContent): Generated
     : candidateSubtitle;
 
   return {
-    title: limitText(typeof candidate.title === "string" && candidate.title.trim() ? candidate.title : fallback.title, 64),
+    title: limitText(typeof candidate.title === "string" && candidate.title.trim() && !soundsLikeReviewReply(candidate.title) ? candidate.title : fallback.title, 64),
     caption,
     cta: limitWords(typeof candidate.cta === "string" && candidate.cta.trim() ? candidate.cta : fallback.cta, 6, 40),
     hashtags,
     visualPrompt: limitText(typeof candidate.visualPrompt === "string" && candidate.visualPrompt.trim() ? candidate.visualPrompt : fallback.visualPrompt, 360),
-    visualHook: limitWords(typeof candidate.visualHook === "string" && candidate.visualHook.trim() ? candidate.visualHook : fallback.visualHook, 6, 40),
+    visualHook: limitWords(typeof candidate.visualHook === "string" && candidate.visualHook.trim() && !soundsLikeReviewReply(candidate.visualHook) ? candidate.visualHook : fallback.visualHook, 6, 40),
     visualSubtitle,
     format: candidate.format === "story" || candidate.format === "carrousel simple" ? candidate.format : fallback.format
   };
@@ -150,7 +165,7 @@ export async function generateDraftContent({
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
       instructions:
-        "Tu crées un post social immédiatement publiable pour un commerce local. Retourne uniquement un JSON valide avec title, caption, cta, hashtags, visualPrompt, visualHook, visualSubtitle, format. La demande du commerçant dans idea est la priorité absolue : conserve les sujets non humains, lieux, cadres, objets, actions, couleurs et détails explicitement demandés. Ne prévois jamais de personne, visage, main, silhouette, foule ou reflet humain, même si la demande en mentionne : transpose l’idée avec les produits, le décor, les matières ou la boutique. title : 64 caractères maximum. caption : bio Instagram naturelle de 2 ou 3 phrases, 320 caractères maximum, avec au plus 1 emoji. visualHook : accroche de 3 à 6 mots, 40 caractères maximum. visualSubtitle : une seule phrase éditoriale complète de 55 à 110 caractères, avec sujet, verbe et ponctuation finale. Elle doit être différente de la caption et ne jamais se terminer par des points de suspension. Il est interdit de couper ou tronquer cette phrase. visualPrompt : direction visuelle concrète et originale, fidèle à l’intention du commerçant ; précise sujet non humain, action, décor/cadre, cadrage, lumière et ambiance. Varie les cadrages et les concepts, évite les compositions génériques répétitives et n'impose pas systématiquement un produit centré. Aucun texte intégré dans l'image. Le résultat doit pouvoir être publié sans réécriture.",
+        "Tu crées un post social immédiatement publiable pour un commerce local. Retourne uniquement un JSON valide avec title, caption, cta, hashtags, visualPrompt, visualHook, visualSubtitle, format. DISTINCTION ABSOLUE : un post Instagram n’est jamais une réponse à un avis. Si idea ou source contient un avis client, utilise-le uniquement comme signal éditorial interne pour choisir un sujet ; ne t’adresse jamais à l’auteur de l’avis et ne remercie jamais pour un retour. Interdictions strictes dans title, caption, visualHook et visualSubtitle : « merci pour votre retour », « merci pour votre avis », « merci pour votre commentaire », « merci pour votre témoignage », « merci d’avoir partagé », « nous sommes ravis d’apprendre », « votre satisfaction est notre priorité », ainsi que toute variante équivalente. La caption doit parler au public Instagram du commerce, comme une publication autonome, jamais comme une conversation avec un client ayant laissé un avis. La demande du commerçant dans idea est la priorité absolue : conserve les sujets non humains, lieux, cadres, objets, actions, couleurs et détails explicitement demandés. Ne prévois jamais de personne, visage, main, silhouette, foule ou reflet humain, même si la demande en mentionne : transpose l’idée avec les produits, le décor, les matières ou la boutique. title : 64 caractères maximum. caption : légende Instagram naturelle de 2 ou 3 phrases, 320 caractères maximum, avec au plus 1 emoji. visualHook : accroche de 3 à 6 mots, 40 caractères maximum. visualSubtitle : une seule phrase éditoriale complète de 55 à 110 caractères, avec sujet, verbe et ponctuation finale. Elle doit être différente de la caption et ne jamais se terminer par des points de suspension. Il est interdit de couper ou tronquer cette phrase. visualPrompt : direction visuelle concrète et originale, fidèle à l’intention du commerçant ; précise sujet non humain, action, décor/cadre, cadrage, lumière et ambiance. Varie les cadrages et les concepts, évite les compositions génériques répétitives et n'impose pas systématiquement un produit centré. Aucun texte intégré dans l'image. Le résultat doit pouvoir être publié sans réécriture.",
       input: JSON.stringify({
         merchant: {
           businessName: merchant.business_name,
