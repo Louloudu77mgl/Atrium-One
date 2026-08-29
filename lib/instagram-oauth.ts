@@ -8,15 +8,6 @@ export const instagramOAuthScopes = [
 ] as const;
 
 export function getInstagramRedirectUri(origin: string) {
-  const configuredRedirectUri = (
-    process.env.INSTAGRAM_REDIRECT_URI
-    ?? process.env.META_REDIRECT_URI
-  )?.trim();
-
-  if (configuredRedirectUri) {
-    return configuredRedirectUri;
-  }
-
   const appOrigin = process.env.NODE_ENV === "production"
     ? getConfiguredAppOrigin()
     : origin;
@@ -27,7 +18,7 @@ export function getInstagramRedirectUri(origin: string) {
 export function getInstagramOAuthConfig(redirectUriOverride?: string) {
   const clientId = process.env.INSTAGRAM_APP_ID ?? process.env.META_CLIENT_ID;
   const clientSecret = process.env.INSTAGRAM_APP_SECRET ?? process.env.META_CLIENT_SECRET;
-  const redirectUri = redirectUriOverride ?? process.env.INSTAGRAM_REDIRECT_URI ?? process.env.META_REDIRECT_URI;
+  const redirectUri = redirectUriOverride ?? new URL("/api/instagram/callback", getConfiguredAppOrigin()).toString();
   const apiVersion = process.env.INSTAGRAM_GRAPH_API_VERSION ?? "v23.0";
 
   if (!clientId || !clientSecret || !redirectUri) {

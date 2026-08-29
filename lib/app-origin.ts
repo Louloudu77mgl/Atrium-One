@@ -1,4 +1,4 @@
-const productionOrigin = "https://atrium-one-self.vercel.app";
+const productionOrigin = "https://app.atrium-one.fr";
 
 export function getAppOriginFromRequest(request: Request) {
   const forwardedProto = request.headers.get("x-forwarded-proto");
