@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { associationStrength, buildBulkTaskRows, buildEventTitle, buildTaskTitle, calculateArr, dedupeProspects, distributeProspectsAcrossDays, exclusiveLeadIdsForSearch, findDuplicate, hasEffectiveModuleAccess, sortCalendarTasks } from "../lib/crm/logic.ts";
+import { associationStrength, buildBulkTaskRows, buildEventTitle, buildTaskTitle, calculateArr, dedupeProspects, distributeProspectsAcrossDays, exclusiveLeadIdsForSearch, findDuplicate, hasEffectiveModuleAccess, isCrmTimelineActivity, sortCalendarTasks } from "../lib/crm/logic.ts";
 import { collectGooglePlacesPages } from "../lib/crm/places.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -20,6 +20,9 @@ const calendar = read("../components/crm/CalendarWorkspace.tsx");
 const calendarPlanRoute = read("../app/api/crm/calendar/plan/route.ts");
 const taskBulkRoute = read("../app/api/crm/tasks/bulk/route.ts");
 const calendarPage = read("../app/crm/calendar/page.tsx");
+const crmHome = read("../app/crm/page.tsx");
+const leadWorkspace = read("../components/crm/LeadDetailWorkspace.tsx");
+const activityRoute = read("../app/api/crm/activity/[id]/route.ts");
 
 test("sécurité — l’admin exact est isolé dans /crm et les autres utilisateurs sont refusés", () => {
   assert.match(sqlV1, /louisdacre@gmail\.com/);
@@ -185,6 +188,30 @@ test("suppression lead — les tâches liées sont nettoyées et masquées du ca
   assert.match(leadRoute, /from\("crm_tasks"\)\.delete\(\)\.eq\("lead_id", id\)/);
   assert.match(calendarPage, /crm_leads!inner/);
   assert.match(calendarPage, /crm_leads\.deleted_at/);
+});
+
+test("timeline — seuls les appels, emails consignés et rendez-vous planifiés sont visibles", () => {
+  assert.equal(isCrmTimelineActivity({ type: "call_completed" }), true);
+  assert.equal(isCrmTimelineActivity({ type: "task_completed", metadata: { title: "Email - Institut Camille" } }), true);
+  assert.equal(isCrmTimelineActivity({ type: "task_completed", metadata: { title: "Appel - Institut Camille" } }), true);
+  assert.equal(isCrmTimelineActivity({ type: "r1_completed" }), true);
+  assert.equal(isCrmTimelineActivity({ type: "note_added" }), false);
+  assert.equal(isCrmTimelineActivity({ type: "deal_won" }), false);
+  assert.match(leadWorkspace, /activity\.filter\(isCrmTimelineActivity\)/);
+});
+
+test("timeline — une entrée peut être supprimée sans supprimer sa tâche ou son RDV source", () => {
+  assert.match(activityRoute, /from\("crm_activity"\)\.delete\(\)/);
+  assert.doesNotMatch(activityRoute, /crm_tasks|crm_events/);
+  assert.match(leadWorkspace, /Supprimer cette entrée de timeline/);
+});
+
+test("accueil CRM — les KPI sont calculés depuis les données sources", () => {
+  for (const table of ["crm_leads", "crm_tasks", "crm_events", "crm_opportunities"]) assert.match(crmHome, new RegExp(`from\\("${table}"\\)`));
+  assert.match(crmHome, /Pipeline MRR/);
+  assert.match(crmHome, /MRR signé/);
+  assert.match(crmHome, /Taux de closing/);
+  assert.doesNotMatch(crmHome, /redirect\("\/crm\/prospection"\)/);
 });
 
 test("association compte — email exact automatique, signaux faibles manuels", () => {

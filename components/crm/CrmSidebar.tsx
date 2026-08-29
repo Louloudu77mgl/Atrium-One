@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const links = [
+  { href: "/crm", label: "Accueil", icon: "⌂", exact: true },
   { href: "/crm/prospection", label: "Prospection", icon: "⌕" },
   { href: "/crm/leads", label: "Base de données", icon: "▦" },
   { href: "/crm/calendar", label: "Calendrier", icon: "□" },
@@ -23,7 +24,7 @@ export function CrmSidebar({ email }: { email: string }) {
       </div>
       <nav className="space-y-1 p-3">
         {links.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`));
           return <Link key={item.href} href={item.href} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-bold transition ${active ? "bg-white text-[#211432]" : "text-white/60 hover:bg-white/10 hover:text-white"}`}><span className="w-5 text-center text-base">{item.icon}</span>{item.label}</Link>;
         })}
       </nav>
@@ -39,5 +40,5 @@ export function CrmSidebar({ email }: { email: string }) {
 
 export function CrmMobileNav() {
   const pathname = usePathname();
-  return <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-4 border-t border-[#E8E4DB] bg-white/95 p-2 backdrop-blur md:hidden">{links.map((item) => <Link key={item.href} href={item.href} className={`rounded-lg px-1 py-2 text-center text-[10px] font-bold ${pathname.startsWith(item.href) ? "bg-[#F3E8FF] text-[#4C1D95]" : "text-[#6B617F]"}`}><span className="block text-base">{item.icon}</span>{item.label}</Link>)}</nav>;
+  return <nav className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-[#E8E4DB] bg-white/95 p-2 backdrop-blur md:hidden">{links.map((item) => { const active = pathname === item.href || (!item.exact && pathname.startsWith(`${item.href}/`)); return <Link key={item.href} href={item.href} className={`rounded-lg px-1 py-2 text-center text-[10px] font-bold ${active ? "bg-[#F3E8FF] text-[#4C1D95]" : "text-[#6B617F]"}`}><span className="block text-base">{item.icon}</span>{item.label}</Link>; })}</nav>;
 }

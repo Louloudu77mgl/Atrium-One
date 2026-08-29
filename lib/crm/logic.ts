@@ -87,3 +87,13 @@ export function exclusiveLeadIdsForSearch(relations: Array<{ searchId: string; l
   const targetLeadIds = new Set(relations.filter((item) => item.searchId === searchId).map((item) => item.leadId));
   return [...targetLeadIds].filter((leadId) => !relations.some((item) => item.leadId === leadId && item.searchId !== searchId));
 }
+
+export type CrmTimelineActivity = { type: string; metadata?: Record<string, unknown> | null };
+
+export function isCrmTimelineActivity(activity: CrmTimelineActivity) {
+  if (["call_completed", "r1_completed", "r2_completed", "r3_completed", "followup_completed", "appointment_created"].includes(activity.type)) return true;
+  if (activity.type !== "task_completed") return false;
+  const taskType = String(activity.metadata?.task_type ?? "").trim();
+  const title = String(activity.metadata?.title ?? "").trim();
+  return taskType === "Appel" || taskType === "Email" || /^(Appel|Email)\s+-/i.test(title);
+}

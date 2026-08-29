@@ -15,7 +15,7 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
     supabase.from("crm_tasks").select("*").eq("lead_id", id).order("completed").order("due_date").order("due_time"),
     supabase.from("crm_events").select("*").eq("lead_id", id).order("event_date", { ascending: false }).order("event_time", { ascending: false }),
     supabase.from("crm_opportunities").select("*").eq("lead_id", id).order("created_at", { ascending: false }),
-    supabase.from("crm_activity").select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100)
+    supabase.from("crm_activity").select("*").eq("lead_id", id).in("type", ["call_completed", "task_completed", "r1_completed", "r2_completed", "r3_completed", "followup_completed", "appointment_created"]).order("created_at", { ascending: false }).limit(100)
   ]);
   if (!lead) notFound();
   let access = null; let modules: Array<{ module_key: string; enabled: boolean }> = []; let account: { email: string | null; createdAt: string | null; lastSignInAt: string | null } | null = null; let candidates: Array<{ businessId: string; userId: string; businessName: string; email: string | null; reason: string }> = [];
