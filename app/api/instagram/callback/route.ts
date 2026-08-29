@@ -12,7 +12,7 @@ type InstagramTokenResponse = {
   token_type?: string;
   expires_in?: number;
   user_id?: number | string;
-  permissions?: string;
+  permissions?: unknown;
   error_type?: string;
   error_message?: string;
   error?: {
@@ -169,10 +169,7 @@ export async function GET(request: Request) {
   const tokenExpiresAt = new Date(
     Date.now() + Math.max(60, longLivedData.expires_in ?? 60 * 24 * 60 * 60) * 1000
   ).toISOString();
-  const grantedScopes = (tokenData.permissions ?? instagramOAuthScopes.join(","))
-    .split(",")
-    .map((permission) => permission.trim())
-    .filter(Boolean);
+  const grantedScopes = normalizeGrantedScopes(tokenData.permissions);
 
   const profileResponse = await fetch(`https://graph.instagram.com/${config.apiVersion}/me?${new URLSearchParams({
     fields: "user_id,username,account_type",
@@ -311,4 +308,40 @@ async function recordInstagramError(merchant: MerchantRow, message: string, tech
       message: error instanceof Error ? error.message : "unknown_error"
     });
   }
+}
+
+function normalizeGrantedScopes(permissions: unknown) {
+  if (typeof permissions === "string") {
+    return permissions
+      .split(",")
+      .map((permission) => permission.trim())
+      .filter(Boolean);
+  }
+
+  if (Array.isArray(permissions)) {
+    const scopes = permissions.flatMap((permission) => {
+      if (typeof permission === "string") {
+        return permission.trim() ? [permission.trim()] : [];
+      }
+
+      if (permission && typeof permission === "object" && "permission" in permission) {
+        const value = permission.permission;
+        return typeof value === "string" && value.trim() ? [value.trim()] : [];
+      }
+
+      return [];
+    });
+
+    return scopes.length > 0 ? scopes : [...instagramOAuthScopes];
+  }
+
+  if (permissions && typeof permissions === "object") {
+    const scopes = Object.entries(permissions)
+      .filter(([, granted]) => granted === true || granted === "granted")
+      .map(([permission]) => permission);
+
+    return scopes.length > 0 ? scopes : [...instagramOAuthScopes];
+  }
+
+  return [...instagramOAuthScopes];
 }
