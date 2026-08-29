@@ -2,6 +2,10 @@ import { cookies } from "next/headers";
 import { getConfiguredAppOrigin } from "@/lib/app-origin";
 
 export const instagramOAuthStateCookie = "atrium_instagram_oauth_state";
+export const instagramOAuthScopes = [
+  "instagram_business_basic",
+  "instagram_business_content_publish"
+] as const;
 
 export function getInstagramRedirectUri(origin: string) {
   const configuredRedirectUri = (

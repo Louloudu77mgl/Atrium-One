@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getInstagramFailureCode, getInstagramIntegrationErrorDetails } from "@/lib/instagram-errors";
+import { createMerchantNotification } from "@/lib/merchant-notifications";
 import { publishPostToInstagram } from "@/lib/social-publish";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 
@@ -33,11 +35,13 @@ async function runScheduledPublications(request: Request) {
   await supabase
     .from("social_posts")
     .update({
-      status: "scheduled",
-      error_message: "Nouvelle tentative automatique de publication.",
+      status: "failed",
+      failed_at: nowIso,
+      failure_code: "publishing_timeout",
+      error_message: "La publication est restée inachevée. Relancez-la depuis AtriumOne.",
       updated_at: nowIso
     })
-    .eq("status", "ready")
+    .eq("status", "publishing")
     .not("scheduled_at", "is", null)
     .lte("updated_at", staleClaimCutoff);
 
@@ -55,11 +59,15 @@ async function runScheduledPublications(request: Request) {
 
   const results = await Promise.all((posts ?? []).map(async (row) => {
     const queuedAt = new Date();
-    const { data: queuedPost, error: claimError } = await supabase
+      const { data: queuedPost, error: claimError } = await supabase
       .from("social_posts")
       .update({
-        status: "ready",
+        status: "publishing",
         published_at: null,
+        last_attempt_at: queuedAt.toISOString(),
+        retry_count: (row.retry_count ?? 0) + 1,
+        failed_at: null,
+        failure_code: null,
         error_message: null,
         updated_at: queuedAt.toISOString(),
         last_saved_at: queuedAt.toISOString()
@@ -89,37 +97,51 @@ async function runScheduledPublications(request: Request) {
         throw new Error("Commerce introuvable.");
       }
 
-      const { data: connection } = await supabase
-        .from("instagram_connections")
-        .select("*")
-        .eq("merchant_id", queuedPost.merchant_id)
-        .maybeSingle();
-
-      if (connection?.status !== "connected") {
-        throw new Error("Connectez le compte Instagram de cet établissement avant de publier.");
-      }
-
       const post = await publishPostToInstagram({
         merchant,
         post: queuedPost,
-        instagramConnection: connection,
         supabaseClient: supabase
       });
       return { id: row.id, status: "published", postId: post.id };
     } catch (publishError) {
       const message = publishError instanceof Error ? publishError.message : "Publication planifiée impossible.";
+      const failureCode = getInstagramFailureCode(publishError);
+      const integration = getInstagramIntegrationErrorDetails(publishError);
+      const failedAt = new Date().toISOString();
       await supabase
         .from("social_posts")
         .update({
-          status: "scheduled",
+          status: "failed",
           scheduled_at: queuedPost.scheduled_at,
           published_at: null,
+          failed_at: failedAt,
+          failure_code: failureCode,
           error_message: message,
-          updated_at: new Date().toISOString()
+          updated_at: failedAt
         })
         .eq("id", row.id)
-        .eq("status", "ready");
-      return { id: row.id, status: "error", error: message, scheduledAt: queuedPost.scheduled_at };
+        .eq("status", "publishing");
+      if (["token_expired", "token_revoked", "permissions_insufficient", "account_inaccessible", "connection_invalid"].includes(failureCode)) {
+        await createMerchantNotification({
+          supabase,
+          merchantId: queuedPost.merchant_id,
+          title: "Publication Instagram non envoyée",
+          body: "Votre post est conservé. Reconnectez Instagram pour le replanifier."
+        });
+      }
+      console.error("[instagram/scheduled-publish] failed", {
+        merchantId: queuedPost.merchant_id,
+        postId: row.id,
+        action: integration?.action ?? "instagram_publish",
+        provider: "meta",
+        method: integration?.method ?? "POST",
+        endpoint: integration?.endpoint ?? "/{instagram-user-id}/media",
+        httpStatus: integration?.http_status ?? null,
+        failureCode,
+        apiError: integration?.api_error ?? message,
+        scheduledAt: queuedPost.scheduled_at
+      });
+      return { id: row.id, status: "failed", error: message, failureCode, scheduledAt: queuedPost.scheduled_at };
     }
   }));
 

@@ -72,8 +72,13 @@ create table if not exists public.instagram_connections (
   refresh_token_encrypted text,
   connected_at timestamptz not null default now(),
   last_sync_at timestamptz,
+  token_expires_at timestamptz,
+  granted_scopes text[] not null default '{}',
+  page_id text,
+  last_checked_at timestamptz,
+  updated_at timestamptz not null default now(),
   last_error text,
-  status text not null default 'disconnected' check (status in ('connected', 'disconnected', 'error', 'pending_configuration')),
+  status text not null default 'disconnected' check (status in ('connected', 'expiring', 'expired', 'revoked', 'disconnected', 'error', 'pending_configuration')),
   constraint instagram_connections_merchant_id_key unique (merchant_id)
 );
 
@@ -146,7 +151,17 @@ create table if not exists public.social_posts (
   cta text,
   hashtags text[] not null default '{}',
   visual_url text,
-  status text not null default 'draft' check (status in ('draft', 'editing', 'ready', 'exported', 'saved', 'published')),
+  image_url text,
+  scheduled_at timestamptz,
+  published_at timestamptz,
+  error_message text,
+  instagram_media_id text,
+  instagram_connection_id uuid references public.instagram_connections(id) on delete set null,
+  last_attempt_at timestamptz,
+  failed_at timestamptz,
+  failure_code text,
+  retry_count integer not null default 0,
+  status text not null default 'draft' check (status in ('draft', 'editing', 'ready', 'exported', 'saved', 'scheduled', 'publishing', 'published', 'failed', 'cancelled')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -303,7 +318,7 @@ update public.social_posts set status = 'editing' where status = 'saved';
 alter table public.social_posts drop constraint if exists social_posts_status_check;
 alter table public.social_posts
   add constraint social_posts_status_check
-  check (status in ('draft', 'editing', 'ready', 'exported', 'saved', 'published'));
+  check (status in ('draft', 'editing', 'ready', 'exported', 'saved', 'scheduled', 'publishing', 'published', 'failed', 'cancelled'));
 
 alter table public.generated_replies drop constraint if exists generated_replies_status_check;
 alter table public.generated_replies

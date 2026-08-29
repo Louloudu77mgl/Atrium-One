@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { HansGeneratingModal } from "@/components/HansGeneratingModal";
+import { useFailureSupport } from "@/components/FailureSupportProvider";
 import { Icon } from "@/components/icons";
 import type { HansAutomationBlueprint } from "@/lib/automation-hans-blueprint";
 import type { AutomationExecutionLog, StoredAutomationFlow } from "@/lib/automation-execution-store";
@@ -90,7 +91,7 @@ export function AutomationsWorkspace({
       emailCampaignsCount,
       emailProviderReady,
       googleConnected: googleConnection?.status === "connected",
-      instagramConnected: instagramConnection?.status === "connected",
+      instagramConnected: instagramConnection?.status === "connected" || instagramConnection?.status === "expiring",
       templates
     });
     return mergeStoredFlows({ defaults, storedFlows, reviews, automationRuns });
@@ -108,6 +109,20 @@ export function AutomationsWorkspace({
   const [testScenario, setTestScenario] = useState<TestScenario>({ customerName: "Marie Dupont", visits: 8, points: 180, daysSinceLastVisit: 36, rewards: 2, marketingConsent: true, reviewRating: 5, returnedAfterDelay: false });
   const [testResult, setTestResult] = useState<ReturnType<typeof buildExecutionPreview> | null>(null);
   const [hansPrompt, setHansPrompt] = useState("");
+  const { reportImportantFailure } = useFailureSupport();
+
+  useEffect(() => {
+    const latestImportantFailure = automationRuns.find((run) => run.status === "error" && (
+      run.steps?.some((step) => step.integration) || /instagram|publication|connexion|synchronisation/i.test(run.message)
+    ));
+    if (!latestImportantFailure) return;
+    reportImportantFailure({
+      type: latestImportantFailure.steps?.find((step) => step.integration)?.integration?.failure_code ?? "automation_failed",
+      feature: "automations",
+      action: latestImportantFailure.flow_title ?? latestImportantFailure.automation_key,
+      executionId: latestImportantFailure.id
+    });
+  }, [automationRuns, reportImportantFailure]);
   const [hansSummary, setHansSummary] = useState<string | null>(null);
   const [hansGenerating, setHansGenerating] = useState(false);
   const [hansError, setHansError] = useState<string | null>(null);
@@ -146,7 +161,7 @@ export function AutomationsWorkspace({
   }, [allHistory]);
   const grouped = useMemo(() => groupAutomations(automations), [automations]);
   const capabilities = useMemo(() => ({
-    instagramConnected: instagramConfigured && instagramConnection?.status === "connected",
+    instagramConnected: instagramConfigured && (instagramConnection?.status === "connected" || instagramConnection?.status === "expiring"),
     googleConnected: googleConnection?.status === "connected",
     emailProviderReady,
     emailSubscribersCount

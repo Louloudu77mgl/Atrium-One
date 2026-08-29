@@ -10,7 +10,11 @@
     },
     {
       "path": "/api/cron/social-publish",
-      "schedule": "0 6 * * *"
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/instagram-connections",
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/api/cron/review-insights",

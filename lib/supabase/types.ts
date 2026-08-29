@@ -229,7 +229,7 @@ export type Database = {
           hashtags: string[];
           visual_url: string | null;
           source: "manual" | "automation";
-          status: "draft" | "editing" | "ready" | "exported" | "saved" | "scheduled" | "published";
+          status: "draft" | "editing" | "ready" | "exported" | "saved" | "scheduled" | "publishing" | "published" | "failed" | "cancelled";
           created_at: string;
           updated_at: string;
           last_saved_at: string | null;
@@ -237,6 +237,11 @@ export type Database = {
           published_at: string | null;
           error_message: string | null;
           instagram_media_id: string | null;
+          instagram_connection_id: string | null;
+          last_attempt_at: string | null;
+          failed_at: string | null;
+          failure_code: string | null;
+          retry_count: number;
           template_id: string | null;
           visual_html: string | null;
           builder_state: Json | null;
@@ -256,7 +261,7 @@ export type Database = {
           hashtags?: string[];
           visual_url?: string | null;
           source?: "manual" | "automation";
-          status?: "draft" | "editing" | "ready" | "exported" | "saved" | "scheduled" | "published";
+          status?: "draft" | "editing" | "ready" | "exported" | "saved" | "scheduled" | "publishing" | "published" | "failed" | "cancelled";
           created_at?: string;
           updated_at?: string;
           last_saved_at?: string | null;
@@ -264,6 +269,11 @@ export type Database = {
           published_at?: string | null;
           error_message?: string | null;
           instagram_media_id?: string | null;
+          instagram_connection_id?: string | null;
+          last_attempt_at?: string | null;
+          failed_at?: string | null;
+          failure_code?: string | null;
+          retry_count?: number;
           template_id?: string | null;
           visual_html?: string | null;
           builder_state?: Json | null;
@@ -283,7 +293,7 @@ export type Database = {
           hashtags?: string[];
           visual_url?: string | null;
           source?: "manual" | "automation";
-          status?: "draft" | "editing" | "ready" | "exported" | "saved" | "scheduled" | "published";
+          status?: "draft" | "editing" | "ready" | "exported" | "saved" | "scheduled" | "publishing" | "published" | "failed" | "cancelled";
           created_at?: string;
           updated_at?: string;
           last_saved_at?: string | null;
@@ -291,6 +301,11 @@ export type Database = {
           published_at?: string | null;
           error_message?: string | null;
           instagram_media_id?: string | null;
+          instagram_connection_id?: string | null;
+          last_attempt_at?: string | null;
+          failed_at?: string | null;
+          failure_code?: string | null;
+          retry_count?: number;
           template_id?: string | null;
           visual_html?: string | null;
           builder_state?: Json | null;
@@ -1111,7 +1126,12 @@ export type Database = {
           connected_at: string;
           last_sync_at: string | null;
           last_error: string | null;
-          status: "connected" | "disconnected" | "error" | "pending_configuration";
+          status: "connected" | "expiring" | "expired" | "revoked" | "disconnected" | "error" | "pending_configuration";
+          token_expires_at: string | null;
+          granted_scopes: string[];
+          page_id: string | null;
+          last_checked_at: string | null;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -1123,7 +1143,12 @@ export type Database = {
           connected_at?: string;
           last_sync_at?: string | null;
           last_error?: string | null;
-          status?: "connected" | "disconnected" | "error" | "pending_configuration";
+          status?: "connected" | "expiring" | "expired" | "revoked" | "disconnected" | "error" | "pending_configuration";
+          token_expires_at?: string | null;
+          granted_scopes?: string[];
+          page_id?: string | null;
+          last_checked_at?: string | null;
+          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -1135,7 +1160,12 @@ export type Database = {
           connected_at?: string;
           last_sync_at?: string | null;
           last_error?: string | null;
-          status?: "connected" | "disconnected" | "error" | "pending_configuration";
+          status?: "connected" | "expiring" | "expired" | "revoked" | "disconnected" | "error" | "pending_configuration";
+          token_expires_at?: string | null;
+          granted_scopes?: string[];
+          page_id?: string | null;
+          last_checked_at?: string | null;
+          updated_at?: string;
         };
         Relationships: [
           {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { getMerchant } from "@/lib/merchants";
-import { getInstagramOAuthConfig, getInstagramRedirectUri, consumeInstagramOAuthState } from "@/lib/instagram-oauth";
+import { getInstagramOAuthConfig, getInstagramRedirectUri, consumeInstagramOAuthState, instagramOAuthScopes } from "@/lib/instagram-oauth";
 import { upsertInstagramConnection } from "@/lib/instagram-connections";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -12,6 +12,7 @@ type InstagramTokenResponse = {
   token_type?: string;
   expires_in?: number;
   user_id?: number | string;
+  permissions?: string;
   error_type?: string;
   error_message?: string;
   error?: {
@@ -23,6 +24,7 @@ type InstagramProfileResponse = {
   id?: string | number;
   user_id?: string | number;
   username?: string;
+  account_type?: string;
   error?: {
     message?: string;
   };
@@ -127,7 +129,8 @@ export async function GET(request: Request) {
   if (!tokenResponse.ok || !tokenData.access_token) {
     await recordInstagramError(
       merchant,
-      tokenData.error?.message ?? tokenData.error_message ?? "Impossible de connecter Instagram."
+      "Instagram n’a pas pu finaliser la connexion. Réessayez dans quelques instants.",
+      tokenData.error?.message ?? tokenData.error_message
     );
 
     return createOAuthCompletionResponse(origin, {
@@ -136,32 +139,67 @@ export async function GET(request: Request) {
     });
   }
 
-  const longLivedData = await fetch(`https://graph.instagram.com/access_token?${new URLSearchParams({
+  const longLivedResponse = await fetch(`https://graph.instagram.com/access_token?${new URLSearchParams({
     grant_type: "ig_exchange_token",
     client_secret: config.clientSecret,
     access_token: tokenData.access_token
   }).toString()}`, {
     cache: "no-store",
     signal: AbortSignal.timeout(15_000)
-  }).then(async (response) => response.ok ? await response.json() as InstagramTokenResponse : {})
-    .catch(() => ({} as InstagramTokenResponse));
-  const userAccessToken = longLivedData.access_token ?? tokenData.access_token;
+  }).catch(() => null);
+  const longLivedData = longLivedResponse
+    ? await longLivedResponse.json().catch(() => ({} as InstagramTokenResponse)) as InstagramTokenResponse
+    : {} as InstagramTokenResponse;
+
+  if (!longLivedResponse?.ok || !longLivedData.access_token) {
+    const technicalMessage = longLivedData.error?.message ?? longLivedData.error_message ?? "Échange du jeton longue durée impossible.";
+    console.error("[instagram/callback] long_lived_token_failed", {
+      merchantId: merchant.id,
+      httpStatus: longLivedResponse?.status ?? null,
+      message: technicalMessage
+    });
+    await recordInstagramError(merchant, "Instagram n’a pas pu sécuriser durablement la connexion.", technicalMessage);
+    return createOAuthCompletionResponse(origin, {
+      status: "error",
+      message: "Instagram n’a pas pu sécuriser durablement la connexion. Réessayez dans quelques instants."
+    });
+  }
+
+  const userAccessToken = longLivedData.access_token;
+  const tokenExpiresAt = new Date(
+    Date.now() + Math.max(60, longLivedData.expires_in ?? 60 * 24 * 60 * 60) * 1000
+  ).toISOString();
+  const grantedScopes = (tokenData.permissions ?? instagramOAuthScopes.join(","))
+    .split(",")
+    .map((permission) => permission.trim())
+    .filter(Boolean);
 
   const profileResponse = await fetch(`https://graph.instagram.com/${config.apiVersion}/me?${new URLSearchParams({
-    fields: "user_id,username",
+    fields: "user_id,username,account_type",
     access_token: userAccessToken
   }).toString()}`, {
     cache: "no-store",
     signal: AbortSignal.timeout(15_000)
   }).catch(() => null);
 
-  let username: string | null = null;
-  let accountId = tokenData.user_id ? String(tokenData.user_id) : null;
+  const profileData = profileResponse
+    ? await profileResponse.json().catch(() => ({} as InstagramProfileResponse)) as InstagramProfileResponse
+    : {} as InstagramProfileResponse;
+  const username = profileData.username ?? null;
+  const accountId = String(profileData.user_id ?? "") || null;
+  const isProfessional = ["BUSINESS", "MEDIA_CREATOR"].includes(profileData.account_type ?? "");
+  const connectionReady = Boolean(profileResponse?.ok && accountId && username && isProfessional);
 
-  if (profileResponse?.ok) {
-    const profileData = (await profileResponse.json()) as InstagramProfileResponse;
-    username = profileData.username ?? null;
-    accountId = String(profileData.user_id ?? profileData.id ?? accountId ?? "") || null;
+  if (!connectionReady) {
+    const technicalMessage = profileData.error?.message ?? "Profil Instagram professionnel incomplet après OAuth.";
+    console.error("[instagram/callback] profile_validation_failed", {
+      merchantId: merchant.id,
+      httpStatus: profileResponse?.status ?? null,
+      hasAccountId: Boolean(accountId),
+      hasUsername: Boolean(username),
+      accountType: profileData.account_type ?? null,
+      message: technicalMessage
+    });
   }
 
   try {
@@ -170,9 +208,14 @@ export async function GET(request: Request) {
       instagram_account_id: accountId || null,
       instagram_username: username,
       access_token_encrypted: userAccessToken,
-      status: accountId ? "connected" : "pending_configuration",
+      status: connectionReady ? "connected" : "pending_configuration",
       connected_at: new Date().toISOString(),
-      last_error: accountId ? null : "Impossible de récupérer le compte Instagram professionnel après la connexion."
+      token_expires_at: tokenExpiresAt,
+      granted_scopes: grantedScopes,
+      page_id: null,
+      last_checked_at: connectionReady ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+      last_error: connectionReady ? null : "Impossible de vérifier le compte Instagram professionnel après la connexion."
     }, merchant);
   } catch (error) {
     console.error("[instagram/callback] connection_persist_failed", {
@@ -186,10 +229,10 @@ export async function GET(request: Request) {
   }
 
   return createOAuthCompletionResponse(origin, {
-    status: accountId ? "connected" : "action_required",
-    message: accountId
+    status: connectionReady ? "connected" : "action_required",
+    message: connectionReady
       ? "Votre compte Instagram est connecté."
-      : "Instagram est autorisé, mais le compte professionnel doit encore être vérifié."
+      : "Instagram est autorisé, mais le compte professionnel doit être reconnecté ou vérifié."
   });
 }
 
@@ -252,7 +295,10 @@ function createOAuthCompletionResponse(
   });
 }
 
-async function recordInstagramError(merchant: MerchantRow, message: string) {
+async function recordInstagramError(merchant: MerchantRow, message: string, technicalMessage?: string) {
+  if (technicalMessage) {
+    console.error("[instagram/callback] oauth_error", { merchantId: merchant.id, message: technicalMessage });
+  }
   try {
     await upsertInstagramConnection({
       merchant_id: merchant.id,

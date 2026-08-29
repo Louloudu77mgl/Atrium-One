@@ -25,9 +25,14 @@ export async function POST() {
     instagram_username: null,
     access_token_encrypted: null,
     refresh_token_encrypted: null,
+    token_expires_at: null,
+    granted_scopes: [],
+    page_id: null,
     status: "disconnected",
     last_error: null,
-    last_sync_at: new Date().toISOString()
+    last_sync_at: new Date().toISOString(),
+    last_checked_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
   }, merchant);
 
   return NextResponse.json({ ok: true });

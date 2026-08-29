@@ -6,11 +6,13 @@ import {
   getStoredAutomationFlowRuntimeState,
   saveAutomationExecutionLog,
   saveStoredAutomationFlowRuntimeState,
+  type AutomationExecutionLog,
   type StoredAutomationFlow
 } from "@/lib/automation-execution-store";
 import { hansHtmlToPlainText, sanitizeHansHtml } from "@/lib/sanitize-hans-html";
 import { createTriggeredSocialDraft } from "@/lib/social-automation";
-import { publishPostToInstagram } from "@/lib/social-publish";
+import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
+import { getInstagramPublishErrorDetails, publishPostToInstagram } from "@/lib/social-publish";
 import { createMerchantNotification } from "@/lib/merchant-notifications";
 import { getEmailingDashboardData } from "@/lib/emailing-data";
 import { generateEmailWithHans } from "@/lib/emailing-hans";
@@ -61,6 +63,7 @@ type AutomationResultStep = {
   title: string;
   status: "success" | "waiting" | "skipped" | "error";
   result: string;
+  integration?: NonNullable<AutomationExecutionLog["steps"]>[number]["integration"];
 };
 
 type ReviewFlowPlan = {
@@ -460,7 +463,16 @@ async function processGoogleReview({
         socialPost = await publishPostToInstagram({ merchant, post: socialPost, supabaseClient: supabase });
         steps.push(step(node, "success", "Publication publiée sur Instagram."));
       } catch (error) {
-        steps.push(step(node, "error", error instanceof Error ? error.message : "Publication Instagram impossible."));
+        const errorStep = step(node, "error", error instanceof Error ? error.message : "Publication Instagram impossible.");
+        const integration = getInstagramPublishErrorDetails(error);
+        if (integration) errorStep.integration = integration;
+        steps.push(errorStep);
+        await createMerchantNotification({
+          supabase,
+          merchantId: merchant.id,
+          title: "Publication Instagram interrompue",
+          body: "Reconnectez Instagram puis relancez cette automatisation."
+        });
       }
       continue;
     }
@@ -470,9 +482,19 @@ async function processGoogleReview({
         steps.push(step(node, "skipped", "Planification ignorée car aucun post n'a été préparé."));
         continue;
       }
+      const { connection } = await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase });
       const delayHours = Math.max(1, Number(node.config.delay_hours ?? 24));
       const scheduledAt = new Date(Date.now() + delayHours * 3_600_000).toISOString();
-      const { data: scheduledPost, error } = await supabase.from("social_posts").update({ status: "scheduled", scheduled_at: scheduledAt, updated_at: new Date().toISOString() }).eq("id", socialPost.id).select("*").single();
+      const { data: scheduledPost, error } = await supabase.from("social_posts").update({
+        status: "scheduled",
+        scheduled_at: scheduledAt,
+        instagram_connection_id: connection.id,
+        failed_at: null,
+        failure_code: null,
+        error_message: null,
+        retry_count: 0,
+        updated_at: new Date().toISOString()
+      }).eq("id", socialPost.id).select("*").single();
       if (error) throw new Error(error.message);
       socialPost = scheduledPost;
       steps.push(step(node, "success", `Publication Instagram planifiée dans ${delayHours} heure(s).`));
@@ -598,6 +620,11 @@ async function processGoogleReview({
     throw new Error(`La card « ${node.title} » (${node.type}) n’a pas d’exécuteur compatible avec le déclencheur Avis Google.`);
     }
 
+    const failedStep = steps.find((current) => current.status === "error");
+    if (failedStep) {
+      return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "error", message: failedStep.result, flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
+    }
+
     if (googlePublished) {
       const waitingCount = steps.filter((current) => current.status === "waiting").length;
       const errorCount = steps.filter((current) => current.status === "error").length;
@@ -620,8 +647,19 @@ async function processGoogleReview({
     return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Le chemin exécuté ne contient aucune action de réponse.", flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur inconnue";
+    const integration = getInstagramPublishErrorDetails(error);
     if (activeNode && !steps.some((current) => current.node_id === activeNode?.id && current.status === "error")) {
-      steps.push(step(activeNode, "error", message));
+      const errorStep = step(activeNode, "error", message);
+      if (integration) errorStep.integration = integration;
+      steps.push(errorStep);
+    }
+    if (integration) {
+      await createMerchantNotification({
+        supabase,
+        merchantId: merchant.id,
+        title: "Publication Instagram interrompue",
+        body: "Reconnectez Instagram puis relancez cette automatisation."
+      });
     }
     return {
       merchant_id: merchant.id,

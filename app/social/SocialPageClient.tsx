@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreatePostButton } from "@/components/CreatePostButton";
+import { useFailureSupport } from "@/components/FailureSupportProvider";
 import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { buildCreatePostHref } from "@/lib/social-recommendations";
-import { canPublishSocialDesignToInstagram, getPostStatusLabel, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
+import { canPublishSocialDesignToInstagram, getInstagramPostFailureMessage, getPostStatusLabel, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
 import type { MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
@@ -16,15 +17,17 @@ import { getUserErrorMessage } from "@/lib/user-feedback";
 import { badgeStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 
 type InstagramConnectionLike = {
-  status: "connected" | "disconnected" | "error" | "pending_configuration";
+  status: "connected" | "expiring" | "expired" | "revoked" | "disconnected" | "error" | "pending_configuration";
   instagram_username?: string | null;
   connected_at?: string | null;
   last_sync_at?: string | null;
+  last_checked_at?: string | null;
+  token_expires_at?: string | null;
   last_error?: string | null;
 } | null;
 
 type PostCategory = "draft" | "scheduled" | "published";
-type InstagramOnboardingState = "disconnected" | "connecting" | "connected" | "action_required" | "pending_configuration" | "error";
+type InstagramOnboardingState = "disconnected" | "connecting" | "connected" | "expiring" | "expired" | "revoked" | "action_required" | "pending_configuration" | "error";
 type InstagramProfessionalAnswer = "yes" | "unsure" | "no" | null;
 
 export function SocialPageClient({
@@ -65,24 +68,28 @@ export function SocialPageClient({
   const [postCategory, setPostCategory] = useState<PostCategory>("draft");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [instagramModalOpen, setInstagramModalOpen] = useState(
-    instagramConnectRequested && instagramConnection?.status !== "connected"
+    instagramConnectRequested && instagramConnection?.status !== "connected" && instagramConnection?.status !== "expiring"
   );
   const [instagramAnswer, setInstagramAnswer] = useState<InstagramProfessionalAnswer>(null);
   const [instagramActionState, setInstagramActionState] = useState<InstagramOnboardingState | null>(null);
   const [instagramCardMessage, setInstagramCardMessage] = useState<string | null>(instagramSaved ? "Votre compte Instagram est prêt. Vous pouvez créer votre premier post." : null);
   const [instagramActionBusy, setInstagramActionBusy] = useState<"redirect" | "test" | "disconnect" | null>(null);
   const { toast, showToast } = useToast();
+  const { reportImportantFailure } = useFailureSupport();
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(Date.now()), 15_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const instagramConnected = instagramConnection?.status === "connected";
+  const instagramConnected = instagramConnection?.status === "connected" || instagramConnection?.status === "expiring";
   const publishingConfigured = instagramConnected;
   const instagramUiState = useMemo<InstagramOnboardingState>(() => {
     if (instagramActionState) return instagramActionState;
+    if (instagramConnection?.status === "expiring") return "expiring";
     if (instagramConnected) return "connected";
+    if (instagramConnection?.status === "expired") return "expired";
+    if (instagramConnection?.status === "revoked") return "revoked";
     if (instagramConnection?.status === "pending_configuration") return "pending_configuration";
     if (instagramConnection?.status === "error") return "error";
     if (isInstagramUnavailable) return "error";
@@ -99,7 +106,19 @@ export function SocialPageClient({
     [instagramCardMessage, instagramUiState, instagramError, instagramConnection?.last_error, instagramConfigured]
   );
   const instagramDisplayName = instagramConnection?.instagram_username?.trim() || merchant?.business_name || "Instagram";
-  const instagramLastCheck = instagramConnection?.last_sync_at ?? instagramConnection?.connected_at ?? null;
+  const instagramLastCheck = instagramConnection?.last_checked_at ?? instagramConnection?.last_sync_at ?? instagramConnection?.connected_at ?? null;
+
+  useEffect(() => {
+    if (["expired", "revoked", "error"].includes(instagramUiState)) {
+      reportImportantFailure({ type: instagramUiState, feature: "instagram", action: "connection_health" });
+    }
+  }, [instagramUiState, reportImportantFailure]);
+
+  useEffect(() => {
+    const failedPost = posts.find((post) => post.status === "failed");
+    if (!failedPost) return;
+    reportImportantFailure({ type: failedPost.failure_code ?? "publication_failed", feature: "instagram", action: "scheduled_publish", executionId: failedPost.id });
+  }, [posts, reportImportantFailure]);
   const orderedPosts = useMemo(
     () => posts.slice().sort((left, right) => new Date(right.scheduled_at ?? right.updated_at).getTime() - new Date(left.scheduled_at ?? left.updated_at).getTime()),
     [posts]
@@ -154,8 +173,11 @@ export function SocialPageClient({
     setBusyId(postId);
     try {
       const response = await fetchWithTimeout(`/api/social/posts/${postId}/publish-instagram`, { method: "POST" });
-      const data = (await response.json()) as { post?: SocialPostRow; error?: string; queued?: boolean };
-      if (!response.ok || !data.post) throw new Error(data.error ?? "Publication impossible.");
+      const data = (await response.json()) as { post?: SocialPostRow; error?: string; queued?: boolean; failureCode?: string; supportRequired?: boolean };
+      if (!response.ok || !data.post) {
+        if (data.supportRequired) reportImportantFailure({ type: data.failureCode ?? "publication_failed", feature: "instagram", action: "publish", executionId: postId });
+        throw new Error(data.error ?? "Publication impossible.");
+      }
       setPosts((current) => current.map((post) => (post.id === postId ? data.post! : post)));
       setOpenMenuId(null);
       setShareMenuId(null);
@@ -257,8 +279,11 @@ export function SocialPageClient({
           error_message: null
         })
       });
-      const data = (await response.json()) as { post?: SocialPostRow; error?: string };
-      if (!response.ok || !data.post) throw new Error(data.error ?? "Planification impossible.");
+      const data = (await response.json()) as { post?: SocialPostRow; error?: string; failureCode?: string; supportRequired?: boolean };
+      if (!response.ok || !data.post) {
+        if (data.supportRequired) reportImportantFailure({ type: data.failureCode ?? "schedule_failed", feature: "instagram", action: "schedule", executionId: postId });
+        throw new Error(data.error ?? "Planification impossible.");
+      }
       setPosts((current) => current.map((post) => (post.id === postId ? data.post! : post)));
       setOpenMenuId(null);
       setShareMenuId(null);
@@ -330,7 +355,7 @@ export function SocialPageClient({
         const response = await fetch("/api/instagram/status", { cache: "no-store" });
         const data = await response.json() as { status?: string; lastError?: string | null };
 
-        if (response.ok && data.status === "connected") {
+        if (response.ok && (data.status === "connected" || data.status === "expiring")) {
           finishConnection("connected");
           return;
         }
@@ -357,8 +382,9 @@ export function SocialPageClient({
     setInstagramActionBusy("test");
     try {
       const response = await fetchWithTimeout("/api/instagram/test", { method: "POST" });
-      const data = (await response.json()) as { ok?: boolean; message?: string; error?: string };
+      const data = (await response.json()) as { ok?: boolean; message?: string; error?: string; failureCode?: string };
       if (!response.ok || !data.ok) {
+        reportImportantFailure({ type: data.failureCode ?? "connection_test_failed", feature: "instagram", action: "test_connection" });
         throw new Error(data.error ?? "Test impossible.");
       }
       setInstagramCardMessage(data.message ?? "Connexion Instagram vérifiée.");
@@ -630,6 +656,7 @@ export function SocialPageClient({
                       </div>
                       <p className="post-title mb-[3px] text-[13.5px] font-bold text-[#1E1B2E]">{post.title}</p>
                       <p className="post-desc line-clamp-2 max-w-[640px] text-[12.8px] leading-[1.5] text-[#6E6B80]">{post.caption}</p>
+                      {getInstagramPostFailureMessage(post) ? <p className="mt-1 text-[11.5px] font-semibold text-[#B42318]">{getInstagramPostFailureMessage(post)}</p> : null}
                     </div>
                     <div className="post-status self-center max-md:w-full">
                       {canPublishSocialDesignToInstagram(post) ? (
@@ -754,12 +781,19 @@ function InstagramConnectionCard({
   onDisconnect: () => void;
   onCreateFirstPost: () => void;
 }) {
-  const connected = state === "connected";
-  const primaryLabel = connected ? "Créer mon premier post" : state === "connecting" ? "Redirection sécurisée vers Instagram…" : "Se connecter avec Instagram";
+  const connected = state === "connected" || state === "expiring";
+  const reconnectRequired = state === "expired" || state === "revoked" || state === "error" || state === "action_required";
+  const primaryLabel = connected
+    ? "Créer mon premier post"
+    : state === "connecting"
+      ? "Redirection sécurisée vers Instagram…"
+      : reconnectRequired
+        ? "Reconnecter Instagram"
+        : "Se connecter avec Instagram";
   const statusLabel = getInstagramStatusLabel(state);
   const cardTone = connected
     ? "border-[#CFEAD8] bg-[#EAF7EE]"
-    : state === "error" || state === "action_required"
+    : reconnectRequired
       ? "border-[#F5C2C7] bg-[#FFF5F5]"
       : "border-[#E9D5FF] bg-[#FBFAFF]";
 
@@ -771,7 +805,7 @@ function InstagramConnectionCard({
           <div className="min-w-0">
             <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Instagram</p>
             <h3 className="text-[22px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">
-              {connected ? "Compte Instagram connecté" : "Connectez votre compte Instagram"}
+              {connected ? "Compte Instagram connecté" : reconnectRequired ? "Connexion Instagram à renouveler" : "Connectez votre compte Instagram"}
             </h3>
             <p className="mt-1 text-[14px] leading-[1.6] text-[#6E6B80]">
               {connected
@@ -1001,6 +1035,9 @@ function getPostEmoji(title: string) {
 
 function getPostStatusClass(status: SocialPostRow["status"], post: SocialPostRow, currentTime: number) {
   if (isPublicationPending(post, currentTime)) return "bg-[#FBF0E1] text-[#9A5A16]";
+  if (status === "failed") return "bg-[#FDECEC] text-[#B42318]";
+  if (status === "publishing") return "bg-[#FBF0E1] text-[#9A5A16]";
+  if (status === "cancelled") return "bg-[#F2F1F6] text-[#6E6B80]";
   if (hasPublicationStarted(post) || status === "published") return "bg-[#EAF7EE] text-[#2E9E5B]";
   if (status === "scheduled") return "bg-[#FBF0E1] text-[#9A5A16]";
   if (status === "editing" || status === "ready" || status === "saved") return "bg-[#F1EAFB] text-[#4B2E83]";
@@ -1009,12 +1046,13 @@ function getPostStatusClass(status: SocialPostRow["status"], post: SocialPostRow
 
 function getPostCategory(post: SocialPostRow): PostCategory {
   if (hasPublicationStarted(post) || post.status === "published") return "published";
-  if (post.status === "scheduled") return "scheduled";
+  if (post.status === "scheduled" || post.status === "publishing" || post.status === "failed") return "scheduled";
   return "draft";
 }
 
 function getVisiblePostStatus(post: SocialPostRow, currentTime: number) {
   if (isPublicationPending(post, currentTime)) return "En cours de publication…";
+  if (post.status === "failed") return "Échec · à replanifier";
   if (hasPublicationStarted(post) || post.status === "published") return "Publié";
   if (post.status === "draft" || post.status === "exported") return "Brouillon";
   return getPostStatusLabel(post.status);
@@ -1085,6 +1123,14 @@ function mapInstagramConnectionMessage({
     return "La connexion Instagram nécessite une vérification. Réessayez ou changez de compte.";
   }
 
+  if (state === "expiring") {
+    return "Votre connexion Instagram reste active. AtriumOne renouvelle son autorisation automatiquement.";
+  }
+
+  if (state === "expired" || state === "revoked") {
+    return "Votre connexion Instagram a expiré. Reconnectez Instagram pour reprendre les publications automatiques.";
+  }
+
   if (state === "connected") {
     return "Votre compte Instagram est prêt. Vous pouvez publier, planifier et reprendre vos brouillons depuis Atrium One.";
   }
@@ -1103,6 +1149,9 @@ function isInstagramActionRequiredError(error: string) {
 
 function getInstagramStatusLabel(state: InstagramOnboardingState) {
   if (state === "connected") return "Connecté";
+  if (state === "expiring") return "Connexion à renouveler";
+  if (state === "expired") return "Expiré";
+  if (state === "revoked") return "Reconnexion nécessaire";
   if (state === "connecting") return "Connexion en cours";
   if (state === "pending_configuration") return "Action requise";
   if (state === "action_required") return "Action requise";

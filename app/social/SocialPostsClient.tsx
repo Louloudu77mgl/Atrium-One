@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import { getPostStatusLabel } from "@/lib/social-post-utils";
+import { getInstagramPostFailureMessage, getPostStatusLabel } from "@/lib/social-post-utils";
 import type { SocialPostRow } from "@/lib/supabase/types";
 import { getUserErrorMessage } from "@/lib/user-feedback";
 
@@ -125,7 +125,7 @@ export function SocialPostsClient({ initialPosts, instagramConnected }: { initia
               <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#8B7AA8] lg:hidden">Post</div>
               <h3 className="text-sm font-black text-[#211432]">{post.title}</h3>
               <p className="mt-1 line-clamp-2 text-sm leading-6 text-[#6B617F]">{post.caption}</p>
-              {post.error_message ? <p className="mt-1 text-xs font-semibold text-[#B91C1C]">{post.error_message}</p> : null}
+              {getInstagramPostFailureMessage(post) ? <p className="mt-1 text-xs font-semibold text-[#B91C1C]">{getInstagramPostFailureMessage(post)}</p> : null}
             </div>
             <div>
               <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#8B7AA8] lg:hidden">Statut</div>

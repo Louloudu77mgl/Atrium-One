@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getAppOriginFromRequest } from "@/lib/app-origin";
 import { getMerchant } from "@/lib/merchants";
-import { getInstagramOAuthConfig, getInstagramRedirectUri, hasInstagramOAuthConfig, setInstagramOAuthState } from "@/lib/instagram-oauth";
+import { getInstagramOAuthConfig, getInstagramRedirectUri, hasInstagramOAuthConfig, instagramOAuthScopes, setInstagramOAuthState } from "@/lib/instagram-oauth";
 import { upsertInstagramConnection } from "@/lib/instagram-connections";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -60,10 +60,7 @@ export async function GET(request: Request) {
   url.searchParams.set("response_type", "code");
   url.searchParams.set(
     "scope",
-    [
-      "instagram_business_basic",
-      "instagram_business_content_publish"
-    ].join(",")
+    instagramOAuthScopes.join(",")
   );
 
   if (request.headers.get("sec-fetch-dest") === "iframe") {

@@ -3,6 +3,7 @@ import { generateDraftContent } from "@/lib/social-drafts";
 import { mapInsightRow } from "@/lib/review-insights";
 import { getStoredReviewInsights } from "@/lib/review-insights-server";
 import { getStoredSocialRecommendations } from "@/lib/social-recommendations";
+import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
 import { buildAutomationSlots, getMaxPostsForCycle, normalizeSocialAutomationWindow } from "@/lib/social-automation-shared";
@@ -23,6 +24,9 @@ export async function ensureAutomatedSocialDrafts({
   }
 
   const supabase = await createServerSupabaseClient();
+  const liveConnection = settings.social_auto_publish_live
+    ? (await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase })).connection
+    : null;
   const window = normalizeSocialAutomationWindow(settings);
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -143,6 +147,7 @@ export async function ensureAutomatedSocialDrafts({
         image_url: imageUrl,
         source: "automation",
         status: settings.social_auto_publish_live ? "scheduled" : "draft",
+        instagram_connection_id: liveConnection?.id ?? null,
         scheduled_at: availableDates[index].toISOString(),
         template_id: null,
         visual_text: draft.visualHook,

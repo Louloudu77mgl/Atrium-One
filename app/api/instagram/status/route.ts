@@ -28,6 +28,8 @@ export async function GET() {
       status: connection?.status ?? "disconnected",
       username: connection?.instagram_username ?? null,
       connectedAt: connection?.connected_at ?? null,
+      expiresAt: connection?.token_expires_at ?? null,
+      lastCheckedAt: connection?.last_checked_at ?? null,
       lastError: connection?.last_error ?? null
     },
     {

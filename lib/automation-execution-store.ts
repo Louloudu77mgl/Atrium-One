@@ -23,6 +23,16 @@ export type AutomationExecutionLog = {
     title: string;
     status: "success" | "waiting" | "skipped" | "error";
     result: string;
+    integration?: {
+      action: string;
+      provider: "meta" | "google" | "gmail" | "internal";
+      method: string;
+      endpoint: string;
+      http_status: number | null;
+      api_error: string;
+      failure_code?: string;
+      timestamp: string;
+    };
   }>;
 };
 

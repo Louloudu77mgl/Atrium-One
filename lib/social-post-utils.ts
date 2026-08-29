@@ -8,10 +8,21 @@ export function getPostStatusLabel(status: SocialPostRow["status"]) {
     exported: "Exporté",
     saved: "Sauvegardé",
     scheduled: "Planifié",
-    published: "Publié"
+    publishing: "Publication en cours",
+    published: "Publié",
+    failed: "Échec",
+    cancelled: "Annulé"
   };
 
   return labels[status];
+}
+
+export function getInstagramPostFailureMessage(post: Pick<SocialPostRow, "status" | "failure_code" | "error_message">) {
+  if (post.status !== "failed") return null;
+  if (["token_expired", "token_revoked", "permissions_insufficient", "account_inaccessible", "connection_invalid"].includes(post.failure_code ?? "")) {
+    return "Reconnectez Instagram puis replanifiez cette publication.";
+  }
+  return "Cette publication n’a pas pu être envoyée. Vous pouvez la modifier puis réessayer.";
 }
 
 type PublishableSocialPost = Pick<

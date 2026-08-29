@@ -42,5 +42,5 @@ export default async function DashboardPage() {
     ? mapInsightRow(storedInsights)
     : null;
 
-  return <AtriumHubDashboard reviews={reviews} merchant={merchant} googleConnection={googleConnection} instagramConnected={instagramConnection?.status === "connected"} insights={visibleInsights} insightsUpdatedAt={storedInsights?.updated_at ?? null} socialPosts={socialPosts} shouldAutoAnalyze={false} />;
+  return <AtriumHubDashboard reviews={reviews} merchant={merchant} googleConnection={googleConnection} instagramConnected={instagramConnection?.status === "connected" || instagramConnection?.status === "expiring"} insights={visibleInsights} insightsUpdatedAt={storedInsights?.updated_at ?? null} socialPosts={socialPosts} shouldAutoAnalyze={false} />;
 }

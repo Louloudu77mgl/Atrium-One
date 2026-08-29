@@ -30,6 +30,8 @@ export default async function IntegrationsPage({
   const instagramConfigured = hasInstagramOAuthConfig();
   const gmailConfigured = hasGmailOAuthConfig();
   const gmailConnected = isGmailConnectionReady(gmailConnection);
+  const instagramReady = instagramConnection?.status === "connected" || instagramConnection?.status === "expiring";
+  const instagramReconnectRequired = instagramConnection?.status === "expired" || instagramConnection?.status === "revoked" || instagramConnection?.status === "error";
   const googleConnected = googleConnection?.status === "connected";
   const googleLocationConnected = Boolean(googleConnection?.google_location_id);
 
@@ -101,26 +103,29 @@ export default async function IntegrationsPage({
               <section className="rounded-[22px] border border-[#E9D5FF] bg-white p-5 shadow-[0_10px_30px_rgba(76,29,149,0.07)]">
                 <p className="mb-1 text-xs font-semibold uppercase tracking-[0.9px] text-[#8B7AA8]">Instagram</p>
                 <h2 className="text-xl font-black text-[#211432]">
-                  {instagramConnection?.status === "connected" ? "Instagram connecté" : "Instagram non connecté"}
+                  {getInstagramConnectionTitle(instagramConnection?.status)}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-[#6B617F]">
-                  {instagramConnection?.status === "connected"
+                  {instagramReady
                     ? `Compte connecté : ${instagramConnection.instagram_username ?? "Compte Instagram"}`
-                    : "Connectez le compte Instagram professionnel de cet établissement pour publier directement depuis AtriumOne."}
+                    : instagramReconnectRequired
+                      ? "Reconnectez Instagram pour reprendre les publications et les automatisations."
+                      : "Connectez le compte Instagram professionnel de cet établissement pour publier directement depuis AtriumOne."}
                 </p>
+                {instagramConnection?.last_checked_at ? <p className="mt-4 text-xs font-semibold text-[#8B7AA8]">Dernière vérification : {new Date(instagramConnection.last_checked_at).toLocaleString("fr-FR")}</p> : null}
                 {!instagramConfigured ? (
                   <div className="mt-4 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] p-4 text-sm text-[#B91C1C]">
                     La connexion Instagram est temporairement indisponible.
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <Link href={instagramConnection?.status === "connected" ? "/social#instagram-connection" : "/social?connect=instagram"} className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]">
-                    {instagramConnection?.status === "connected" ? "Gérer la connexion Instagram" : "Configurer Instagram"}
+                  <Link href={instagramReady ? "/social#instagram-connection" : "/social?connect=instagram"} className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]">
+                    {instagramReconnectRequired ? "Reconnecter Instagram" : instagramReady ? "Gérer la connexion Instagram" : "Configurer Instagram"}
                   </Link>
                   <Link href="/social" className="inline-flex items-center justify-center rounded-lg bg-[#F3E8FF] px-4 py-2.5 text-sm font-semibold text-[#4C1D95] transition hover:bg-[#E9D5FF]">
                     Ouvrir Instagram
                   </Link>
-                  {instagramConnection?.status === "connected" ? <IntegrationDisconnectButton endpoint="/api/instagram/disconnect" label="Instagram" /> : null}
+                  {instagramConnection ? <IntegrationDisconnectButton endpoint="/api/instagram/disconnect" label="Instagram" /> : null}
                 </div>
               </section>
 
@@ -142,4 +147,13 @@ export default async function IntegrationsPage({
       </div>
     </div>
   );
+}
+
+function getInstagramConnectionTitle(status?: string) {
+  if (status === "connected") return "Instagram connecté";
+  if (status === "expiring") return "Connexion Instagram à renouveler";
+  if (status === "expired") return "Connexion Instagram expirée";
+  if (status === "revoked") return "Reconnexion Instagram nécessaire";
+  if (status === "error") return "Connexion Instagram à vérifier";
+  return "Instagram non connecté";
 }

@@ -5,7 +5,8 @@ import { dispatchEmailCampaign } from "@/lib/emailing-provider";
 import { createEmailCampaign, createEmailRecipients } from "@/lib/emailing-store";
 import type { EmailCampaignRecord } from "@/lib/emailing-types";
 import { createTriggeredSocialDraft } from "@/lib/social-automation";
-import { publishPostToInstagram } from "@/lib/social-publish";
+import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
+import { getInstagramPublishErrorDetails, publishPostToInstagram } from "@/lib/social-publish";
 import { createMerchantNotification } from "@/lib/merchant-notifications";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { MerchantRow, SocialPostRow } from "@/lib/supabase/types";
@@ -142,9 +143,19 @@ async function executeEventFlow({ merchant, flow, event }: { merchant: MerchantR
         return { status: "drafted" as const, message: "Le scénario attend une validation humaine.", steps };
       } else if (current.type === "schedule_instagram") {
         if (!socialPost) throw new Error("Ajoutez une card de préparation Instagram avant la planification.");
+        const { connection } = await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase });
         const delayHours = Math.max(1, Number(current.config.delay_hours ?? 24));
         const scheduledAt = new Date(Date.now() + delayHours * 3_600_000).toISOString();
-        const scheduleResult = await supabase.from("social_posts").update({ status: "scheduled", scheduled_at: scheduledAt, updated_at: new Date().toISOString() }).eq("id", socialPost.id).select("*").single();
+        const scheduleResult = await supabase.from("social_posts").update({
+          status: "scheduled",
+          scheduled_at: scheduledAt,
+          instagram_connection_id: connection.id,
+          failed_at: null,
+          failure_code: null,
+          error_message: null,
+          retry_count: 0,
+          updated_at: new Date().toISOString()
+        }).eq("id", socialPost.id).select("*").single();
         if (scheduleResult.error) throw new Error(scheduleResult.error.message);
         socialPost = scheduleResult.data as SocialPostRow;
         steps.push(toStep(current, "success", `Publication planifiée dans ${delayHours} heure(s).`));
@@ -175,7 +186,20 @@ async function executeEventFlow({ merchant, flow, event }: { merchant: MerchantR
     return { status: "published" as const, message: `Scénario « ${flow.title} » exécuté jusqu’au bout.`, steps };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erreur inconnue";
-    if (current && !steps.some((step) => step.node_id === current?.id && step.status === "error")) steps.push(toStep(current, "error", message));
+    const integration = getInstagramPublishErrorDetails(error);
+    if (integration) {
+      await createMerchantNotification({
+        supabase,
+        merchantId: merchant.id,
+        title: "Publication Instagram interrompue",
+        body: "Reconnectez Instagram puis relancez cette automatisation."
+      });
+    }
+    if (current && !steps.some((step) => step.node_id === current?.id && step.status === "error")) {
+      const errorStep = toStep(current, "error", message);
+      if (integration) errorStep.integration = integration;
+      steps.push(errorStep);
+    }
     return { status: "error" as const, message, steps };
   }
 }

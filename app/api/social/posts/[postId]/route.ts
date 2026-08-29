@@ -1,9 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getBrandSettings } from "@/lib/brand-settings";
+import { getInstagramFailureCode } from "@/lib/instagram-errors";
 import { getMerchant } from "@/lib/merchants";
 import { getMerchantMediaAssets } from "@/lib/social-gallery";
-import { getInstagramConnection } from "@/lib/instagram-connections";
+import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
 import { getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SocialPostRow } from "@/lib/supabase/types";
@@ -98,7 +99,7 @@ export async function PATCH(
   }
 
   const payload = await request.json() as Partial<Pick<SocialPostRow,
-    "title" | "caption" | "cta" | "hashtags" | "template_id" | "visual_text" | "visual_url" | "image_url" | "primary_color" | "secondary_color" | "accent_color" | "visual_html" | "builder_state" | "status" | "scheduled_at" | "published_at" | "error_message"
+    "title" | "caption" | "cta" | "hashtags" | "template_id" | "visual_text" | "visual_url" | "image_url" | "primary_color" | "secondary_color" | "accent_color" | "visual_html" | "builder_state" | "status" | "scheduled_at" | "published_at" | "error_message" | "instagram_connection_id" | "failed_at" | "failure_code" | "retry_count"
   >>;
   const now = new Date().toISOString();
   const { data: existingPost } = await supabase
@@ -123,9 +124,21 @@ export async function PATCH(
       return NextResponse.json({ error: "Finalisez le visuel avant de le planifier." }, { status: 409 });
     }
 
-    const instagramConnection = await getInstagramConnection(merchant, supabase);
-    if (instagramConnection?.status !== "connected") {
-      return NextResponse.json({ error: "Connectez Instagram avant de planifier cette publication." }, { status: 409 });
+    try {
+      const { connection } = await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase });
+      payload.instagram_connection_id = connection.id;
+      payload.error_message = null;
+      payload.failed_at = null;
+      payload.failure_code = null;
+      payload.retry_count = 0;
+    } catch (error) {
+      const failureCode = getInstagramFailureCode(error);
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : "Reconnectez Instagram avant de planifier cette publication.",
+        failureCode,
+        reconnectRequired: ["token_expired", "token_revoked", "permissions_insufficient", "account_inaccessible", "connection_invalid"].includes(failureCode),
+        supportRequired: true
+      }, { status: 409 });
     }
   }
   const nextUpdate = {

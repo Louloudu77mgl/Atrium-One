@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { socialFontVariables } from "./social-font-assets";
+import { FailureSupportProvider } from "@/components/FailureSupportProvider";
 
 export const metadata: Metadata = {
   title: "AtriumOne",
@@ -14,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr">
-      <body className={socialFontVariables}>{children}</body>
+      <body className={socialFontVariables}><FailureSupportProvider>{children}</FailureSupportProvider></body>
     </html>
   );
 }
