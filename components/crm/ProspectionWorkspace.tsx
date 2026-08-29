@@ -51,7 +51,7 @@ export function ProspectionWorkspace({ initialSearches }: { initialSearches: Sav
   }
 
   async function deleteSearch(id: string) {
-    if (!confirm("Supprimer cette recherche ?\n\nLes prospects uniquement associés à cette recherche seront également supprimés de la base.")) return;
+    if (!confirm("Supprimer cette card de recherche ?\n\nLes prospects déjà ajoutés à la Base de données seront conservés.")) return;
     setBusy("delete");
     try {
       const response = await fetch(`/api/crm/searches/${id}`, { method: "DELETE" });

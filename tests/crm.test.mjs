@@ -19,6 +19,7 @@ const eventRoute = read("../app/api/crm/leads/[id]/events/route.ts");
 const calendar = read("../components/crm/CalendarWorkspace.tsx");
 const calendarPlanRoute = read("../app/api/crm/calendar/plan/route.ts");
 const taskBulkRoute = read("../app/api/crm/tasks/bulk/route.ts");
+const calendarPage = read("../app/crm/calendar/page.tsx");
 
 test("sécurité — l’admin exact est isolé dans /crm et les autres utilisateurs sont refusés", () => {
   assert.match(sqlV1, /louisdacre@gmail\.com/);
@@ -62,11 +63,16 @@ test("déduplication globale — Place ID, domaine, téléphone, nom et adresse"
   assert.equal(findDuplicate(leads, { name: "Eclat Lille", address: "2 rue Nationale" })?.id, "fingerprint");
 });
 
-test("TEST 3 — supprimer une card supprime le lead exclusif et conserve le lead partagé", () => {
+test("TEST 3 — le calcul historique identifie correctement le lead exclusif et le lead partagé", () => {
   const relations = [{ searchId: "a", leadId: "exclusive" }, { searchId: "a", leadId: "shared" }, { searchId: "b", leadId: "shared" }];
   assert.deepEqual(exclusiveLeadIdsForSearch(relations, "a"), ["exclusive"]);
-  assert.match(searchDeleteRoute, /delete_crm_search_with_exclusive_leads/);
   assert.match(sqlV2, /other\.search_id <> target_search_id/);
+});
+
+test("cards de prospection — suppression indépendante de la base de leads", () => {
+  assert.match(searchDeleteRoute, /from\("crm_searches"\)\.delete\(\)/);
+  assert.match(searchDeleteRoute, /leadsPreserved: true/);
+  assert.doesNotMatch(searchDeleteRoute, /delete_crm_search_with_exclusive_leads/);
 });
 
 test("TEST 4 — suppression individuelle reste un soft delete et préserve le compte", () => {
@@ -79,6 +85,7 @@ test("TEST 5 — suppression en masse met deleted_at sans toucher aux comptes", 
   assert.match(bulkRoute, /body\.action === "delete"/);
   assert.match(bulkRoute, /accountsPreserved: true/);
   assert.match(bulkRoute, /\.in\("id"/);
+  assert.match(bulkRoute, /from\("crm_tasks"\)\.delete\(\)\.in\("lead_id", ids\)/);
 });
 
 test("TEST 6 — une tâche bulk sur dix leads crée dix lignes distinctes", () => {
@@ -158,6 +165,17 @@ test("planificateur cold call — 60 prospects sont répartis sur chacun de deux
   assert.equal(result.rows.filter((row) => row.due_date === "2026-09-07").length, 60);
   assert.match(calendarPlanRoute, /alreadyPlanned/);
   assert.match(calendarPlanRoute, /excludedStatuses/);
+});
+
+test("planificateur cold call — les filtres sont appliqués côté serveur", () => {
+  for (const field of ["city", "businessType", "status", "source", "minRating", "minReviews", "email", "website"]) assert.match(calendarPlanRoute, new RegExp(`filters\\.${field}`));
+  assert.match(calendarPage, /plannerOptions/);
+});
+
+test("suppression lead — les tâches liées sont nettoyées et masquées du calendrier", () => {
+  assert.match(leadRoute, /from\("crm_tasks"\)\.delete\(\)\.eq\("lead_id", id\)/);
+  assert.match(calendarPage, /crm_leads!inner/);
+  assert.match(calendarPage, /crm_leads\.deleted_at/);
 });
 
 test("association compte — email exact automatique, signaux faibles manuels", () => {

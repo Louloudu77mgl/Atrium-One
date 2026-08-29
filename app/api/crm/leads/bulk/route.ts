@@ -22,8 +22,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === "delete") {
-      const { error } = await supabase.from("crm_leads").update({ deleted_at: new Date().toISOString() }).in("id", leads.map((lead: { id: string }) => lead.id));
+      const ids = leads.map((lead: { id: string }) => lead.id);
+      const { error } = await supabase.from("crm_leads").update({ deleted_at: new Date().toISOString() }).in("id", ids);
       if (error) throw error;
+      const { error: taskError } = await supabase.from("crm_tasks").delete().in("lead_id", ids);
+      if (taskError) throw taskError;
       return NextResponse.json({ updated: leads.length, action: "delete", accountsPreserved: true });
     }
 

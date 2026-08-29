@@ -35,6 +35,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const operation = permanent ? supabase.from("crm_leads").delete().eq("id", id) : supabase.from("crm_leads").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     const { error } = await operation;
     if (error) throw error;
+    if (!permanent) {
+      const { error: taskError } = await supabase.from("crm_tasks").delete().eq("lead_id", id);
+      if (taskError) throw taskError;
+    }
     return NextResponse.json({ ok: true, accountPreserved: Boolean(lead?.business_id) });
   } catch (error) { return crmErrorResponse(error); }
 }

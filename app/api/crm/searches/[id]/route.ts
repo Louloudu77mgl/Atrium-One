@@ -5,8 +5,8 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   try {
     const { supabase } = await getCrmContext();
     const { id } = await params;
-    const { data, error } = await supabase.rpc("delete_crm_search_with_exclusive_leads", { target_search_id: id });
+    const { error } = await supabase.from("crm_searches").delete().eq("id", id);
     if (error) throw error;
-    return NextResponse.json({ ok: true, ...(data ?? {}) });
+    return NextResponse.json({ ok: true, leadsPreserved: true });
   } catch (error) { return crmErrorResponse(error); }
 }

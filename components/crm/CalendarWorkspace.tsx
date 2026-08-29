@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sortCalendarTasks } from "@/lib/crm/logic";
-import type { CrmEvent, CrmTask } from "@/lib/crm/types";
+import { COMMERCIAL_STATUSES, type CrmEvent, type CrmTask } from "@/lib/crm/types";
 
 type View = "today" | "day" | "week" | "month";
+type PlannerOptions = { cities: string[]; businessTypes: string[]; sources: string[] };
+type Presence = "all" | "yes" | "no";
 
 const iso = (date: Date) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -23,11 +25,12 @@ const eventClass = (type: string) => ["R1", "R2", "R3"].includes(type)
   ? "bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white shadow-sm"
   : "bg-cyan-50 text-cyan-900";
 
-export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, initialView }: {
+export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, initialView, plannerOptions }: {
   initialTasks: CrmTask[];
   initialEvents: CrmEvent[];
   initialDay: string;
   initialView: View;
+  plannerOptions: PlannerOptions;
 }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks.filter((task) => !task.completed));
@@ -40,6 +43,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
   const [plannerDates, setPlannerDates] = useState<string[]>([]);
   const [plannerDate, setPlannerDate] = useState("");
   const [prospectsPerDay, setProspectsPerDay] = useState(60);
+  const [plannerFilters, setPlannerFilters] = useState({ city: "", businessType: "", status: "", source: "", minRating: "", minReviews: "", email: "all" as Presence, website: "all" as Presence });
   const [planning, setPlanning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const monthYear = anchor.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
@@ -149,7 +153,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
     const response = await fetch("/api/crm/calendar/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dates: plannerDates, prospectsPerDay })
+      body: JSON.stringify({ dates: plannerDates, prospectsPerDay, filters: plannerFilters })
     });
     const data = await response.json();
     if (response.ok) {
@@ -223,6 +227,17 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
         <div><label className="ao-label">Ajouter une journée</label><div className="mt-1 flex gap-2"><input type="date" value={plannerDate} onChange={(event) => setPlannerDate(event.target.value)} className="ao-input h-10 flex-1 px-3" /><button onClick={addPlannerDate} className="ao-btn-secondary h-10 px-4 text-xs font-black">Ajouter</button></div></div>
         <label className="ao-label">Prospects par jour<input type="number" min="1" max="200" value={prospectsPerDay} onChange={(event) => setProspectsPerDay(Math.min(200, Math.max(1, Number(event.target.value) || 1)))} className="ao-input mt-1 h-10 w-full px-3" /></label>
         <button disabled={planning || !plannerDates.length} onClick={() => void planColdCalls()} className="ao-btn-primary h-10 px-5 text-xs font-black disabled:opacity-50">{planning ? "Répartition…" : `Créer ${plannerDates.length * prospectsPerDay} appels`}</button>
+      </div>
+      <div className="mt-4 grid gap-2 rounded-xl border border-violet-100 bg-white/80 p-3 sm:grid-cols-2 lg:grid-cols-4">
+        <PlannerSelect label="Ville" value={plannerFilters.city} options={plannerOptions.cities} onChange={(city) => setPlannerFilters({ ...plannerFilters, city })} />
+        <PlannerSelect label="Métier" value={plannerFilters.businessType} options={plannerOptions.businessTypes} onChange={(businessType) => setPlannerFilters({ ...plannerFilters, businessType })} />
+        <PlannerSelect label="Statut" value={plannerFilters.status} options={[...COMMERCIAL_STATUSES].filter((status) => !["Client", "Signé", "Perdu"].includes(status))} onChange={(status) => setPlannerFilters({ ...plannerFilters, status })} />
+        <PlannerSelect label="Source" value={plannerFilters.source} options={plannerOptions.sources} onChange={(source) => setPlannerFilters({ ...plannerFilters, source })} />
+        <label className="ao-label">Note Google min.<input type="number" min="0" max="5" step="0.1" value={plannerFilters.minRating} onChange={(event) => setPlannerFilters({ ...plannerFilters, minRating: event.target.value })} className="ao-input mt-1 h-9 px-2" /></label>
+        <label className="ao-label">Nombre d’avis min.<input type="number" min="0" value={plannerFilters.minReviews} onChange={(event) => setPlannerFilters({ ...plannerFilters, minReviews: event.target.value })} className="ao-input mt-1 h-9 px-2" /></label>
+        <PresenceSelect label="A un email" value={plannerFilters.email} onChange={(email) => setPlannerFilters({ ...plannerFilters, email })} />
+        <PresenceSelect label="A un site" value={plannerFilters.website} onChange={(website) => setPlannerFilters({ ...plannerFilters, website })} />
+        <button onClick={() => setPlannerFilters({ city: "", businessType: "", status: "", source: "", minRating: "", minReviews: "", email: "all", website: "all" })} className="self-end justify-self-start px-2 py-2 text-[10px] font-black text-[#7C3AED]">Réinitialiser les filtres</button>
       </div>
       <div className="mt-3 flex min-h-8 flex-wrap gap-2">{plannerDates.map((date) => <button key={date} onClick={() => setPlannerDates((current) => current.filter((item) => item !== date))} className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-black capitalize text-[#4C1D95]">{new Date(`${date}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} ×</button>)}{!plannerDates.length ? <span className="text-xs font-semibold text-[#8B7AA8]">Ajoutez par exemple le 3 et le 7 septembre.</span> : <span className="self-center text-xs font-black text-emerald-700">{plannerDates.length} jour{plannerDates.length > 1 ? "s" : ""} · {plannerDates.length * prospectsPerDay} prospects prévus</span>}</div>
     </section> : null}
@@ -370,4 +385,12 @@ function TaskRows({ tasks, startIndex, returnTo, completing, selectedTasks, onTo
 
 function Metric({ value, label, accent = false }: { value: number; label: string; accent?: boolean }) {
   return <div className={`min-w-[72px] rounded-lg px-3 py-2 ${accent ? "bg-gradient-to-r from-violet-600 to-fuchsia-500 text-white" : "bg-[#F3F0EB] text-[#2E1065]"}`}><div className="text-lg font-black">{value}</div><div className={`text-[9px] font-black uppercase tracking-wide ${accent ? "text-white/75" : "text-[#8B7AA8]"}`}>{label}</div></div>;
+}
+
+function PlannerSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return <label className="ao-label">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="ao-select mt-1 h-9 px-2"><option value="">Tous</option>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
+}
+
+function PresenceSelect({ label, value, onChange }: { label: string; value: Presence; onChange: (value: Presence) => void }) {
+  return <label className="ao-label">{label}<select value={value} onChange={(event) => onChange(event.target.value as Presence)} className="ao-select mt-1 h-9 px-2"><option value="all">Tous</option><option value="yes">Oui</option><option value="no">Non</option></select></label>;
 }
