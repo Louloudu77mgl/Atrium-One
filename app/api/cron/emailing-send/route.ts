@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { claimEmailCampaign, dispatchEmailCampaign } from "@/lib/emailing-provider";
 import { listScheduledEmailCampaigns } from "@/lib/emailing-store";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
+import { hasBusinessFeatureAccessAdmin } from "@/lib/crm/access";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,6 +19,7 @@ async function run(request: Request) {
   const origin = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL_LOCAL || new URL(request.url).origin).replace(/\/$/, "");
   const results = [];
   for (const campaign of campaigns) {
+    if (!await hasBusinessFeatureAccessAdmin(campaign.merchant_id, "emailing")) { results.push({ id: campaign.id, status: "skipped", error: "Compte ou module Emailing désactivé." }); continue; }
     const claimed = await claimEmailCampaign(campaign.id);
     if (!claimed) { results.push({ id: campaign.id, status: "skipped" }); continue; }
     const { data: merchant } = await supabase.from("merchants").select("*").eq("id", campaign.merchant_id).maybeSingle();

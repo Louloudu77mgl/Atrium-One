@@ -10,6 +10,7 @@ import { isEditorDocument } from "@/lib/social-editor/types";
 import { canPublishSocialDesignToInstagram, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import type { MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { assertBusinessFeatureAccessAdmin } from "@/lib/crm/access";
 
 type GraphResponse = {
   id?: string;
@@ -35,6 +36,7 @@ export async function publishPostToInstagram({
   post: SocialPostRow;
   supabaseClient?: Awaited<ReturnType<typeof createServerSupabaseClient>>;
 }) {
+  await assertBusinessFeatureAccessAdmin(merchant.id, "instagram");
   if (!canPublishSocialDesignToInstagram(post)) {
     throw new Error("Une affiche RCU est un document A4 destiné à l’impression et ne peut pas être publiée sur Instagram.");
   }

@@ -5,6 +5,7 @@ import { mapReviewRow } from "@/lib/reviews";
 import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 import type { MerchantRow, ReviewInsightRow, SocialPostRow } from "@/lib/supabase/types";
+import { hasBusinessFeatureAccessAdmin } from "@/lib/crm/access";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
 
   for (const merchant of merchants as MerchantRow[]) {
     try {
+      if (!await hasBusinessFeatureAccessAdmin(merchant.id, "insights")) { results.push({ merchant_id: merchant.id, status: "skipped", message: "Compte ou module Insights désactivé." }); continue; }
       const [
         { data: reviewRows, error: reviewsError },
         { data: postRows, error: postsError }

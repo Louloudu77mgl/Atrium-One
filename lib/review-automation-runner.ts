@@ -21,6 +21,7 @@ import { dispatchEmailCampaign } from "@/lib/emailing-provider";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { EmailCampaignRecord } from "@/lib/emailing-types";
 import type { GoogleConnectionRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
+import { hasBusinessFeatureAccessAdmin } from "@/lib/crm/access";
 
 type GoogleReview = {
   name?: string;
@@ -107,6 +108,8 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
   let results: AutomationResult[];
 
   try {
+    const [reviewsEnabled, automationsEnabled] = await Promise.all([hasBusinessFeatureAccessAdmin(merchantId, "reviews"), hasBusinessFeatureAccessAdmin(merchantId, "automations")]);
+    if (!reviewsEnabled || !automationsEnabled) return [{ merchant_id: merchantId, status: "skipped" as const, message: "Compte ou modules Avis/Automatisations désactivés." }];
     const [{ data: merchant, error: merchantError }, { data: connection, error: connectionError }, storedFlows, executionLogs] = await Promise.all([
       supabase.from("merchants").select("*").eq("id", merchantId).maybeSingle(),
       supabase.from("google_connections").select("*").eq("merchant_id", merchantId).eq("status", "connected").maybeSingle(),

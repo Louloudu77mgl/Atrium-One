@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getAppOriginFromHeaders } from "@/lib/auth/google-login";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isCrmAdminEmail } from "@/lib/crm/access";
 
 export async function login(formData: FormData) {
   if (!hasSupabaseEnv()) {
@@ -20,7 +21,7 @@ export async function login(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("email_login_failed")}`);
   }
 
-  redirect("/dashboard");
+  redirect(isCrmAdminEmail(email) ? "/crm" : "/dashboard");
 }
 
 export async function loginWithGoogle() {

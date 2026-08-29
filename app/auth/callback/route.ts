@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { logGoogleLoginError, logGoogleLoginEvent, mapGoogleLoginErrorMessage } from "@/lib/auth/google-login";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isCrmAdminEmail } from "@/lib/crm/access";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -51,5 +52,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?error=google_code_missing", request.url));
   }
 
-  return NextResponse.redirect(new URL(next, request.url));
+  const supabase = await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return NextResponse.redirect(new URL(isCrmAdminEmail(user?.email) ? "/crm" : next, request.url));
 }

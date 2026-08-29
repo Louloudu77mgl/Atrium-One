@@ -7,6 +7,7 @@ import { mapLoginPageErrorMessage } from "@/lib/auth/google-login";
 import { isDemoMode } from "@/lib/demo-mode";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { isCrmAdminEmail } from "@/lib/crm/access";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function LoginPage({
     const user = await getCurrentUser();
 
     if (user) {
-      redirect("/dashboard");
+      redirect(isCrmAdminEmail(user.email) ? "/crm" : "/dashboard");
     }
   }
 

@@ -6,6 +6,7 @@ import { getOrRefreshReviewInsights } from "@/lib/review-insights-server";
 import { mapReviewRow } from "@/lib/reviews";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database, GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
+import { hasBusinessFeatureAccessAdmin } from "@/lib/crm/access";
 
 const AUTO_SYNC_MAX_AGE_MS = 10 * 60 * 1000;
 
@@ -26,6 +27,7 @@ export async function syncGoogleReviewsIfStale({
   force?: boolean;
   databaseClient?: SupabaseClient<Database>;
 }): Promise<GoogleReviewSyncResult> {
+  if (!await hasBusinessFeatureAccessAdmin(merchant.id, "reviews")) return { attempted: false, imported: 0, error: null };
   if (!connection || connection.status !== "connected" || !connection.google_location_id) {
     return { attempted: false, imported: 0, error: null };
   }

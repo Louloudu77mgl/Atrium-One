@@ -2,6 +2,7 @@ import { runAutomationEvent } from "@/lib/automation-event-runner";
 import { listStoredAutomationFlows } from "@/lib/automation-execution-store";
 import { getRcuCustomerKey, listStoredRcuGameRecords, listStoredRcuLeads } from "@/lib/rcu-store";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { hasBusinessFeatureAccessAdmin } from "@/lib/crm/access";
 
 const scheduledCustomerTriggers = new Set(["customer_inactive", "customer_birthday", "registration_anniversary"]);
 
@@ -14,6 +15,8 @@ export async function runScheduledCustomerAutomations(limit = 100) {
   for (const merchant of merchants ?? []) {
     if (results.length >= limit) break;
     try {
+      const [customersEnabled, automationsEnabled] = await Promise.all([hasBusinessFeatureAccessAdmin(merchant.id, "customers"), hasBusinessFeatureAccessAdmin(merchant.id, "automations")]);
+      if (!customersEnabled || !automationsEnabled) { results.push({ merchantId: merchant.id, status: "skipped" }); continue; }
       const flows = await listStoredAutomationFlows(merchant.id);
       if (!flows.some((flow) => flow.status === "active" && flow.nodes.some((node) => scheduledCustomerTriggers.has(node.type)))) continue;
       const [leads, records] = await Promise.all([listStoredRcuLeads(merchant.id), listStoredRcuGameRecords(merchant.id)]);

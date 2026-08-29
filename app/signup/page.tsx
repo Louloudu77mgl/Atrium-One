@@ -5,6 +5,7 @@ import { mapLoginPageErrorMessage } from "@/lib/auth/google-login";
 import { signup } from "@/lib/auth/actions";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { isCrmAdminEmail } from "@/lib/crm/access";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export default async function SignupPage({
     const user = await getCurrentUser();
 
     if (user) {
-      redirect("/dashboard");
+      redirect(isCrmAdminEmail(user.email) ? "/crm" : "/dashboard");
     }
   }
 

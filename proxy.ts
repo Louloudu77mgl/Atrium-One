@@ -3,7 +3,7 @@ import { updateSession } from "@/lib/supabase/middleware";
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  const isPublicRcuLanding = pathname.startsWith("/rcu/");
+  const isPublicRcuLanding = /^\/rcu\/[^/]+$/.test(pathname);
   const isPublicLoyaltyWallet = pathname.startsWith("/fidelite/");
   const isPublicRcuApi = pathname === "/api/rcu/qr" || /^\/api\/rcu\/forms\/[^/]+\/submit$/.test(pathname);
 
