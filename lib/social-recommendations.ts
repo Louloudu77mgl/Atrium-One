@@ -43,7 +43,7 @@ export async function getTopSocialRecommendations({
   posts?: SocialPostRow[];
 }) {
   const targetCount = Math.min(10, Math.max(5, getSocialRecommendationsTargetCount(reviews.length)));
-  const publishedPosts = posts.filter((post) => post.status === "published");
+  const existingPosts = posts.filter((post) => !["failed", "cancelled"].includes(post.status));
   const insightIdeas = buildInsightIdeas(analysis, reviews).sort((left, right) => scoreIdea(right) - scoreIdea(left));
   const localIdeas = merchant && reviews.length < 5 ? await getUpcomingLocalSocialIdeas(merchant) : [];
   const seasonalIdeas = buildSeasonalIdeas(merchant);
@@ -52,16 +52,16 @@ export async function getTopSocialRecommendations({
 
   for (const candidate of [...insightIdeas, ...localIdeas, ...seasonalIdeas, ...evergreenIdeas]) {
     const idea = { ...candidate, platform: "instagram" as const, visualDirection: candidate.visualDirection ?? visualDirections[unique.length % visualDirections.length] };
-    if (isSimilarToPublished(idea, publishedPosts)) continue;
+    if (isSimilarToExistingPost(idea, existingPosts)) continue;
     if (unique.some((current) => similarityScore(ideaText(current), ideaText(idea)) >= 0.45)) continue;
     unique.push(idea);
     if (unique.length >= targetCount) break;
   }
 
   if (merchant && unique.length < targetCount) {
-    const freshIdeas = await generateFreshSocialIdeas({ merchant, publishedPosts, existingIdeas: unique, count: targetCount - unique.length });
+    const freshIdeas = await generateFreshSocialIdeas({ merchant, publishedPosts: existingPosts, existingIdeas: unique, count: targetCount - unique.length });
     for (const candidate of freshIdeas) {
-      if (isSimilarToPublished(candidate, publishedPosts)) continue;
+      if (isSimilarToExistingPost(candidate, existingPosts)) continue;
       if (unique.some((current) => similarityScore(ideaText(current), ideaText(candidate)) >= 0.45)) continue;
       unique.push(candidate);
       if (unique.length >= targetCount) break;
@@ -78,10 +78,10 @@ export function getStoredSocialRecommendations({
   analysis: ReviewInsightsAnalysis | null;
   posts?: SocialPostRow[];
 }) {
-  const publishedPosts = posts.filter((post) => post.status === "published");
+  const existingPosts = posts.filter((post) => !["failed", "cancelled"].includes(post.status));
 
   return (analysis?.socialPostIdeas ?? [])
-    .filter((idea) => !isSimilarToPublished(idea, publishedPosts))
+    .filter((idea) => !isSimilarToExistingPost(idea, existingPosts))
     .slice(0, 10);
 }
 
@@ -145,7 +145,7 @@ function buildEvergreenIdeas(merchant?: MerchantRow | null): ReviewSocialPostIde
   ].map((idea) => ({ platform: "instagram", ...idea, category: merchant?.business_type ?? undefined }));
 }
 
-function isSimilarToPublished(idea: ReviewSocialPostIdea, posts: SocialPostRow[]) {
+function isSimilarToExistingPost(idea: ReviewSocialPostIdea, posts: SocialPostRow[]) {
   return posts.some((post) => similarityScore(ideaText(idea), `${post.title} ${post.caption}`) >= 0.38);
 }
 

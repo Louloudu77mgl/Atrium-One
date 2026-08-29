@@ -2,7 +2,8 @@ import { getBrandSettings } from "@/lib/brand-settings";
 import { generateDraftContent } from "@/lib/social-drafts";
 import { mapInsightRow } from "@/lib/review-insights";
 import { getStoredReviewInsights } from "@/lib/review-insights-server";
-import { getStoredSocialRecommendations } from "@/lib/social-recommendations";
+import { getReviews } from "@/lib/reviews";
+import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
@@ -59,16 +60,23 @@ export async function ensureAutomatedSocialDrafts({
 
   const storedInsights = await getStoredReviewInsights(merchant);
   const analysis = mapInsightRow(storedInsights);
-  const { data: publishedPosts } = await supabase
+  const { data: recentPosts, error: recentPostsError } = await supabase
     .from("social_posts")
     .select("*")
     .eq("merchant_id", merchant.id)
-    .eq("status", "published")
-    .order("published_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(100);
-  const ideas = getStoredSocialRecommendations({
+
+  if (recentPostsError) {
+    throw new Error(recentPostsError.message);
+  }
+
+  const reviews = await getReviews(merchant);
+  const ideas = await getTopSocialRecommendations({
     analysis,
-    posts: publishedPosts ?? []
+    reviews,
+    merchant,
+    posts: recentPosts ?? []
   });
   const brand = await getBrandSettings(merchant);
   const plannedDates = buildAutomationSlots({
@@ -94,7 +102,8 @@ export async function ensureAutomatedSocialDrafts({
         title: idea.title,
         angle: idea.angle,
         source: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Automatisation Hans",
-        visualDirection: idea.visualDirection
+        visualDirection: idea.visualDirection,
+        avoidTopics: (recentPosts ?? []).slice(0, 20).map((post) => `${post.title} — ${post.caption.slice(0, 140)}`)
       }
     });
     let imageUrl: string | null = null;
@@ -182,13 +191,23 @@ export async function createTriggeredSocialDraft({
   supabaseClient: SupabaseClient<Database>;
 }) {
   const brand = await getBrandSettings(merchant, supabaseClient);
+  const { data: recentPosts } = await supabaseClient
+    .from("social_posts")
+    .select("*")
+    .eq("merchant_id", merchant.id)
+    .order("created_at", { ascending: false })
+    .limit(30);
+  const existingPosts = (recentPosts ?? []).filter((post) => !["failed", "cancelled"].includes(post.status));
+  const editorialLens = triggeredEditorialLenses[existingPosts.length % triggeredEditorialLenses.length];
   const { draft } = await generateDraftContent({
     merchant,
     idea: {
       platform: "instagram",
-      title: theme || `L’expérience chez ${merchant.business_name}`,
-      angle: "Transformer cet avis client en publication authentique, sans citer le nom du client et sans inventer d’information.",
-      source
+      title: editorialLens.title,
+      angle: `${editorialLens.angle} Utiliser « ${theme || "l’expérience du commerce"} » uniquement comme point de départ, sans citer le client et sans inventer d’information.`,
+      source,
+      visualDirection: editorialLens.visualDirection,
+      avoidTopics: existingPosts.slice(0, 20).map((post) => `${post.title} — ${post.caption.slice(0, 140)}`)
     }
   });
   const generated = await generateAndStoreSocialVisual({
@@ -247,3 +266,46 @@ export async function createTriggeredSocialDraft({
   if (error) throw new Error(error.message);
   return data;
 }
+
+const triggeredEditorialLenses = [
+  {
+    title: "Le geste qui change tout",
+    angle: "Montrer une étape précise du savoir-faire à travers une scène concrète et utile.",
+    visualDirection: "Gros plan vivant sur un geste, un outil ou une matière, avec profondeur et mouvement suggéré."
+  },
+  {
+    title: "Le conseil de la maison",
+    angle: "Transformer le signal client en conseil pratique que le public peut retenir immédiatement.",
+    visualDirection: "Composition pédagogique et élégante, vue en plongée, avec objets clairement hiérarchisés."
+  },
+  {
+    title: "Dans les coulisses",
+    angle: "Raconter un moment de préparation ou d’organisation habituellement invisible pour les clients.",
+    visualDirection: "Plan large pris sur le vif dans l’espace de travail, lumière naturelle et cadrage documentaire."
+  },
+  {
+    title: "Le détail de saison",
+    angle: "Relier le sujet à une couleur, une matière ou un usage de saison sans inventer de promotion.",
+    visualDirection: "Nature morte décentrée, lumière saisonnière, textures riches et espace négatif assumé."
+  },
+  {
+    title: "Une question, une réponse",
+    angle: "Répondre à une question pratique que le sujet peut inspirer, dans un langage simple et commerçant.",
+    visualDirection: "Scène minimaliste avec un sujet fort, un cadrage frontal propre et un contraste doux."
+  },
+  {
+    title: "L’expérience en situation",
+    angle: "Mettre en scène l’usage concret du produit ou du service plutôt que de répéter une promesse générale.",
+    visualDirection: "Perspective immersive avec premier plan audacieux, décor crédible et action clairement lisible."
+  },
+  {
+    title: "L’adresse et son quartier",
+    angle: "Faire vivre l’ancrage local du commerce à travers son ambiance, son décor ou son environnement.",
+    visualDirection: "Cadrage architectural avec vitrine, reflets, lignes urbaines et profondeur de champ."
+  },
+  {
+    title: "Avant le résultat",
+    angle: "Montrer la préparation, le choix ou la transformation qui précède le résultat final.",
+    visualDirection: "Composition narrative en deux zones naturelles, sans collage, avec progression visuelle claire."
+  }
+] as const;
