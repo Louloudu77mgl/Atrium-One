@@ -78,7 +78,7 @@ export type CrmTask = {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
-  crm_leads?: Pick<CrmLead, "id" | "name" | "city"> | null;
+  crm_leads?: Pick<CrmLead, "id" | "name" | "city" | "phone" | "email" | "business_type"> | null;
 };
 
 export type CrmAppointment = {

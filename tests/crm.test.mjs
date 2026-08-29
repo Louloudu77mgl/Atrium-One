@@ -123,12 +123,20 @@ test("TEST 12 — les tâches horaires précèdent les tâches sans horaire", ()
 
 test("TEST 13 — la checkbox calendrier renseigne et efface completed_at", () => {
   assert.match(taskItemRoute, /update\.completed_at = body\.completed \? new Date\(\)\.toISOString\(\) : null/);
-  assert.match(calendar, /checked=\{task\.completed\}/);
+  assert.match(calendar, /body: JSON\.stringify\(\{ completed: true \}\)/);
+  assert.match(calendar, /current\.filter\(\(item\) => item\.id !== task\.id\)/);
 });
 
 test("TEST 14 — le calendrier affiche toujours le mois et l’année", () => {
   assert.match(calendar, /month: "long", year: "numeric"/);
   assert.match(calendar, /\{monthYear\}/);
+});
+
+test("calendrier cold call — une journée est une vraie page et non une modale", () => {
+  assert.match(calendar, /Plan de journée/);
+  assert.match(calendar, /Liste d’appels et d’actions/);
+  assert.doesNotMatch(calendar, /ao-modal-backdrop/);
+  assert.match(calendar, /returnTo=/);
 });
 
 test("association compte — email exact automatique, signaux faibles manuels", () => {

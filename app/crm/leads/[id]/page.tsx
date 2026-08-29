@@ -4,8 +4,10 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 import { associationStrength } from "@/lib/crm/logic";
 
-export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LeadDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ returnTo?: string }> }) {
   const { id } = await params;
+  const query = await searchParams;
+  const returnTo = /^\/crm\/calendar\?view=(today|day|week|month)&day=\d{4}-\d{2}-\d{2}$/.test(query.returnTo ?? "") ? query.returnTo : undefined;
   const supabase = await createServerSupabaseClient() as any;
   const [{ data: lead }, { data: notes }, { data: tasks }, { data: events }, { data: opportunities }, { data: activity }] = await Promise.all([
     supabase.from("crm_leads").select("*").eq("id", id).is("deleted_at", null).maybeSingle(),
@@ -34,5 +36,5 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       candidates = (merchants ?? []).flatMap((merchant: any) => { const email = userMap.get(merchant.user_id) ?? null; const strength = associationStrength({ leadEmail: lead.email, accountEmail: email, leadPhone: lead.phone, accountPhone: merchant.phone, leadWebsite: lead.website, accountWebsite: merchant.website_url }); const reason = strength === "exact_email" ? "Email exact" : strength === "phone" ? "Téléphone correspondant" : strength === "domain" ? "Domaine correspondant" : ""; return reason ? [{ businessId: merchant.id, userId: merchant.user_id, businessName: merchant.business_name, email, reason }] : []; });
     }
   }
-  return <LeadDetailWorkspace initial={{ lead, notes: notes ?? [], tasks: tasks ?? [], events: events ?? [], opportunities: opportunities ?? [], activity: activity ?? [], access, modules, account, candidates }} />;
+  return <LeadDetailWorkspace returnTo={returnTo} initial={{ lead, notes: notes ?? [], tasks: tasks ?? [], events: events ?? [], opportunities: opportunities ?? [], activity: activity ?? [], access, modules, account, candidates }} />;
 }
