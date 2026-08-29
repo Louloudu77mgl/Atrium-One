@@ -59,7 +59,7 @@ export function ProspectionWorkspace({ initialSearches }: { initialSearches: Sav
       if (!response.ok) throw new Error(data.error?.message ?? "Suppression impossible.");
       setSearches((current) => current.filter((item) => item.id !== id));
       if (searchId === id) { setResults([]); setSearchId(null); setUniqueCount(0); setGoogleCount(0); }
-      setNotice(`Recherche supprimée · ${data.deletedLeads ?? 0} prospect${data.deletedLeads === 1 ? "" : "s"} exclusivement associé${data.deletedLeads === 1 ? "" : "s"} supprimé${data.deletedLeads === 1 ? "" : "s"}.`);
+      setNotice("Card de recherche supprimée. Les prospects déjà ajoutés à la Base de données ont été conservés.");
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Suppression impossible."); }
     finally { setBusy(null); }
   }
