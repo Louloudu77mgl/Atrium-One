@@ -35,6 +35,12 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
   const [view, setView] = useState<View>(initialView);
   const [anchor, setAnchor] = useState(() => parseDay(initialDay));
   const [completing, setCompleting] = useState<Set<string>>(new Set());
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
+  const [showPlanner, setShowPlanner] = useState(false);
+  const [plannerDates, setPlannerDates] = useState<string[]>([]);
+  const [plannerDate, setPlannerDate] = useState("");
+  const [prospectsPerDay, setProspectsPerDay] = useState(60);
+  const [planning, setPlanning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const monthYear = anchor.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
   const today = iso(new Date());
@@ -59,6 +65,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
     const date = nextView === "today" ? new Date() : anchor;
     setView(nextView);
     setAnchor(date);
+    setSelectedTasks(new Set());
     syncRoute(nextView, date);
   }
 
@@ -67,6 +74,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
     setView("day");
     setAnchor(next);
     setNotice(null);
+    setSelectedTasks(new Set());
     syncRoute("day", next);
   }
 
@@ -78,6 +86,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
     setView(nextView);
     setAnchor(next);
     setNotice(null);
+    setSelectedTasks(new Set());
     syncRoute(nextView, next);
   }
 
@@ -90,6 +99,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
     });
     if (response.ok) {
       setTasks((current) => current.filter((item) => item.id !== task.id));
+      setSelectedTasks((current) => { const next = new Set(current); next.delete(task.id); return next; });
       setNotice(`Tâche terminée : ${task.title}. Elle a été retirée de la journée.`);
     } else {
       setNotice("La tâche n’a pas pu être terminée.");
@@ -105,6 +115,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
     if (!confirm("Supprimer définitivement cette tâche ?")) return;
     if ((await fetch(`/api/crm/tasks/${id}`, { method: "DELETE" })).ok) {
       setTasks((current) => current.filter((item) => item.id !== id));
+      setSelectedTasks((current) => { const next = new Set(current); next.delete(id); return next; });
       setNotice("Tâche supprimée.");
     }
   }
@@ -126,6 +137,67 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
     }
   }
 
+  function addPlannerDate() {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(plannerDate) || plannerDates.includes(plannerDate)) return;
+    setPlannerDates((current) => [...current, plannerDate].sort());
+    setPlannerDate("");
+  }
+
+  async function planColdCalls() {
+    if (!plannerDates.length) return setNotice("Sélectionnez au moins une journée.");
+    setPlanning(true);
+    const response = await fetch("/api/crm/calendar/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dates: plannerDates, prospectsPerDay })
+    });
+    const data = await response.json();
+    if (response.ok) {
+      setTasks((current) => [...current, ...data.tasks]);
+      const detail = data.dates.map((date: string) => `${new Date(`${date}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} : ${data.counts[date]}`).join(" · ");
+      setShowPlanner(false);
+      openDay(data.dates[0]);
+      setNotice(`${data.created} appels planifiés. ${detail}${data.shortage ? ` · ${data.shortage} prospect${data.shortage > 1 ? "s" : ""} manquant${data.shortage > 1 ? "s" : ""}` : ""}`);
+    } else {
+      setNotice(data.error?.message ?? "La répartition n’a pas pu être créée.");
+    }
+    setPlanning(false);
+  }
+
+  async function runTaskBulk(action: "complete" | "delete" | "reschedule") {
+    const taskIds = [...selectedTasks];
+    if (!taskIds.length) return;
+    if (action === "delete" && !confirm(`Supprimer définitivement ${taskIds.length} tâches ?`)) return;
+    let dueDate: string | undefined;
+    let dueTime: string | undefined;
+    if (action === "reschedule") {
+      dueDate = prompt("Nouvelle date pour la sélection (AAAA-MM-JJ)", activeDay) ?? undefined;
+      if (!dueDate) return;
+      const enteredTime = prompt("Heure commune facultative (HH:MM)", "");
+      if (enteredTime === null) return;
+      dueTime = enteredTime;
+    }
+    const response = await fetch("/api/crm/tasks/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, taskIds, dueDate, dueTime })
+    });
+    const data = await response.json();
+    if (response.ok) {
+      if (action === "reschedule") {
+        const updates = new Map((data.tasks ?? []).map((task: CrmTask) => [task.id, task]));
+        setTasks((current) => current.map((task) => updates.has(task.id) ? { ...task, ...updates.get(task.id)! } : task));
+      } else {
+        const removed = new Set(taskIds);
+        setTasks((current) => current.filter((task) => !removed.has(task.id)));
+      }
+      setSelectedTasks(new Set());
+      setNotice(`${data.updated} tâche${data.updated > 1 ? "s" : ""} ${action === "complete" ? "terminée" : action === "delete" ? "supprimée" : "replanifiée"}${data.updated > 1 ? "s" : ""}.`);
+    } else {
+      setNotice(data.error?.message ?? "Action groupée impossible.");
+    }
+  }
+
   return <div className="space-y-4 p-5 lg:p-8">
     <section className="rounded-xl border border-[#E8E4DB] bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -133,6 +205,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
           {([['today', 'Aujourd’hui'], ['day', 'Jour'], ['week', 'Semaine'], ['month', 'Mois']] as const).map(([key, label]) => <button key={key} onClick={() => selectView(key)} className={`rounded-md px-3 py-2 text-xs font-black ${view === key ? "bg-white text-[#4C1D95] shadow-sm" : "text-[#6B617F]"}`}>{label}</button>)}
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={() => setShowPlanner(!showPlanner)} className="ao-btn-primary h-9 px-3 text-xs font-black">Préparer mes listes</button>
           <button aria-label="Période précédente" onClick={() => move(-1)} className="ao-btn-secondary h-9 w-9 text-lg">‹</button>
           <h2 className="min-w-[190px] text-center text-lg font-black capitalize text-[#2E1065]">{monthYear}</h2>
           <button aria-label="Période suivante" onClick={() => move(1)} className="ao-btn-secondary h-9 w-9 text-lg">›</button>
@@ -141,6 +214,19 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
       </div>
     </section>
 
+    {showPlanner ? <section className="rounded-xl border border-[#C4B5FD] bg-gradient-to-br from-white to-violet-50 p-5 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div><div className="text-[10px] font-black uppercase tracking-[.14em] text-[#7C3AED]">Planificateur cold call</div><h2 className="mt-1 text-lg font-black text-[#2E1065]">Construire automatiquement mes journées</h2><p className="mt-1 max-w-2xl text-xs font-semibold text-[#6B617F]">Prospects actifs avec téléphone, hors Client / Signé / Perdu et sans appel déjà en attente.</p></div>
+        <button onClick={() => setShowPlanner(false)} className="text-xs font-black text-[#6B617F]">Fermer</button>
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px_auto] lg:items-end">
+        <div><label className="ao-label">Ajouter une journée</label><div className="mt-1 flex gap-2"><input type="date" value={plannerDate} onChange={(event) => setPlannerDate(event.target.value)} className="ao-input h-10 flex-1 px-3" /><button onClick={addPlannerDate} className="ao-btn-secondary h-10 px-4 text-xs font-black">Ajouter</button></div></div>
+        <label className="ao-label">Prospects par jour<input type="number" min="1" max="200" value={prospectsPerDay} onChange={(event) => setProspectsPerDay(Math.min(200, Math.max(1, Number(event.target.value) || 1)))} className="ao-input mt-1 h-10 w-full px-3" /></label>
+        <button disabled={planning || !plannerDates.length} onClick={() => void planColdCalls()} className="ao-btn-primary h-10 px-5 text-xs font-black disabled:opacity-50">{planning ? "Répartition…" : `Créer ${plannerDates.length * prospectsPerDay} appels`}</button>
+      </div>
+      <div className="mt-3 flex min-h-8 flex-wrap gap-2">{plannerDates.map((date) => <button key={date} onClick={() => setPlannerDates((current) => current.filter((item) => item !== date))} className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-black capitalize text-[#4C1D95]">{new Date(`${date}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} ×</button>)}{!plannerDates.length ? <span className="text-xs font-semibold text-[#8B7AA8]">Ajoutez par exemple le 3 et le 7 septembre.</span> : <span className="self-center text-xs font-black text-emerald-700">{plannerDates.length} jour{plannerDates.length > 1 ? "s" : ""} · {plannerDates.length * prospectsPerDay} prospects prévus</span>}</div>
+    </section> : null}
+
     {notice ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-800">{notice}</div> : null}
 
     {view === "today" || view === "day" ? <DayWorkspace
@@ -148,6 +234,10 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
       tasks={tasks}
       events={events}
       completing={completing}
+      selectedTasks={selectedTasks}
+      onToggleSelection={(id) => setSelectedTasks((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; })}
+      onSelectAll={(ids) => setSelectedTasks(new Set(ids))}
+      onBulk={runTaskBulk}
       onComplete={completeTask}
       onDelete={deleteTask}
       onReschedule={rescheduleTask}
@@ -182,11 +272,15 @@ function CalendarGrid({ dates, today, view, tasks, events, onOpenDay }: {
   </section>;
 }
 
-function DayWorkspace({ date, tasks, events, completing, onComplete, onDelete, onReschedule }: {
+function DayWorkspace({ date, tasks, events, completing, selectedTasks, onToggleSelection, onSelectAll, onBulk, onComplete, onDelete, onReschedule }: {
   date: string;
   tasks: CrmTask[];
   events: CrmEvent[];
   completing: Set<string>;
+  selectedTasks: Set<string>;
+  onToggleSelection: (id: string) => void;
+  onSelectAll: (ids: string[]) => void;
+  onBulk: (action: "complete" | "delete" | "reschedule") => void;
   onComplete: (task: CrmTask) => void;
   onDelete: (id: string) => void;
   onReschedule: (task: CrmTask) => void;
@@ -194,6 +288,7 @@ function DayWorkspace({ date, tasks, events, completing, onComplete, onDelete, o
   const sorted = sortCalendarTasks(tasks.filter((task) => task.due_date === date));
   const timed = sorted.filter((task) => task.due_time);
   const untimed = sorted.filter((task) => !task.due_time);
+  const allSelected = sorted.length > 0 && sorted.every((task) => selectedTasks.has(task.id));
   const dayEvents = events.filter((item) => item.event_date === date).sort((a, b) => (a.event_time ?? "99:99").localeCompare(b.event_time ?? "99:99"));
   const returnTo = `/crm/calendar?view=day&day=${date}`;
 
@@ -228,13 +323,14 @@ function DayWorkspace({ date, tasks, events, completing, onComplete, onDelete, o
         <div><h3 className="text-sm font-black">Liste d’appels et d’actions</h3><p className="text-[11px] font-semibold text-[#8B7AA8]">{sorted.length} tâche{sorted.length > 1 ? "s" : ""} active{sorted.length > 1 ? "s" : ""}</p></div>
         <span className="rounded-full bg-amber-50 px-3 py-1.5 text-[10px] font-black text-amber-800">Heures d’abord · sans horaire ensuite</span>
       </div>
+      {selectedTasks.size ? <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-violet-300 bg-[#2E1065] px-4 py-3 text-white shadow-lg"><span className="mr-auto text-xs font-black">{selectedTasks.size} tâche{selectedTasks.size > 1 ? "s" : ""} sélectionnée{selectedTasks.size > 1 ? "s" : ""}</span><button onClick={() => void onBulk("complete")} className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black">Marquer terminées</button><button onClick={() => void onBulk("reschedule")} className="rounded-lg border border-white/30 px-3 py-2 text-[10px] font-black">Replanifier</button><button onClick={() => void onBulk("delete")} className="rounded-lg bg-red-500 px-3 py-2 text-[10px] font-black">Supprimer</button></div> : null}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1050px] text-left text-xs">
-          <thead className="bg-[#FAF9F7] text-[10px] uppercase tracking-wide text-[#8B7AA8]"><tr><th className="w-12 p-3">Fait</th><th className="w-20 p-3">Heure</th><th className="p-3">Action</th><th className="p-3">Prospect</th><th className="p-3">Ville</th><th className="p-3">Contact rapide</th><th className="p-3">Description</th><th className="p-3 text-right">Actions</th></tr></thead>
+        <table className="w-full min-w-[1150px] text-left text-xs">
+          <thead className="bg-[#FAF9F7] text-[10px] uppercase tracking-wide text-[#8B7AA8]"><tr><th className="w-10 p-3"><input aria-label="Tout sélectionner" type="checkbox" checked={allSelected} onChange={() => onSelectAll(allSelected ? [] : sorted.map((task) => task.id))} className="h-4 w-4 accent-[#7C3AED]" /></th><th className="w-12 p-3">#</th><th className="w-12 p-3">Fait</th><th className="w-20 p-3">Heure</th><th className="p-3">Action</th><th className="p-3">Prospect</th><th className="p-3">Ville</th><th className="p-3">Contact rapide</th><th className="p-3">Description</th><th className="p-3 text-right">Actions</th></tr></thead>
           <tbody>
-            <TaskRows tasks={timed} returnTo={returnTo} completing={completing} onComplete={onComplete} onDelete={onDelete} onReschedule={onReschedule} />
-            {untimed.length ? <tr className="border-t-2 border-[#E8E4DB] bg-[#FAF9F7]"><td colSpan={8} className="px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-[#8B7AA8]">Sans horaire</td></tr> : null}
-            <TaskRows tasks={untimed} returnTo={returnTo} completing={completing} onComplete={onComplete} onDelete={onDelete} onReschedule={onReschedule} />
+            <TaskRows tasks={timed} startIndex={0} returnTo={returnTo} completing={completing} selectedTasks={selectedTasks} onToggleSelection={onToggleSelection} onComplete={onComplete} onDelete={onDelete} onReschedule={onReschedule} />
+            {untimed.length ? <tr className="border-t-2 border-[#E8E4DB] bg-[#FAF9F7]"><td colSpan={10} className="px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-[#8B7AA8]">Sans horaire</td></tr> : null}
+            <TaskRows tasks={untimed} startIndex={timed.length} returnTo={returnTo} completing={completing} selectedTasks={selectedTasks} onToggleSelection={onToggleSelection} onComplete={onComplete} onDelete={onDelete} onReschedule={onReschedule} />
           </tbody>
         </table>
         {!sorted.length ? <div className="p-12 text-center"><div className="text-2xl">✓</div><div className="mt-2 text-sm font-black text-[#2E1065]">Journée à jour</div><p className="mt-1 text-xs font-semibold text-[#8B7AA8]">Aucune tâche active pour cette date.</p></div> : null}
@@ -243,18 +339,23 @@ function DayWorkspace({ date, tasks, events, completing, onComplete, onDelete, o
   </div>;
 }
 
-function TaskRows({ tasks, returnTo, completing, onComplete, onDelete, onReschedule }: {
+function TaskRows({ tasks, startIndex, returnTo, completing, selectedTasks, onToggleSelection, onComplete, onDelete, onReschedule }: {
   tasks: CrmTask[];
+  startIndex: number;
   returnTo: string;
   completing: Set<string>;
+  selectedTasks: Set<string>;
+  onToggleSelection: (id: string) => void;
   onComplete: (task: CrmTask) => void;
   onDelete: (id: string) => void;
   onReschedule: (task: CrmTask) => void;
 }) {
-  return <>{tasks.map((task) => {
+  return <>{tasks.map((task, index) => {
     const lead = task.crm_leads;
     const isCompleting = completing.has(task.id);
     return <tr key={task.id} className={`border-t border-[#EEEAE3] transition hover:bg-[#FCFBF9] ${isCompleting ? "opacity-50" : ""}`}>
+      <td className="p-3"><input aria-label={`Sélectionner ${task.title}`} type="checkbox" checked={selectedTasks.has(task.id)} onChange={() => onToggleSelection(task.id)} className="h-4 w-4 accent-[#7C3AED]" /></td>
+      <td className="p-3 font-black text-[#8B7AA8]">{startIndex + index + 1}</td>
       <td className="p-3"><input aria-label={`Terminer ${task.title}`} type="checkbox" checked={isCompleting} disabled={isCompleting} onChange={() => void onComplete(task)} className="h-4 w-4 accent-[#7C3AED]" /></td>
       <td className="p-3 font-black text-[#2E1065]">{task.due_time?.slice(0, 5) ?? "—"}</td>
       <td className="p-3"><span className={`rounded-full px-2 py-1 text-[10px] font-black ${task.type === "Appel" ? "bg-amber-50 text-amber-800" : "bg-sky-50 text-sky-800"}`}>{task.type}</span><div className="mt-1 font-black">{task.title}</div></td>

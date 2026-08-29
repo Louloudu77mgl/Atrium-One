@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { associationStrength, buildBulkTaskRows, buildEventTitle, buildTaskTitle, calculateArr, dedupeProspects, exclusiveLeadIdsForSearch, findDuplicate, hasEffectiveModuleAccess, sortCalendarTasks } from "../lib/crm/logic.ts";
+import { associationStrength, buildBulkTaskRows, buildEventTitle, buildTaskTitle, calculateArr, dedupeProspects, distributeProspectsAcrossDays, exclusiveLeadIdsForSearch, findDuplicate, hasEffectiveModuleAccess, sortCalendarTasks } from "../lib/crm/logic.ts";
 import { collectGooglePlacesPages } from "../lib/crm/places.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -17,6 +17,8 @@ const taskRoute = read("../app/api/crm/leads/[id]/tasks/route.ts");
 const taskItemRoute = read("../app/api/crm/tasks/[id]/route.ts");
 const eventRoute = read("../app/api/crm/leads/[id]/events/route.ts");
 const calendar = read("../components/crm/CalendarWorkspace.tsx");
+const calendarPlanRoute = read("../app/api/crm/calendar/plan/route.ts");
+const taskBulkRoute = read("../app/api/crm/tasks/bulk/route.ts");
 
 test("sécurité — l’admin exact est isolé dans /crm et les autres utilisateurs sont refusés", () => {
   assert.match(sqlV1, /louisdacre@gmail\.com/);
@@ -137,6 +139,25 @@ test("calendrier cold call — une journée est une vraie page et non une modale
   assert.match(calendar, /Liste d’appels et d’actions/);
   assert.doesNotMatch(calendar, /ao-modal-backdrop/);
   assert.match(calendar, /returnTo=/);
+});
+
+test("calendrier cold call — les tâches sont numérotées et sélectionnables en masse", () => {
+  assert.match(calendar, /aria-label="Tout sélectionner"/);
+  assert.match(calendar, /startIndex \+ index \+ 1/);
+  assert.match(calendar, /Marquer terminées/);
+  assert.match(taskBulkRoute, /body\.action === "complete"/);
+});
+
+test("planificateur cold call — 60 prospects sont répartis sur chacun de deux jours", () => {
+  const leads = Array.from({ length: 120 }, (_, index) => ({ id: `lead-${index}`, name: `Prospect ${index}` }));
+  const result = distributeProspectsAcrossDays(leads, ["2026-09-03", "2026-09-07"], 60, "admin");
+  assert.equal(result.rows.length, 120);
+  assert.equal(result.counts["2026-09-03"], 60);
+  assert.equal(result.counts["2026-09-07"], 60);
+  assert.equal(result.rows.filter((row) => row.due_date === "2026-09-03").length, 60);
+  assert.equal(result.rows.filter((row) => row.due_date === "2026-09-07").length, 60);
+  assert.match(calendarPlanRoute, /alreadyPlanned/);
+  assert.match(calendarPlanRoute, /excludedStatuses/);
 });
 
 test("association compte — email exact automatique, signaux faibles manuels", () => {

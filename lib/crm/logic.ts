@@ -64,6 +64,17 @@ export function buildBulkTaskRows(leads: Array<{ id: string; name: string }>, in
   return leads.map((lead) => ({ lead_id: lead.id, title: buildTaskTitle(input.type, lead.name), type: input.type, due_date: input.dueDate, due_time: input.dueTime || null, description: input.description || null, created_by: input.createdBy || null }));
 }
 
+export function distributeProspectsAcrossDays(leads: Array<{ id: string; name: string }>, dates: string[], prospectsPerDay: number, createdBy?: string | null) {
+  const rows: ReturnType<typeof buildBulkTaskRows> = [];
+  const counts: Record<string, number> = {};
+  dates.forEach((date, dayIndex) => {
+    const dayLeads = leads.slice(dayIndex * prospectsPerDay, (dayIndex + 1) * prospectsPerDay);
+    counts[date] = dayLeads.length;
+    rows.push(...buildBulkTaskRows(dayLeads, { type: "Appel", dueDate: date, description: "Session de cold call planifiée", createdBy }));
+  });
+  return { rows, counts };
+}
+
 export function sortCalendarTasks<T extends { due_time?: string | null }>(tasks: T[]) {
   return [...tasks].sort((a, b) => {
     if (a.due_time && !b.due_time) return -1;
