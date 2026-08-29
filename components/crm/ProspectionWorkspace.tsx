@@ -72,11 +72,11 @@ export function ProspectionWorkspace({ initialSearches }: { initialSearches: Sav
       const response = await fetch("/api/crm/places/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospects: chosen, searchId }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? "Import impossible.");
-      const links = new Map<string, string>([...(data.imported ?? []), ...(data.duplicates ?? [])].map((item: { placeId: string; leadId: string }) => [item.placeId, item.leadId]));
+      const links = new Map<string, string>([...(data.imported ?? []), ...(data.restored ?? []), ...(data.duplicates ?? [])].map((item: { placeId: string; leadId: string }) => [item.placeId, item.leadId]));
       setResults((current) => current.map((item) => links.has(item.placeId) ? { ...item, alreadyExists: true, existingLeadId: links.get(item.placeId)! } : item));
       setSelected(new Set());
       setSearches((current) => current.map((item) => item.id === searchId ? { ...item, imported_count: data.linkedCount } : item));
-      setNotice(`${data.imported?.length ?? 0} prospect${data.imported?.length === 1 ? "" : "s"} ajouté${data.imported?.length === 1 ? "" : "s"} · ${data.duplicates?.length ?? 0} doublon${data.duplicates?.length === 1 ? "" : "s"} relié${data.duplicates?.length === 1 ? "" : "s"}.`);
+      setNotice(`${data.imported?.length ?? 0} nouveau${data.imported?.length === 1 ? "" : "x"} · ${data.restored?.length ?? 0} restauré${data.restored?.length === 1 ? "" : "s"} · ${data.duplicates?.length ?? 0} doublon${data.duplicates?.length === 1 ? "" : "s"} relié${data.duplicates?.length === 1 ? "" : "s"}.`);
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Import impossible."); }
     finally { setBusy(null); }
   }

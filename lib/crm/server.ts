@@ -19,7 +19,8 @@ export async function getCrmContext() {
 
 export function crmErrorResponse(error: unknown) {
   if (error instanceof CrmApiError) return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.status });
-  console.error("CRM request failed", error instanceof Error ? error.message : "unknown_error");
+  const details = error && typeof error === "object" ? error as { code?: unknown; message?: unknown } : null;
+  console.error("CRM request failed", { code: typeof details?.code === "string" ? details.code : "unknown", message: error instanceof Error ? error.message : typeof details?.message === "string" ? details.message : "unknown_error" });
   return NextResponse.json({ error: { code: "CRM_ERROR", message: "L’action CRM n’a pas pu aboutir." } }, { status: 500 });
 }
 

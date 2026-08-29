@@ -63,6 +63,15 @@ test("déduplication globale — Place ID, domaine, téléphone, nom et adresse"
   assert.equal(findDuplicate(leads, { name: "Eclat Lille", address: "2 rue Nationale" })?.id, "fingerprint");
 });
 
+test("réimport après soft-delete — le lead existant est restauré au lieu d’être recréé", () => {
+  const deleted = [{ id: "deleted", google_place_id: "place-1", deleted_at: "2026-08-30T00:00:00Z" }];
+  assert.equal(findDuplicate(deleted, { placeId: "place-1" })?.deleted_at, "2026-08-30T00:00:00Z");
+  assert.match(importRoute, /restoreProspects/);
+  assert.match(importRoute, /deleted_at: null/);
+  assert.match(importRoute, /\.\.\.restored/);
+  assert.match(importRoute, /return NextResponse\.json\(\{ imported, restored, duplicates/);
+});
+
 test("TEST 3 — le calcul historique identifie correctement le lead exclusif et le lead partagé", () => {
   const relations = [{ searchId: "a", leadId: "exclusive" }, { searchId: "a", leadId: "shared" }, { searchId: "b", leadId: "shared" }];
   assert.deepEqual(exclusiveLeadIdsForSearch(relations, "a"), ["exclusive"]);

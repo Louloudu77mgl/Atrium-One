@@ -1,4 +1,4 @@
-export type DedupeLead = { id: string; google_place_id?: string | null; website?: string | null; phone?: string | null; name?: string | null; address?: string | null };
+export type DedupeLead = { id: string; google_place_id?: string | null; website?: string | null; phone?: string | null; name?: string | null; address?: string | null; deleted_at?: string | null };
 export type DedupeProspect = { placeId?: string | null; website?: string | null; phone?: string | null; name?: string | null; address?: string | null };
 
 export function normalizePhone(value?: string | null) {

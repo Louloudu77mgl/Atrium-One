@@ -13,16 +13,49 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(prospects) || prospects.length === 0 || prospects.length > 100 || !searchId) return NextResponse.json({ error: { code: "INVALID_SELECTION", message: "Sélection ou recherche invalide." } }, { status: 400 });
 
     const uniqueSelection = dedupeProspects(prospects);
-    const { data: rows } = await supabase.from("crm_leads").select("id,google_place_id,website,phone,name,address").is("deleted_at", null);
-    const known = (rows ?? []) as Array<Pick<CrmLead, "id" | "google_place_id" | "website" | "phone" | "name" | "address">>;
+    const { data: rows, error: knownError } = await supabase.from("crm_leads").select("id,google_place_id,website,phone,name,address,deleted_at");
+    if (knownError) throw knownError;
+    const known = (rows ?? []) as Array<Pick<CrmLead, "id" | "google_place_id" | "website" | "phone" | "name" | "address" | "deleted_at">>;
     const imported: Array<{ placeId: string; leadId: string; email: string | null }> = [];
     const duplicates: Array<{ placeId: string; leadId: string }> = [];
+    const restored: Array<{ placeId: string; leadId: string }> = [];
     const newProspects: PlacesProspect[] = [];
+    const restoreProspects: Array<{ prospect: PlacesProspect; leadId: string }> = [];
 
     for (const prospect of uniqueSelection) {
       const duplicate = findDuplicate(known, prospect);
-      if (duplicate) duplicates.push({ placeId: prospect.placeId, leadId: duplicate.id });
+      if (duplicate?.deleted_at) restoreProspects.push({ prospect, leadId: duplicate.id });
+      else if (duplicate) duplicates.push({ placeId: prospect.placeId, leadId: duplicate.id });
       else newProspects.push(prospect);
+    }
+
+    for (let index = 0; index < restoreProspects.length; index += 10) {
+      const batch = restoreProspects.slice(index, index + 10);
+      await Promise.all(batch.map(async ({ prospect, leadId }) => {
+        const { error } = await supabase.from("crm_leads").update({
+          deleted_at: null,
+          archived_at: null,
+          name: prospect.name,
+          business_type: prospect.businessType,
+          address: prospect.address,
+          city: prospect.city,
+          postal_code: prospect.postalCode,
+          phone: prospect.phone,
+          website: prospect.website,
+          google_place_id: prospect.placeId || null,
+          google_maps_url: prospect.googleMapsUrl,
+          google_rating: prospect.rating,
+          google_reviews_count: prospect.reviewsCount,
+          latitude: prospect.latitude,
+          longitude: prospect.longitude,
+          google_business_status: prospect.businessStatus,
+          lead_source: "Google Prospection"
+        }).eq("id", leadId);
+        if (error) throw error;
+        const knownLead = known.find((lead) => lead.id === leadId);
+        if (knownLead) knownLead.deleted_at = null;
+        restored.push({ placeId: prospect.placeId, leadId });
+      }));
     }
 
     for (let index = 0; index < newProspects.length; index += 8) {
@@ -40,18 +73,18 @@ export async function POST(request: NextRequest) {
         }).select("id").single();
         if (error) {
           if (error.code === "23505") {
-            const { data: refreshed } = await supabase.from("crm_leads").select("id,google_place_id,website,phone,name,address").is("deleted_at", null);
+            const { data: refreshed } = await supabase.from("crm_leads").select("id,google_place_id,website,phone,name,address,deleted_at");
             const concurrent = findDuplicate(refreshed ?? [], prospect);
-            if (concurrent) { duplicates.push({ placeId: prospect.placeId, leadId: concurrent.id }); continue; }
+            if (concurrent && !concurrent.deleted_at) { duplicates.push({ placeId: prospect.placeId, leadId: concurrent.id }); continue; }
           }
           throw error;
         }
-        known.push({ id: lead.id, google_place_id: prospect.placeId, website: prospect.website, phone: prospect.phone, name: prospect.name, address: prospect.address });
+        known.push({ id: lead.id, google_place_id: prospect.placeId, website: prospect.website, phone: prospect.phone, name: prospect.name, address: prospect.address, deleted_at: null });
         imported.push({ placeId: prospect.placeId, leadId: lead.id, email: enrichment.email });
       }
     }
 
-    const relationRows = [...imported, ...duplicates].map((item) => ({ search_id: searchId, lead_id: item.leadId }));
+    const relationRows = [...imported, ...restored, ...duplicates].map((item) => ({ search_id: searchId, lead_id: item.leadId }));
     if (relationRows.length) {
       const { error } = await supabase.from("crm_search_leads").upsert(relationRows, { onConflict: "search_id,lead_id", ignoreDuplicates: true });
       if (error) throw error;
@@ -59,7 +92,7 @@ export async function POST(request: NextRequest) {
     const { count } = await supabase.from("crm_search_leads").select("*", { count: "exact", head: true }).eq("search_id", searchId);
     await supabase.from("crm_searches").update({ imported_count: count ?? 0 }).eq("id", searchId);
 
-    return NextResponse.json({ imported, duplicates, linkedCount: count ?? 0 });
+    return NextResponse.json({ imported, restored, duplicates, linkedCount: count ?? 0 });
   } catch (error) {
     return crmErrorResponse(error);
   }
