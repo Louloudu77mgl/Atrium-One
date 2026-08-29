@@ -7,11 +7,12 @@ import { associationStrength } from "@/lib/crm/logic";
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createServerSupabaseClient() as any;
-  const [{ data: lead }, { data: notes }, { data: tasks }, { data: appointments }, { data: activity }] = await Promise.all([
+  const [{ data: lead }, { data: notes }, { data: tasks }, { data: events }, { data: opportunities }, { data: activity }] = await Promise.all([
     supabase.from("crm_leads").select("*").eq("id", id).is("deleted_at", null).maybeSingle(),
     supabase.from("crm_notes").select("*").eq("lead_id", id).order("created_at", { ascending: false }),
     supabase.from("crm_tasks").select("*").eq("lead_id", id).order("completed").order("due_date").order("due_time"),
-    supabase.from("crm_appointments").select("*").eq("lead_id", id).order("appointment_date", { ascending: false }).order("appointment_time", { ascending: false }),
+    supabase.from("crm_events").select("*").eq("lead_id", id).order("event_date", { ascending: false }).order("event_time", { ascending: false }),
+    supabase.from("crm_opportunities").select("*").eq("lead_id", id).order("created_at", { ascending: false }),
     supabase.from("crm_activity").select("*").eq("lead_id", id).order("created_at", { ascending: false }).limit(100)
   ]);
   if (!lead) notFound();
@@ -33,5 +34,5 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       candidates = (merchants ?? []).flatMap((merchant: any) => { const email = userMap.get(merchant.user_id) ?? null; const strength = associationStrength({ leadEmail: lead.email, accountEmail: email, leadPhone: lead.phone, accountPhone: merchant.phone, leadWebsite: lead.website, accountWebsite: merchant.website_url }); const reason = strength === "exact_email" ? "Email exact" : strength === "phone" ? "Téléphone correspondant" : strength === "domain" ? "Domaine correspondant" : ""; return reason ? [{ businessId: merchant.id, userId: merchant.user_id, businessName: merchant.business_name, email, reason }] : []; });
     }
   }
-  return <LeadDetailWorkspace initial={{ lead, notes: notes ?? [], tasks: tasks ?? [], appointments: appointments ?? [], activity: activity ?? [], access, modules, account, candidates }} />;
+  return <LeadDetailWorkspace initial={{ lead, notes: notes ?? [], tasks: tasks ?? [], events: events ?? [], opportunities: opportunities ?? [], activity: activity ?? [], access, modules, account, candidates }} />;
 }

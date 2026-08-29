@@ -39,3 +39,40 @@ export function associationStrength(input: { leadEmail?: string | null; accountE
   if (normalizeDomain(input.leadWebsite) && normalizeDomain(input.leadWebsite) === normalizeDomain(input.accountWebsite)) return "domain" as const;
   return "none" as const;
 }
+
+export function dedupeProspects<T extends DedupeProspect>(prospects: T[]) {
+  const unique: T[] = [];
+  for (const prospect of prospects) {
+    if (!findDuplicate(unique.map((item, index) => ({ id: String(index), google_place_id: item.placeId, website: item.website, phone: item.phone, name: item.name, address: item.address })), prospect)) unique.push(prospect);
+  }
+  return unique;
+}
+
+export function buildTaskTitle(type: "Appel" | "Email", leadName: string) {
+  return `${type} - ${leadName.trim()}`;
+}
+
+export function buildEventTitle(type: string, leadName: string) {
+  return type === "Appel effectué" ? `Appel effectué - ${leadName.trim()}` : `${type} - AtriumOne x ${leadName.trim()}`;
+}
+
+export function calculateArr(mrr: number) {
+  return Math.round(mrr * 1200) / 100;
+}
+
+export function buildBulkTaskRows(leads: Array<{ id: string; name: string }>, input: { type: "Appel" | "Email"; dueDate: string; dueTime?: string | null; description?: string | null; createdBy?: string | null }) {
+  return leads.map((lead) => ({ lead_id: lead.id, title: buildTaskTitle(input.type, lead.name), type: input.type, due_date: input.dueDate, due_time: input.dueTime || null, description: input.description || null, created_by: input.createdBy || null }));
+}
+
+export function sortCalendarTasks<T extends { due_time?: string | null }>(tasks: T[]) {
+  return [...tasks].sort((a, b) => {
+    if (a.due_time && !b.due_time) return -1;
+    if (!a.due_time && b.due_time) return 1;
+    return (a.due_time ?? "").localeCompare(b.due_time ?? "");
+  });
+}
+
+export function exclusiveLeadIdsForSearch(relations: Array<{ searchId: string; leadId: string }>, searchId: string) {
+  const targetLeadIds = new Set(relations.filter((item) => item.searchId === searchId).map((item) => item.leadId));
+  return [...targetLeadIds].filter((leadId) => !relations.some((item) => item.leadId === leadId && item.searchId !== searchId));
+}

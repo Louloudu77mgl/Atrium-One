@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { buildTaskTitle } from "@/lib/crm/logic";
+import { CRM_OPPORTUNITY_STATUSES } from "@/lib/crm/types";
 import { cleanText, crmErrorResponse, getCrmContext } from "@/lib/crm/server";
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -7,12 +7,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { user, supabase } = await getCrmContext();
     const { id } = await params;
     const body = await request.json();
-    if (!['Appel', 'Email'].includes(body.type) || !/^\d{4}-\d{2}-\d{2}$/.test(body.due_date ?? "")) return NextResponse.json({ error: { message: "Type Appel/Email et date requis." } }, { status: 400 });
+    const mrr = Number(body.mrr);
+    if (!Number.isFinite(mrr) || mrr < 0) return NextResponse.json({ error: { message: "MRR invalide." } }, { status: 400 });
     const { data: lead, error: leadError } = await supabase.from("crm_leads").select("name").eq("id", id).single();
     if (leadError) throw leadError;
-    const { data, error } = await supabase.from("crm_tasks").insert({
-      lead_id: id, title: buildTaskTitle(body.type, lead.name), description: cleanText(body.description, 5000),
-      type: body.type, due_date: body.due_date, due_time: body.due_time || null, created_by: user.id
+    const status = CRM_OPPORTUNITY_STATUSES.includes(body.status) && !['Gagnée', 'Perdue'].includes(body.status) ? body.status : "Ouverte";
+    const { data, error } = await supabase.from("crm_opportunities").insert({
+      lead_id: id, name: cleanText(body.name, 250) ?? `AtriumOne - ${lead.name}`, status, mrr,
+      notes: cleanText(body.notes, 5000), created_by: user.id
     }).select("*").single();
     if (error) throw error;
     return NextResponse.json(data, { status: 201 });

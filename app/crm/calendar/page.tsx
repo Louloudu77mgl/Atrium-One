@@ -4,9 +4,9 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function CalendarPage() {
   const supabase = await createServerSupabaseClient() as any;
-  const [{ data: tasks }, { data: appointments }] = await Promise.all([
+  const [{ data: tasks }, { data: events }] = await Promise.all([
     supabase.from("crm_tasks").select("*,crm_leads(id,name,city)").order("due_date").order("due_time"),
-    supabase.from("crm_appointments").select("*,crm_leads(id,name,city)").order("appointment_date").order("appointment_time")
+    supabase.from("crm_events").select("*,crm_leads(id,name,city)").order("event_date").order("event_time")
   ]);
-  return <><CrmPageHeader eyebrow="Organisation" title="Calendrier" description="Tâches, appels, démonstrations et onboardings réunis dans une seule vue." /><CalendarWorkspace initialTasks={tasks ?? []} initialAppointments={appointments ?? []} /></>;
+  return <><CrmPageHeader eyebrow="Organisation" title="Calendrier" description="Tâches et événements commerciaux réunis dans une seule vue." /><CalendarWorkspace initialTasks={tasks ?? []} initialEvents={events ?? []} /></>;
 }

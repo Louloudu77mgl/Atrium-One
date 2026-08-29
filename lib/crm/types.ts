@@ -12,12 +12,16 @@ export const COMMERCIAL_STATUSES = [
   "Proposition envoyée",
   "En négociation",
   "Signé",
+  "Client",
   "Perdu",
   "À revoir plus tard"
 ] as const;
 
 export const CRM_TASK_TYPES = ["Appel", "Relance", "Email", "RDV", "Démo", "Closing", "Suivi", "Autre"] as const;
 export const CRM_APPOINTMENT_TYPES = ["Premier échange", "Démo AtriumOne", "Onboarding", "RDV commercial", "Follow-up", "Closing", "Autre"] as const;
+export const CRM_EVENT_TYPES = ["Appel effectué", "R1", "R2", "R3", "Point de suivi", "Autre"] as const;
+export const CRM_CALL_RESULTS = ["Pas de réponse", "À rappeler", "Intéressé", "Pas intéressé", "RDV obtenu", "Mauvais contact", "Autre"] as const;
+export const CRM_OPPORTUNITY_STATUSES = ["Ouverte", "Qualification", "Proposition", "Négociation", "Gagnée", "Perdue"] as const;
 export const LOST_REASONS = ["Trop cher", "Pas intéressé", "Déjà équipé", "Pas le bon moment", "Pas de réponse", "Mauvaise cible", "Projet reporté", "Autre"] as const;
 export const CRM_MODULES = ["reviews", "instagram", "hans", "automations", "emailing", "rcu", "customers", "insights"] as const;
 
@@ -90,6 +94,38 @@ export type CrmAppointment = {
   created_at: string;
   updated_at: string;
   crm_leads?: Pick<CrmLead, "id" | "name" | "city"> | null;
+};
+
+export type CrmEvent = {
+  id: string;
+  lead_id: string;
+  title: string;
+  type: (typeof CRM_EVENT_TYPES)[number];
+  event_date: string;
+  event_time: string | null;
+  duration_minutes: number | null;
+  call_result: string | null;
+  notes: string | null;
+  result: string | null;
+  source_appointment_id: string | null;
+  created_at: string;
+  updated_at: string;
+  crm_leads?: Pick<CrmLead, "id" | "name" | "city"> | null;
+};
+
+export type CrmOpportunity = {
+  id: string;
+  lead_id: string;
+  name: string;
+  status: (typeof CRM_OPPORTUNITY_STATUSES)[number];
+  mrr: number;
+  arr: number;
+  closed_at: string | null;
+  lost_at: string | null;
+  lost_reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type BusinessAccess = {
