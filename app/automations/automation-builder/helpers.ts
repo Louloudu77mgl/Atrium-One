@@ -3,14 +3,15 @@
 import type { AutomationEdge, AutomationFlow, AutomationNodeData, ExecutionRecord, TestScenario, ValidationIssue } from "./types";
 
 const supportedNodeTypes = new Set([
-  "new_customer", "new_visit", "new_reward", "google_review",
-  "marketing_consent", "review_rating_gte", "reward_count",
+  "new_customer", "new_visit", "new_reward", "google_review", "customer_returned", "customer_inactive", "customer_birthday", "registration_anniversary", "visit_milestone", "points_milestone", "profile_completed", "consent_granted", "game_participation", "game_reward_won", "reward_used", "near_reward", "visit_velocity", "review_by_rating", "review_keyword",
+  "marketing_consent", "review_rating_gte", "reward_count", "visit_comparison", "last_visit_age", "points_comparison", "customer_status", "customer_contact_field", "review_rating_compare", "review_content", "review_status",
   "send_email", "generate_email", "prepare_instagram", "publish_instagram",
-  "generate_review_reply", "publish_review_reply", "notify_merchant",
-  "stop_flow", "limit_once"
+  "generate_review_reply", "publish_review_reply", "notify_merchant", "request_human_validation", "schedule_instagram",
+  "stop_flow", "limit_once", "cooldown", "allowed_window"
 ]);
-const reviewOnlyNodeTypes = new Set(["review_rating_gte", "generate_review_reply", "publish_review_reply"]);
-const customerOnlyNodeTypes = new Set(["marketing_consent", "reward_count"]);
+const reviewTriggerTypes = new Set(["google_review", "review_by_rating", "review_keyword"]);
+const reviewOnlyNodeTypes = new Set(["review_rating_gte", "review_rating_compare", "review_content", "review_status", "generate_review_reply", "publish_review_reply"]);
+const customerOnlyNodeTypes = new Set(["marketing_consent", "reward_count", "visit_comparison", "last_visit_age", "points_comparison", "customer_status", "customer_contact_field", "cooldown"]);
 
 export function cloneFlow(flow: AutomationFlow): AutomationFlow {
   return JSON.parse(JSON.stringify(flow)) as AutomationFlow;
@@ -38,12 +39,19 @@ export function validateFlow(
 
   for (const node of flow.nodes) {
     if (!supportedNodeTypes.has(node.type)) {
-      issues.push({ id: `unsupported-${node.id}`, level: "error", message: `La card « ${node.title} » appartient à une ancienne version et n’a pas d’exécution fiable. Remplacez-la par un bloc disponible dans la bibliothèque.`, nodeId: node.id });
+      issues.push({
+        id: `unsupported-${node.id}`,
+        level: "error",
+        message: node.status === "warning"
+          ? `La card « ${node.title} » est visible dans le builder, mais son exécuteur n'est pas encore raccordé.`
+          : `La card « ${node.title} » appartient à une ancienne version et n’a pas d’exécution fiable. Remplacez-la par un bloc disponible dans la bibliothèque.`,
+        nodeId: node.id
+      });
     }
-    if (triggerType === "google_review" && customerOnlyNodeTypes.has(node.type)) {
+    if (triggerType && reviewTriggerTypes.has(triggerType) && customerOnlyNodeTypes.has(node.type)) {
       issues.push({ id: `incompatible-review-${node.id}`, level: "error", message: `${node.title} nécessite un client RCU et ne peut pas suivre un avis Google.`, nodeId: node.id });
     }
-    if (triggerType && triggerType !== "google_review" && reviewOnlyNodeTypes.has(node.type)) {
+    if (triggerType && !reviewTriggerTypes.has(triggerType) && reviewOnlyNodeTypes.has(node.type)) {
       issues.push({ id: `incompatible-customer-${node.id}`, level: "error", message: `${node.title} nécessite le déclencheur Nouvel avis Google.`, nodeId: node.id });
     }
     if (!incoming.get(node.id) && node.category !== "trigger") {
@@ -68,7 +76,7 @@ export function validateFlow(
       issues.push({ id: `instagram-source-${node.id}`, level: "error", message: "Ajoutez une card « Préparer une publication Instagram » avant de publier.", nodeId: node.id });
     }
 
-    if ((node.type === "google_review" || node.type === "publish_review_reply") && !capabilities.googleConnected) {
+    if ((reviewTriggerTypes.has(node.type) || node.type === "publish_review_reply") && !capabilities.googleConnected) {
       issues.push({ id: `google-${node.id}`, level: "error", message: "Google Business Profile doit être connecté avant d’activer ce bloc.", nodeId: node.id, actionLabel: "Connecter Google", actionHref: "/integrations" });
     }
     if (node.type === "google_review") {
@@ -81,8 +89,21 @@ export function validateFlow(
         issues.push({ id: `review-cadence-unit-${node.id}`, level: "error", message: "Choisissez une veille en jours ou en semaines.", nodeId: node.id });
       }
     }
+    if (node.type === "review_by_rating") {
+      const rating = Number(node.config.rating);
+      if (!Number.isFinite(rating) || rating < 1 || rating > 5) issues.push({ id: `review-rating-${node.id}`, level: "error", message: "Choisissez une note entre 1 et 5.", nodeId: node.id });
+    }
+    if (node.type === "review_keyword" && !String(node.config.keyword ?? "").trim()) {
+      issues.push({ id: `review-keyword-${node.id}`, level: "error", message: "Indiquez le mot ou l'expression à détecter.", nodeId: node.id });
+    }
     if (node.type === "publish_review_reply" && !hasReviewReplyGeneration) {
       issues.push({ id: `review-source-${node.id}`, level: "error", message: "Ajoutez une card « Générer une réponse à un avis » avant la publication Google.", nodeId: node.id });
+    }
+    if (node.type === "schedule_instagram" && !hasInstagramPreparation) {
+      issues.push({ id: `instagram-schedule-source-${node.id}`, level: "error", message: "Ajoutez une card « Préparer une publication Instagram » avant de planifier.", nodeId: node.id });
+    }
+    if (node.type === "schedule_instagram" && !capabilities.instagramConnected) {
+      issues.push({ id: `instagram-schedule-${node.id}`, level: "error", message: "Instagram doit être connecté avant d'activer la planification.", nodeId: node.id, actionLabel: "Connecter Instagram", actionHref: "/social?connect=instagram" });
     }
 
     if (["send_email", "send_newsletter", "prepare_newsletter", "generate_email"].includes(node.type)) {
@@ -250,6 +271,30 @@ function evaluateCondition(node: AutomationNodeData, scenario: TestScenario) {
       return scenario.reviewRating >= Number(node.config.rating ?? 4);
     case "reward_count":
       return scenario.rewards >= Number(node.config.count ?? 2);
+    case "visit_comparison":
+      return scenario.visits >= Number(node.config.visits ?? 5);
+    case "last_visit_age":
+      return scenario.daysSinceLastVisit >= Number(node.config.days ?? 30);
+    case "points_comparison":
+      return scenario.points >= Number(node.config.points ?? 100);
+    case "customer_contact_field":
+      return true;
+    case "customer_status": {
+      const status = String(node.config.status ?? "Fidèle");
+      if (status === "Nouveau") return scenario.visits <= 1;
+      if (status === "Régulier") return scenario.visits >= 2 && scenario.visits < 5;
+      if (status === "Inactif") return scenario.daysSinceLastVisit >= 30;
+      return scenario.visits >= 5;
+    }
+    case "review_rating_compare": {
+      const target = Number(node.config.rating ?? 4);
+      const operator = String(node.config.operator ?? "Au moins");
+      return operator === "Au plus" ? scenario.reviewRating <= target : operator === "Égale à" ? scenario.reviewRating === target : scenario.reviewRating >= target;
+    }
+    case "review_content":
+      return true;
+    case "review_status":
+      return String(node.config.status ?? "Sensible") === "Positif" ? scenario.reviewRating >= 4 : scenario.reviewRating <= 2;
     case "no_recent_message":
       return true;
     case "segment_match":

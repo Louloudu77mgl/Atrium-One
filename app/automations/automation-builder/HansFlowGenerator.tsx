@@ -3,6 +3,8 @@
 export function HansFlowGenerator({
   prompt,
   summary,
+  generating,
+  error,
   onPromptChange,
   onGenerate,
   onActivate,
@@ -11,6 +13,8 @@ export function HansFlowGenerator({
 }: {
   prompt: string;
   summary: string | null;
+  generating: boolean;
+  error: string | null;
   onPromptChange: (value: string) => void;
   onGenerate: () => void;
   onActivate: () => void;
@@ -24,11 +28,12 @@ export function HansFlowGenerator({
       <textarea
         value={prompt}
         onChange={(event) => onPromptChange(event.target.value)}
+        disabled={generating}
         className="mt-4 min-h-[140px] w-full rounded-[16px] border border-[#EBE6DF] bg-[#F9F7F4] px-4 py-3 text-sm text-[#17131F] outline-none focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-[#6E4DE0]"
-        placeholder="Exemple : Prépare trois publications Instagram par semaine, mais ne publie rien sans mon accord."
+        placeholder="Exemple : Quand un client gagne une récompense, prépare une publication Instagram sur sa fidélité, avertis-moi et ne publie rien sans mon accord."
       />
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" onClick={onGenerate} disabled={!prompt.trim()} className="rounded-[10px] bg-[#2B1A4A] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Générer le flow</button>
+        <button type="button" onClick={onGenerate} disabled={!prompt.trim() || generating} className="rounded-[10px] bg-[#2B1A4A] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">{generating ? "Hans réfléchit…" : "Générer le flow"}</button>
         {summary ? (
           <>
             <button type="button" onClick={onActivate} className="rounded-[10px] border border-[#EBE6DF] px-4 py-2 text-sm font-semibold text-[#17131F]">Activer</button>
@@ -37,6 +42,11 @@ export function HansFlowGenerator({
           </>
         ) : null}
       </div>
+      {error ? (
+        <div className="mt-4 rounded-[16px] border border-[#F1D5D0] bg-[#FFF6F4] px-4 py-3 text-[13px] leading-6 text-[#A33A27]">
+          {error}
+        </div>
+      ) : null}
       {summary ? (
         <div className="mt-4 rounded-[18px] bg-[#F1ECFB] p-4 text-[13px] leading-6 text-[#4C3C77]">
           <span className="font-bold text-[#2B1A4A]">Hans a compris :</span> {summary}

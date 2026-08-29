@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     poster_body?: string;
     poster_theme?: string;
     game_config?: RcuGameConfig;
+    is_active?: boolean;
   };
   const formType = isRcuFormType(payload.form_type) ? payload.form_type : "points";
   const defaults = getRcuDefaultDraft(formType, merchant.business_name);
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
       poster_body: payload.poster_body?.trim() || defaults.posterBody,
       poster_theme: payload.poster_theme?.trim() || formType,
       game_config: normalizeRcuGameConfig(formType, payload.game_config ?? defaults.gameConfig),
-      is_active: true
+      is_active: payload.is_active !== false
     });
 
     return NextResponse.json({ form });

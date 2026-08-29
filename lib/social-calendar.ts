@@ -15,7 +15,7 @@ export function getUpcomingFrenchCommercialMoments(referenceDate = new Date()) {
       ...moment,
       daysUntil: Math.ceil((moment.at.getTime() - startOfDay(referenceDate).getTime()) / DAY_MS)
     }))
-    .filter((moment) => moment.daysUntil >= 0)
+    .filter((moment) => moment.daysUntil >= 0 && moment.daysUntil <= 90)
     .sort((left, right) => left.daysUntil - right.daysUntil);
 
   return upcoming.slice(0, 4).map(({ at, ...moment }) => ({
@@ -31,8 +31,13 @@ function buildMomentsForYear(year: number) {
     { key: "paques", label: "Pâques", shortLabel: "Pâques", at: easterDate(year) },
     { key: "fete-des-meres", label: "Fête des mères", shortLabel: "Fête des mères", at: lastSundayOfMonthUtc(year, 4) },
     { key: "fete-des-peres", label: "Fête des pères", shortLabel: "Fête des pères", at: nthSundayOfMonthUtc(year, 5, 3) },
+    { key: "fete-musique", label: "Fête de la musique", shortLabel: "Fête de la musique", at: new Date(Date.UTC(year, 5, 21)) },
     { key: "soldes-ete", label: "Soldes d'été", shortLabel: "Soldes", at: new Date(Date.UTC(year, 5, 26)) },
-    { key: "rentree", label: "Rentrée", shortLabel: "Rentrée", at: new Date(Date.UTC(year, 7, 25)) },
+    { key: "vacances-ete", label: "Vacances d'été", shortLabel: "Vacances d'été", at: new Date(Date.UTC(year, 6, 1)) },
+    { key: "fete-nationale", label: "Fête nationale", shortLabel: "14 juillet", at: new Date(Date.UTC(year, 6, 14)) },
+    { key: "assomption", label: "Week-end du 15 août", shortLabel: "15 août", at: new Date(Date.UTC(year, 7, 15)) },
+    { key: "rentree", label: "Rentrée", shortLabel: "Rentrée", at: new Date(Date.UTC(year, 8, 1)) },
+    { key: "halloween", label: "Halloween", shortLabel: "Halloween", at: new Date(Date.UTC(year, 9, 31)) },
     { key: "black-friday", label: "Black Friday", shortLabel: "Black Friday", at: nthWeekdayOfMonthUtc(year, 10, 5, 4) },
     { key: "noel", label: "Noël", shortLabel: "Noël", at: new Date(Date.UTC(year, 11, 25)) }
   ];

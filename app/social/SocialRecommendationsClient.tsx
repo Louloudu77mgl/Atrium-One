@@ -6,9 +6,9 @@ export function SocialRecommendationsClient({ ideas }: { ideas: ReviewSocialPost
     <SocialIdeasGrid
       ideas={ideas}
       emptyTitle="Aucune recommandation disponible pour le moment"
-      emptyDescription="Analysez davantage d’avis pour générer de nouvelles idées de posts."
+      emptyDescription="Les prochaines recommandations seront préparées automatiquement lors de l’analyse quotidienne de 8 h."
       emptyHref="/reviews/insights"
-      emptyLabel="Analyser mes avis"
+      emptyLabel="Voir Insights IA"
     />
   );
 }

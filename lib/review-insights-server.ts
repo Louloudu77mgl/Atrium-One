@@ -5,18 +5,20 @@ import { getMerchant } from "@/lib/merchants";
 import type { Review } from "@/lib/mock-data";
 import {
   alignInsightsWithReviews,
+  emptyAnalysis,
   enforceSocialPostIdeaRules,
   ensureReviewInsightsPostIdeas,
   getFallbackReviewInsights,
+  getReviewSnapshotSummary,
   getReviewInsightsVersion,
-  mapInsightRow,
-  prepareReviewInsightsForDisplay,
-  shouldRefreshReviewInsights,
+  hasReviewInsightsSourceChanged,
+  REVIEW_INSIGHTS_STORAGE_TITLE,
   type ReviewInsightsAnalysis,
   validateReviewInsights
 } from "@/lib/review-insights";
+import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { Database, Json, MerchantRow, SocialPostIdeaRow } from "@/lib/supabase/types";
+import type { Database, Json, MerchantRow, ReviewInsightRow, SocialPostIdeaRow } from "@/lib/supabase/types";
 
 type OpenAIResponseContent = {
   type?: string;
@@ -50,14 +52,60 @@ function extractText(body: OpenAIResponseBody) {
   );
 }
 
-export async function getStoredReviewInsights(merchant?: MerchantRow | null) {
+function isMissingInsightsTableError(message: string) {
+  return message.includes("Could not find the table 'public.review_insights'");
+}
+
+async function getLegacyStoredReviewInsights(
+  merchant: MerchantRow,
+  supabase: SupabaseClient<Database>
+): Promise<ReviewInsightRow | null> {
+  const { data, error } = await supabase
+    .from("hans_recommendations")
+    .select("id, description, created_at")
+    .eq("merchant_id", merchant.id)
+    .eq("title", REVIEW_INSIGHTS_STORAGE_TITLE)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(data.description) as {
+      analysis: unknown;
+      reviewsCount: number;
+      latestReviewUpdatedAt: string | null;
+      updatedAt: string;
+    };
+
+    return {
+      id: data.id,
+      merchant_id: merchant.id,
+      analysis_json: validateReviewInsights(payload.analysis) as unknown as Json,
+      reviews_count: payload.reviewsCount,
+      latest_review_updated_at: payload.latestReviewUpdatedAt,
+      created_at: data.created_at,
+      updated_at: payload.updatedAt
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getStoredReviewInsights(
+  merchant?: MerchantRow | null,
+  client?: SupabaseClient<Database>
+) {
   const currentMerchant = merchant ?? (await getMerchant());
 
   if (!currentMerchant) {
     return null;
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = client ?? await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("review_insights")
     .select("*")
@@ -65,14 +113,55 @@ export async function getStoredReviewInsights(merchant?: MerchantRow | null) {
     .maybeSingle();
 
   if (error) {
-    if (error.message.includes("Could not find the table")) {
-      return null;
+    if (isMissingInsightsTableError(error.message)) {
+      return getLegacyStoredReviewInsights(currentMerchant, supabase);
     }
 
     throw new Error(error.message);
   }
 
   return data;
+}
+
+export async function getOrRefreshReviewInsights(
+  merchant: MerchantRow,
+  reviews: Review[],
+  client?: SupabaseClient<Database>
+) {
+  const supabase = client ?? await createServerSupabaseClient();
+  const stored = await getStoredReviewInsights(merchant, supabase);
+
+  if (!hasReviewInsightsSourceChanged(stored, reviews)) {
+    return stored;
+  }
+
+  const { data: postRows, error: postsError } = await supabase
+    .from("social_posts")
+    .select("*")
+    .eq("merchant_id", merchant.id)
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(100);
+
+  if (postsError) {
+    throw new Error(postsError.message);
+  }
+
+  const analysis = reviews.length > 0
+    ? await analyzeReviewsWithOpenAI(reviews, merchant)
+    : emptyAnalysis;
+  const socialPostIdeas = await getTopSocialRecommendations({
+    analysis,
+    reviews,
+    merchant,
+    posts: postRows ?? []
+  });
+
+  return saveReviewInsights(merchant, {
+    ...analysis,
+    socialPostIdeas,
+    reviewSnapshot: getReviewSnapshotSummary(reviews)
+  }, reviews, supabase);
 }
 
 export async function getSocialPostIdeas(merchant?: MerchantRow | null): Promise<SocialPostIdeaRow[]> {
@@ -108,12 +197,12 @@ export async function analyzeReviewsWithOpenAI(reviews: Review[], merchant: Merc
     return getFallbackReviewInsights(reviews);
   }
 
-  const sample = reviews.slice(0, 80).map((review) => ({
+  const completeReviewSet = reviews.map((review) => ({
     author: review.author,
     rating: review.rating,
     sentiment: review.sentiment,
     status: review.status,
-    text: review.text,
+    text: review.text.slice(0, 1200),
     createdAt: review.createdAt
   }));
 
@@ -140,7 +229,8 @@ export async function analyzeReviewsWithOpenAI(reviews: Review[], merchant: Merc
           priorityActions: [{ title: "Rassurer sur les temps d’attente", channel: "sms", impact: "élevé", difficulty: "facile", description: "Prévenir les clients avant les périodes chargées.", strategyPoints: ["Cibler les clients concernés par les créneaux les plus chargés.", "Envoyer un message court avant le pic d’affluence.", "Mesurer si les nouveaux avis mentionnent moins l’attente."] }],
           socialPostIdeas: [{ platform: "instagram", title: "Titre", angle: "Angle", sourcePainPoint: "Douleur ou point fort source" }]
         },
-        reviews: sample
+        reviewCount: reviews.length,
+        reviews: completeReviewSet
       }),
       max_output_tokens: 2400
     })
@@ -171,7 +261,8 @@ export async function saveReviewInsights(
   const supabase = client ?? await createServerSupabaseClient();
   const now = new Date().toISOString();
   const safeReviews = reviews ?? [];
-  const analysisWithIdeas = enforceSocialPostIdeaRules(ensureReviewInsightsPostIdeas(analysis) ?? analysis, safeReviews);
+  const normalizedAnalysis = validateReviewInsights(analysis);
+  const analysisWithIdeas = enforceSocialPostIdeaRules(ensureReviewInsightsPostIdeas(normalizedAnalysis) ?? normalizedAnalysis, safeReviews);
   const { reviewsCount, latestReviewUpdatedAt } = getReviewInsightsVersion(safeReviews);
 
   const { data, error } = await supabase
@@ -187,6 +278,60 @@ export async function saveReviewInsights(
     .single();
 
   if (error) {
+    if (isMissingInsightsTableError(error.message)) {
+      const payload = JSON.stringify({
+        analysis: analysisWithIdeas,
+        reviewsCount,
+        latestReviewUpdatedAt,
+        updatedAt: now
+      });
+      const { data: existing, error: existingError } = await supabase
+        .from("hans_recommendations")
+        .select("id, created_at")
+        .eq("merchant_id", merchant.id)
+        .eq("title", REVIEW_INSIGHTS_STORAGE_TITLE)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) {
+        throw new Error(existingError.message);
+      }
+
+      const fallbackResult = existing
+        ? await supabase
+            .from("hans_recommendations")
+            .update({ description: payload, status: "done", completed_at: now })
+            .eq("id", existing.id)
+            .select("id, created_at")
+            .single()
+        : await supabase
+            .from("hans_recommendations")
+            .insert({
+              merchant_id: merchant.id,
+              title: REVIEW_INSIGHTS_STORAGE_TITLE,
+              description: payload,
+              status: "done",
+              completed_at: now
+            })
+            .select("id, created_at")
+            .single();
+
+      if (fallbackResult.error || !fallbackResult.data) {
+        throw new Error(fallbackResult.error?.message ?? "Stockage de l’analyse impossible.");
+      }
+
+      return {
+        id: fallbackResult.data.id,
+        merchant_id: merchant.id,
+        analysis_json: analysisWithIdeas as unknown as Json,
+        reviews_count: reviewsCount,
+        latest_review_updated_at: latestReviewUpdatedAt,
+        created_at: fallbackResult.data.created_at,
+        updated_at: now
+      } satisfies ReviewInsightRow;
+    }
+
     throw new Error(error.message);
   }
 
@@ -201,8 +346,16 @@ export async function saveReviewInsights(
           platform: idea.platform,
           title: idea.title,
           angle: idea.angle,
-          source_type: idea.sourcePainPoint ? "pain_point" : "strength",
-          source_reference: idea.sourcePainPoint ?? idea.sourceStrength ?? null
+          source_type: idea.sourcePainPoint
+            ? "pain_point"
+            : idea.sourceStrength
+              ? "strength"
+              : idea.localEvent
+                ? "local_event"
+                : idea.seasonalMoment
+                  ? "seasonal"
+                  : "editorial",
+          source_reference: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? null
         }))
       );
 
@@ -212,24 +365,4 @@ export async function saveReviewInsights(
   }
 
   return data;
-}
-
-export async function getFreshReviewInsights(
-  reviews: Review[],
-  merchant: MerchantRow
-): Promise<ReviewInsightsAnalysis> {
-  const storedInsights = await getStoredReviewInsights(merchant);
-
-  if (storedInsights && !shouldRefreshReviewInsights({ reviews, storedInsights })) {
-    return prepareReviewInsightsForDisplay(mapInsightRow(storedInsights), reviews) ?? getFallbackReviewInsights(reviews);
-  }
-
-  const analysis = await analyzeReviewsWithOpenAI(reviews, merchant);
-
-  try {
-    const saved = await saveReviewInsights(merchant, analysis, reviews);
-    return prepareReviewInsightsForDisplay(mapInsightRow(saved), reviews) ?? analysis;
-  } catch {
-    return prepareReviewInsightsForDisplay(analysis, reviews) ?? analysis;
-  }
 }

@@ -1,6 +1,6 @@
 import sharp from "sharp";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { createElement } from "react";
+import { ImageResponse } from "next/og";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { fitEstimatedText } from "@/lib/social-editor/layout-safety";
@@ -12,13 +12,38 @@ type OpenAIImageBody = {
   error?: { message?: string };
 };
 
-let embeddedSocialFont: string | null = null;
+const socialFontDataCache = new Map<string, Promise<ArrayBuffer>>();
 
-function getEmbeddedSocialFont() {
-  if (embeddedSocialFont) return embeddedSocialFont;
-  const font = readFileSync(join(process.cwd(), "node_modules/next/dist/compiled/@vercel/og/Geist-Regular.ttf"));
-  embeddedSocialFont = font.toString("base64");
-  return embeddedSocialFont;
+const SOCIAL_FONT_GOOGLE_FAMILIES: Record<string, string> = {
+  Georgia: "Libre Baskerville",
+  "Trebuchet MS": "DM Sans",
+  "Helvetica Neue": "Inter"
+};
+
+async function getSocialFontData(fontFamily: string, weight: 400 | 700): Promise<ArrayBuffer> {
+  const googleFamily = SOCIAL_FONT_GOOGLE_FAMILIES[fontFamily] ?? fontFamily;
+  const cacheKey = `${googleFamily}:${weight}`;
+  const cached = socialFontDataCache.get(cacheKey);
+  if (cached) return cached;
+
+  const familyQuery = encodeURIComponent(googleFamily).replaceAll("%20", "+");
+  const request: Promise<ArrayBuffer> = fetch(`https://fonts.googleapis.com/css2?family=${familyQuery}:wght@${weight}&display=swap`, {
+    headers: { "user-agent": "Mozilla/5.0" },
+    next: { revalidate: 604800 }
+  }).then(async (cssResponse) => {
+    if (!cssResponse.ok) throw new Error(`Police ${googleFamily} inaccessible (${cssResponse.status}).`);
+    const css = await cssResponse.text();
+    const fontUrl = css.match(/src:\s*url\((https:[^)]+)\)\s*format\(['"]truetype['"]\)/)?.[1];
+    if (!fontUrl) throw new Error(`Fichier TTF statique introuvable pour ${googleFamily}.`);
+    const fontResponse = await fetch(fontUrl, { next: { revalidate: 604800 } });
+    if (!fontResponse.ok) throw new Error(`Fichier ${googleFamily} inaccessible (${fontResponse.status}).`);
+    return fontResponse.arrayBuffer();
+  }).catch(async (error) => {
+    if (weight === 700) return getSocialFontData(fontFamily, 400);
+    throw error;
+  });
+  socialFontDataCache.set(cacheKey, request);
+  return request;
 }
 
 export async function composeAndStoreSocialPostVisual({
@@ -55,14 +80,14 @@ export async function composeAndStoreSocialPostVisual({
   const background = brand?.secondary_color ?? "#F3E8FF";
   const primary = brand?.primary_color ?? "#4C1D95";
   const accent = brand?.accent_color ?? "#A855F7";
-  const selectedFont = "AtriumGeist";
-  const fontFace = `@font-face{font-family:'AtriumGeist';src:url(data:font/ttf;base64,${getEmbeddedSocialFont()}) format('truetype');font-style:normal;font-weight:100 900;}`;
+  const selectedFont = brand?.social_font_family ?? "Sora";
   const showLogo = Boolean(brand?.show_logo_on_social_posts && merchant.logo_url);
   const logoPosition = brand?.social_logo_position ?? "top_left";
   const logoAtBottom = logoPosition.startsWith("bottom");
   const logoOnRight = logoPosition.endsWith("right");
-  const subtitleText = limitOverlaySubtitle(subtitle ?? "");
-  const rawVariant = Math.abs(hashText(`${visualHook}|${subtitleText}|${merchant.city ?? ""}`)) % 4;
+  const safeVisualHook = sanitizeOverlayText(visualHook) || "À découvrir";
+  const subtitleText = limitOverlaySubtitle(sanitizeOverlayText(subtitle ?? "") || "Découvrez cette actualité.");
+  const rawVariant = Math.abs(hashText(`${safeVisualHook}|${subtitleText}|${merchant.city ?? ""}`)) % 4;
   const variant = showLogo && logoAtBottom && (rawVariant === 0 || rawVariant === 3)
     ? rawVariant === 0 ? 1 : 2
     : showLogo && !logoAtBottom && rawVariant === 1
@@ -78,7 +103,7 @@ export async function composeAndStoreSocialPostVisual({
       }
     : baseInitialLayout;
   const hookFit = fitEstimatedText({
-    text: visualHook.replace(/\s+/g, " ").trim(),
+    text: safeVisualHook,
     maxWidth: initialLayout.hookWidth,
     maxHeight: 176,
     maxLines: 2,
@@ -110,16 +135,9 @@ export async function composeAndStoreSocialPostVisual({
         anchor: "start" as const
       }
     : baseLayout;
-  const hookMarkup = hookFit.lines
-    .map((line, index) => `<tspan x="${layout.hookX}" y="${layout.firstLineY + index * hookFit.fontSize * 1.08}">${escapeXml(line)}</tspan>`)
-    .join("");
-  const subtitleMarkup = subtitleFit.lines
-    .map((line, index) => `<tspan x="${layout.subtitleX}" y="${layout.subtitleY + index * subtitleFit.fontSize * 1.28}">${escapeXml(line)}</tspan>`)
-    .join("");
   const overlay = Buffer.from(`
     <svg width="1080" height="1080" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <style>${fontFace}</style>
         <radialGradient id="vignette" cx="50%" cy="42%" r="72%">
           <stop offset="50%" stop-color="#120E1C" stop-opacity="0"/>
           <stop offset="100%" stop-color="#120E1C" stop-opacity="0.42"/>
@@ -128,12 +146,21 @@ export async function composeAndStoreSocialPostVisual({
       </defs>
       <rect width="1080" height="1080" fill="url(#vignette)"/>
       <rect width="1080" height="1080" fill="url(#shade)"/>
-      <text text-anchor="${layout.anchor}" font-family="${selectedFont}" font-size="${hookFit.fontSize}" font-weight="800" fill="#FFFFFF" letter-spacing="-1.5" paint-order="stroke" stroke="${escapeXml(primary)}" stroke-opacity="0.28" stroke-width="3">${hookMarkup}</text>
       <rect x="${layout.accentX}" y="${layout.accentY}" width="116" height="6" rx="3" fill="${escapeXml(accent)}"/>
-      <text text-anchor="${layout.anchor}" font-family="${selectedFont}" font-size="${subtitleFit.fontSize}" font-weight="500" fill="#FFFFFF">${subtitleMarkup}</text>
     </svg>
   `);
-  const composites: { input: Buffer; top: number; left: number }[] = [{ input: overlay, top: 0, left: 0 }];
+  const typography = await renderSocialTypography({
+    fontFamily: selectedFont,
+    hookLines: hookFit.lines,
+    hookSize: hookFit.fontSize,
+    subtitleLines: subtitleFit.lines,
+    subtitleSize: subtitleFit.fontSize,
+    layout
+  });
+  const composites: { input: Buffer; top: number; left: number }[] = [
+    { input: overlay, top: 0, left: 0 },
+    { input: typography, top: 0, left: 0 }
+  ];
 
   if (showLogo && merchant.logo_url) {
     try {
@@ -183,6 +210,100 @@ export async function composeAndStoreSocialPostVisual({
   return publicUrl.publicUrl;
 }
 
+async function renderSocialTypography({
+  fontFamily,
+  hookLines,
+  hookSize,
+  subtitleLines,
+  subtitleSize,
+  layout
+}: {
+  fontFamily: string;
+  hookLines: string[];
+  hookSize: number;
+  subtitleLines: string[];
+  subtitleSize: number;
+  layout: {
+    hookX: number;
+    hookWidth: number;
+    firstLineY: number;
+    subtitleX: number;
+    subtitleY: number;
+    subtitleWidth: number;
+    anchor: string;
+  };
+}) {
+  const [regularFontData, boldFontData] = await Promise.all([
+    getSocialFontData(fontFamily, 400),
+    getSocialFontData(fontFamily, 700)
+  ]);
+  const align = layout.anchor === "middle" ? "center" : "left";
+  const hookLeft = layout.anchor === "middle" ? layout.hookX - layout.hookWidth / 2 : layout.hookX;
+  const subtitleLeft = layout.anchor === "middle" ? layout.subtitleX - layout.subtitleWidth / 2 : layout.subtitleX;
+  const line = (text: string, index: number, size: number) => createElement("div", { key: `${index}-${text}`, style: { height: size * 1.08 } }, text);
+
+  const render = async (regularData: ArrayBuffer, boldData: ArrayBuffer) => {
+    const response = new ImageResponse(
+      createElement(
+        "div",
+        { style: { display: "flex", position: "relative", width: "100%", height: "100%", background: "transparent" } },
+        createElement(
+          "div",
+          {
+            style: {
+              display: "flex",
+              position: "absolute",
+              flexDirection: "column",
+              left: hookLeft,
+              top: layout.firstLineY - hookSize * 0.82,
+              width: layout.hookWidth,
+              color: "white",
+              fontFamily: "AtriumBrand",
+              fontSize: hookSize,
+              fontWeight: 700,
+              lineHeight: 1.08,
+              letterSpacing: -1.5,
+              textAlign: align
+            }
+          },
+          ...hookLines.map((text, index) => line(text, index, hookSize))
+        ),
+        createElement(
+          "div",
+          {
+            style: {
+              display: "flex",
+              position: "absolute",
+              flexDirection: "column",
+              left: subtitleLeft,
+              top: layout.subtitleY - subtitleSize * 0.82,
+              width: layout.subtitleWidth,
+              color: "white",
+              fontFamily: "AtriumBrand",
+              fontSize: subtitleSize,
+              fontWeight: 400,
+              lineHeight: 1.28,
+              textAlign: align
+            }
+          },
+          ...subtitleLines.map((text, index) => line(text, index, subtitleSize))
+        )
+      ),
+      {
+        width: 1080,
+        height: 1080,
+        fonts: [
+          { name: "AtriumBrand", data: regularData, weight: 400, style: "normal" },
+          { name: "AtriumBrand", data: boldData, weight: 700, style: "normal" }
+        ]
+      }
+    );
+    return Buffer.from(await response.arrayBuffer());
+  };
+
+  return render(regularFontData, boldFontData);
+}
+
 export async function generateAndStoreSocialVisual({
   merchant,
   postId,
@@ -223,14 +344,16 @@ export async function generateAndStoreSocialVisual({
   const fontDirection = brand?.social_font_family ? `Police éditoriale de référence pour la future composition : ${brand.social_font_family}.` : "";
   const clientRequest = [source, visualPrompt, title].filter(Boolean).join(" · ");
   const creativeDirection = pickCreativeDirection(clientRequest);
+  const posterDirection = "Traite l’image comme une affiche photographique ou illustrée haut de gamme : idée visuelle forte, mise en scène créative, cadrage assumé et détails mémorables, tout en restant crédible pour ce commerce.";
   const prompt = [
     `Crée une image carrée premium pour un post Instagram d'un commerce local.`,
     clientRequest ? `DEMANDE ORIGINALE DU CLIENT — PRIORITÉ ABSOLUE : ${clientRequest}.` : "",
-    "Respecte les objets, produits, actions, lieux, cadres, époques, couleurs et détails non humains explicitement demandés. Ne remplace jamais un élément précis par une image générique du secteur.",
+    "FIDÉLITÉ CLIENT : respecte exactement tous les éléments explicitement demandés — personnes, apparence, nombre, posture, action, objets, produits, lieux, cadre, époque, couleurs et détails. Ne remplace, ne retire et ne transpose jamais un élément précis de la demande.",
     `Secteur : ${merchant.business_type}. Ville : ${merchant.city}.`,
     merchant.description ? `Direction artistique et contexte du commerce : ${merchant.description}.` : "",
     `Style visuel attendu : ${visualStyle}.`,
     `Ton de marque à faire ressentir visuellement : ${toneDirection}.`,
+    posterDirection,
     `Palette de marque : primaire ${brand?.primary_color ?? "#4C1D95"}, secondaire ${brand?.secondary_color ?? "#F3E8FF"}, accent ${brand?.accent_color ?? "#A855F7"}.`,
     fontDirection,
     source ? `Intention/source marketing : ${source}.` : "",
@@ -240,7 +363,7 @@ export async function generateAndStoreSocialVisual({
     `Piste créative de cette génération : ${creativeDirection}. Utilise-la comme langage visuel secondaire sans contredire la demande originale.`,
     "Compose une scène forte avec une hiérarchie immédiatement compréhensible, mais varie franchement le cadrage, le point de vue, la profondeur, le rythme et la mise en scène d'une génération à l'autre.",
     "Préserve une zone suffisamment lisible pour la future accroche, sans imposer systématiquement la moitié basse ni centrer systématiquement le sujet.",
-    "Interdiction stricte d'ajouter une personne, un visage, une main, une silhouette, un reflet humain ou une foule, même si la demande initiale en mentionne. Transpose toujours le concept avec les produits, objets, matières, décors ou la boutique.",
+    "Si la demande originale mentionne une personne, un visage, une main, une équipe, une silhouette ou une foule, représente-la fidèlement. Si Hans conçoit seul le sujet sans demande humaine explicite, une présence humaine naturelle reste autorisée lorsqu'elle rend la scène plus crédible, mais elle ne doit pas détourner l'attention du commerce.",
     "Très important : n'écris jamais le nom de l'enseigne, aucun logo lisible et aucun texte marketing dans l'image, sauf si tu représentes visuellement la façade ou l'intérieur réel de la boutique. Même dans ce cas, cela doit rester rare.",
     "Évite les collages génériques, badges, pictogrammes et détails décoratifs gratuits. Une composition complexe reste autorisée uniquement si le client la demande ou si elle sert clairement le concept.",
     "Important : évite le texte intégré dans l'image générée. Le texte social sera posé ensuite dans le design.",
@@ -333,6 +456,16 @@ function limitOverlaySubtitle(value: string) {
   const normalized = value.replace(/^[^A-Za-zÀ-ÿ0-9]+/, "").replace(/\s+/g, " ").trim();
   const completeSentence = normalized.match(/^.*?[.!?](?=\s|$)/)?.[0]?.trim();
   return completeSentence || (/[.!?]$/.test(normalized) ? normalized : `${normalized}.`);
+}
+
+function sanitizeOverlayText(value: string) {
+  return value
+    .normalize("NFC")
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[\u200D\uFE0E\uFE0F]/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function getOverlayLayout(variant: number, hookLineCount: number) {

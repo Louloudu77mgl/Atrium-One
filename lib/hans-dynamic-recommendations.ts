@@ -55,7 +55,7 @@ export function getDynamicHansRecommendations(reviews: Review[], googleConnected
     tasks.push({
       id: "connect-google-business",
       title: "Connecter Google Business pour publier les réponses",
-      description: `${counters.readyToPublish} réponse${counters.readyToPublish > 1 ? "s sont" : " est"} validée${counters.readyToPublish > 1 ? "s" : ""} et prête${counters.readyToPublish > 1 ? "s" : ""} pour la future publication.`,
+      description: `${counters.readyToPublish} réponse${counters.readyToPublish > 1 ? "s sont" : " est"} prête${counters.readyToPublish > 1 ? "s" : ""}. Connectez votre fiche pour la publier.`,
       state: "todo"
     });
   }

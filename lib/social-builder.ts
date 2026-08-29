@@ -18,6 +18,7 @@ export type TextLayer = SocialLayerBase & {
   color: string;
   fontSize: number;
   fontWeight: number;
+  fontFamily?: string;
   align: "left" | "center" | "right";
   background?: string;
   paddingX?: number;
@@ -149,7 +150,7 @@ export function renderBuilderStateToHtml(state: SocialBuilderState) {
 }
 
 function renderTextLayer(layer: TextLayer) {
-  return `<div style="position:absolute;left:${layer.x}px;top:${layer.y}px;width:${layer.width}px;height:${layer.height}px;z-index:${layer.zIndex};transform:rotate(${layer.rotation}deg);display:flex;align-items:${layer.align === "center" ? "center" : "flex-start"};justify-content:${layer.align === "right" ? "flex-end" : layer.align === "center" ? "center" : "flex-start"};text-align:${layer.align};color:${escapeHtml(layer.color)};font-size:${layer.fontSize}px;font-weight:${layer.fontWeight};line-height:1.1;white-space:pre-wrap;background:${escapeHtml(layer.background ?? "transparent")};padding:${layer.paddingY ?? 0}px ${layer.paddingX ?? 0}px;border-radius:${layer.radius ?? 0}px;letter-spacing:${layer.letterSpacing ?? 0}px;text-transform:${layer.textTransform ?? "none"};box-sizing:border-box;">${escapeHtml(layer.text)}</div>`;
+  return `<div style="position:absolute;left:${layer.x}px;top:${layer.y}px;width:${layer.width}px;height:${layer.height}px;z-index:${layer.zIndex};transform:rotate(${layer.rotation}deg);display:flex;align-items:${layer.align === "center" ? "center" : "flex-start"};justify-content:${layer.align === "right" ? "flex-end" : layer.align === "center" ? "center" : "flex-start"};text-align:${layer.align};color:${escapeHtml(layer.color)};font-family:${escapeHtml(layer.fontFamily ?? "Inter")},Arial,sans-serif;font-size:${layer.fontSize}px;font-weight:${layer.fontWeight};line-height:1.1;white-space:pre-wrap;background:${escapeHtml(layer.background ?? "transparent")};padding:${layer.paddingY ?? 0}px ${layer.paddingX ?? 0}px;border-radius:${layer.radius ?? 0}px;letter-spacing:${layer.letterSpacing ?? 0}px;text-transform:${layer.textTransform ?? "none"};box-sizing:border-box;">${escapeHtml(layer.text)}</div>`;
 }
 
 function renderImageLayer(layer: ImageLayer) {
@@ -193,6 +194,7 @@ function normalizeLayer(raw: unknown): SocialLayer | null {
     color: asString(layer.color, "#FFFFFF"),
     fontSize: asNumber(layer.fontSize, 32),
     fontWeight: asNumber(layer.fontWeight, 700),
+    fontFamily: asString(layer.fontFamily, "Inter"),
     align: layer.align === "center" || layer.align === "right" ? layer.align : "left",
     background: typeof layer.background === "string" ? layer.background : undefined,
     paddingX: asOptionalNumber(layer.paddingX),

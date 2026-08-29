@@ -6,7 +6,7 @@
 <base target="_top">
 <title>Éditeur</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Caveat:wght@400;500;600;700&family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700;800;900&family=Dancing+Script:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800;900&family=Libre+Baskerville:wght@400;700&family=Lora:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Merriweather:wght@400;500;600;700;800;900&family=Montserrat:wght@400;500;600;700;800;900&family=Oswald:wght@400;500;600;700&family=Pacifico&family=Playfair+Display:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&family=Raleway:wght@400;500;600;700;800;900&family=Sora:wght@400;500;600;700;800&family=Work+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root{
@@ -464,10 +464,10 @@
             <span class="network-icon instagram">IG</span>
             <span id="shareInstagramLabel">Publier sur Instagram</span>
           </button>
-          <button class="share-action" disabled>
+          <button class="share-action" id="shareFacebookBtn" disabled>
             <span class="network-icon facebook">f</span>
             Publier sur Facebook
-            <span class="unavailable">Non disponible</span>
+            <span class="unavailable">Bientôt</span>
           </button>
         </div>
       </div>
@@ -557,7 +557,7 @@
             <label for="postCaptionInput">Description Instagram</label>
             <textarea id="postCaptionInput" maxlength="2200" placeholder="Texte publié sous l’image"></textarea>
           </div>
-          <div class="publication-help">Ces champs accompagnent la publication Instagram. Ils ne modifient pas le texte présent sur le design.</div>
+          <div class="publication-help" id="publicationHelp">Ces champs accompagnent la publication Instagram. Ils ne modifient pas le texte présent sur le design.</div>
         </div>
       </div>
 
@@ -657,6 +657,30 @@ const BG_GRADIENTS = [
   'linear-gradient(135deg,#8E77F5,#EFE9FE)'
 ];
 const TEXT_COLOR_SWATCHES = ['#181227','#5B3FE0','#8E77F5','#EE5C77','#3FB98A','#F0B94B','#FFFFFF','#8B87A0','#1C1140','#EFE9FE','#F5F1E9','#000000'];
+const SOCIAL_FONTS = [
+  {name:'Sora', css:"'Sora',sans-serif"},
+  {name:'Inter', css:"'Inter',sans-serif"},
+  {name:'DM Sans', css:"'DM Sans',sans-serif"},
+  {name:'Manrope', css:"'Manrope',sans-serif"},
+  {name:'Montserrat', css:"'Montserrat',sans-serif"},
+  {name:'Poppins', css:"'Poppins',sans-serif"},
+  {name:'Raleway', css:"'Raleway',sans-serif"},
+  {name:'Work Sans', css:"'Work Sans',sans-serif"},
+  {name:'Playfair Display', css:"'Playfair Display',serif"},
+  {name:'Cormorant Garamond', css:"'Cormorant Garamond',serif"},
+  {name:'Libre Baskerville', css:"'Libre Baskerville',serif"},
+  {name:'Lora', css:"'Lora',serif"},
+  {name:'Merriweather', css:"'Merriweather',serif"},
+  {name:'Georgia', css:'Georgia,serif'},
+  {name:'Bebas Neue', css:"'Bebas Neue',sans-serif"},
+  {name:'Oswald', css:"'Oswald',sans-serif"},
+  {name:'Anton', css:"'Anton',sans-serif"},
+  {name:'Caveat', css:"'Caveat',cursive"},
+  {name:'Dancing Script', css:"'Dancing Script',cursive"},
+  {name:'Pacifico', css:"'Pacifico',cursive"},
+  {name:'Trebuchet MS', css:"'Trebuchet MS',sans-serif"},
+  {name:'Helvetica Neue', css:"'Helvetica Neue',Helvetica,Arial,sans-serif"}
+];
 
 let state = {
   bg: '#FFFFFF',
@@ -675,6 +699,9 @@ let currentPost = null;
 let currentMerchant = null;
 let currentBrandSettings = null;
 let currentGalleryAssets = [];
+let currentCanvasFormat = 'square';
+let canvasDisplayWidth = 600;
+let canvasDisplayHeight = 600;
 let autoSaveTimer = null;
 let isHydrating = false;
 let designDirty = false;
@@ -692,28 +719,51 @@ function getBrandFontName(){
 }
 
 function getBrandFontCss(){
-  const font = getBrandFontName();
-  if(font==='Georgia') return 'Georgia,serif';
-  if(font==='Trebuchet MS') return "'Trebuchet MS',sans-serif";
-  if(font==='Helvetica Neue') return "'Helvetica Neue',Helvetica,Arial,sans-serif";
-  return `'${font}',sans-serif`;
+  return getFontCss(getBrandFontName());
 }
 
 function getFontOptions(selectedFont){
-  const fonts = [
-    {name:'Sora', css:"'Sora',sans-serif"},
-    {name:'Inter', css:"'Inter',sans-serif"},
-    {name:'Georgia', css:'Georgia,serif'},
-    {name:'Trebuchet MS', css:"'Trebuchet MS',sans-serif"},
-    {name:'Helvetica Neue', css:"'Helvetica Neue',Helvetica,Arial,sans-serif"}
-  ];
-  return fonts.map(font=>`<option ${selectedFont.includes(font.name)?'selected':''} value="${font.css}">${font.name}${font.name===getBrandFontName()?' · Charte':''}</option>`).join('');
+  const selectedName = getFontName(selectedFont);
+  return SOCIAL_FONTS.map(font=>`<option ${selectedName===font.name?'selected':''} value="${font.name}" style="font-family:${font.css}">${font.name}${font.name===getBrandFontName()?' · Charte':''}</option>`).join('');
+}
+
+function getFontName(value){
+  const normalized = String(value || '').replace(/["']/g,'').toLowerCase();
+  return SOCIAL_FONTS.find(font=> normalized.includes(font.name.toLowerCase()))?.name || getBrandFontName();
+}
+
+function getFontCss(value){
+  const name = getFontName(value);
+  return SOCIAL_FONTS.find(font=>font.name===name)?.css || "'Sora',sans-serif";
 }
 
 const canvasEl = document.getElementById('canvas');
 const ctxToolbar = document.getElementById('ctxToolbar');
 const canvasWrap = document.getElementById('canvasWrap');
 const fileSubEl = document.getElementById('fileSub');
+
+function getCanvasDisplaySize(format){
+  if(format==='a4') return {width:424,height:600};
+  if(format==='story') return {width:337.5,height:600};
+  if(format==='portrait') return {width:480,height:600};
+  return {width:600,height:600};
+}
+
+function getCanvasExportSize(format){
+  if(format==='a4') return {width:1240,height:1754};
+  if(format==='story') return {width:1080,height:1920};
+  if(format==='portrait') return {width:1080,height:1350};
+  return {width:1080,height:1080};
+}
+
+function applyCanvasFormat(format){
+  currentCanvasFormat = ['square','portrait','story','a4'].includes(format) ? format : 'square';
+  const size = getCanvasDisplaySize(currentCanvasFormat);
+  canvasDisplayWidth = size.width;
+  canvasDisplayHeight = size.height;
+  canvasEl.style.width = `${size.width}px`;
+  canvasEl.style.height = `${size.height}px`;
+}
 
 /* ============ HISTORY ============ */
 function snapshot(){
@@ -798,7 +848,7 @@ function buildElNode(d){
     t.contentEditable = 'false';
     t.spellcheck = false;
     t.innerText = d.text;
-    t.style.fontFamily = d.fontFamily;
+    t.style.fontFamily = getFontCss(d.fontFamily);
     t.style.fontSize = d.fontSize+'px';
     t.style.fontWeight = d.fontWeight;
     t.style.color = d.color;
@@ -1018,7 +1068,7 @@ function addText(style){
   };
   const p = presets[style] || presets.body;
   const d = {
-    id:idCounter++, type:'text', x:150, y:250, w:300, h: style==='title'?70:(style==='subtitle'?46:60),
+    id:idCounter++, type:'text', x:Math.max(24,(canvasDisplayWidth-300)/2), y:Math.max(80,canvasDisplayHeight*.4), w:Math.min(300,canvasDisplayWidth-48), h: style==='title'?70:(style==='subtitle'?46:60),
     z:maxZ()+1, rot:0,
     text:p.text, fontFamily:getBrandFontCss(), fontSize:p.fontSize, fontWeight:p.fontWeight,
     color:getBrandColors()[0], align:'left'
@@ -1031,7 +1081,7 @@ function addShape(shape){
   const sizeMap = {line:{w:160,h:16}};
   const sz = sizeMap[shape] || {w:160,h:160};
   const d = {
-    id:idCounter++, type:'shape', x:220, y:220, w:sz.w, h:sz.h, z:maxZ()+1, rot:0,
+    id:idCounter++, type:'shape', x:(canvasDisplayWidth-sz.w)/2, y:(canvasDisplayHeight-sz.h)/2, w:sz.w, h:sz.h, z:maxZ()+1, rot:0,
     shape, fill:getBrandColors()[2], stroke:'none'
   };
   state.elements.push(d);
@@ -1045,7 +1095,7 @@ async function addImage(src){
   const width = ratio >= 1 ? maxSize : maxSize*ratio;
   const height = ratio >= 1 ? maxSize/ratio : maxSize;
   const d = {
-    id:idCounter++, type:'image', x:(600-width)/2, y:(600-height)/2,
+    id:idCounter++, type:'image', x:(canvasDisplayWidth-width)/2, y:(canvasDisplayHeight-height)/2,
     w:width, h:height, z:maxZ()+1, rot:0, src, shape:'rect', fit:'contain',
     cropX:50, cropY:50, aspectRatio:ratio
   };
@@ -1076,8 +1126,8 @@ function addBrandLogo(){
   const isRight = position.endsWith('right');
   const d = {
     id:idCounter++, type:'image', isLogo:true,
-    x:isRight ? 600-size-32 : 32,
-    y:isBottom ? 600-size-32 : 32, w:size, h:size, z:maxZ()+1, rot:0,
+    x:isRight ? canvasDisplayWidth-size-32 : 32,
+    y:isBottom ? canvasDisplayHeight-size-32 : 32, w:size, h:size, z:maxZ()+1, rot:0,
     src:logoUrl, shape:'rect', fit:'contain', cropX:50, cropY:50
   };
   state.elements.push(d);
@@ -1104,6 +1154,7 @@ async function saveCurrentPost(){
     visual_url: designDirty && !currentPost?.published_at ? null : (currentPost?.visual_url || null),
     builder_state: {
       version: 'html-editor-v1',
+      format: currentCanvasFormat,
       bg: state.bg,
       elements: state.elements
     },
@@ -1143,8 +1194,8 @@ function mapRemotePostToState(post, merchant){
   if(raw && raw.version === 1 && Array.isArray(raw.layers)){
     const sourceWidth = raw.canvas?.width || 1080;
     const sourceHeight = raw.canvas?.height || 1080;
-    const scaleX = 600/sourceWidth;
-    const scaleY = 600/sourceHeight;
+    const scaleX = canvasDisplayWidth/sourceWidth;
+    const scaleY = canvasDisplayHeight/sourceHeight;
     return {
       bg: raw.canvas?.background || '#FFFFFF',
       elements: raw.layers.map((layer, index) => {
@@ -1175,7 +1226,7 @@ function mapRemotePostToState(post, merchant){
           z: layer.zIndex || index + 1,
           rot: layer.rotation || 0,
           text: layer.text || '',
-          fontFamily: "'Inter',sans-serif",
+          fontFamily: layer.fontFamily || getBrandFontName(),
           fontSize: Math.max(8,Math.round((layer.fontSize || 24)*scaleX)),
           fontWeight: layer.fontWeight || 600,
           color: layer.color || '#181227',
@@ -1187,9 +1238,9 @@ function mapRemotePostToState(post, merchant){
   }
 
   if(raw && raw.version === 2 && Array.isArray(raw.elements)){
-    const dimensions = raw.format==='story' ? {width:1080,height:1920} : raw.format==='portrait' ? {width:1080,height:1350} : {width:1080,height:1080};
-    const scaleX = 600/dimensions.width;
-    const scaleY = 600/dimensions.height;
+    const dimensions = raw.format==='a4' ? {width:1240,height:1754} : raw.format==='story' ? {width:1080,height:1920} : raw.format==='portrait' ? {width:1080,height:1350} : {width:1080,height:1080};
+    const scaleX = canvasDisplayWidth/dimensions.width;
+    const scaleY = canvasDisplayHeight/dimensions.height;
     return {
       bg: raw.backgroundColor || '#FFFFFF',
       elements: raw.elements.map((element, index) => {
@@ -1240,7 +1291,7 @@ function mapRemotePostToState(post, merchant){
           z: element.zIndex || index + 1,
           rot: element.rotation || 0,
           text: element.text || '',
-          fontFamily: element.fontFamily || "'Inter',sans-serif",
+          fontFamily: element.fontFamily || getBrandFontName(),
           fontSize: Math.max(8,Math.round((element.fontSize || 28)*scaleX)),
           fontWeight: element.fontWeight || 600,
           color: element.color || '#181227',
@@ -1268,7 +1319,7 @@ function mapRemotePostToState(post, merchant){
         z: 2,
         rot: 0,
         text: post?.title || 'Post Instagram',
-        fontFamily: "'Sora',sans-serif",
+        fontFamily: getBrandFontName(),
         fontSize: 38,
         fontWeight: 800,
         color: '#181227',
@@ -1284,7 +1335,7 @@ function mapRemotePostToState(post, merchant){
         z: 3,
         rot: 0,
         text: merchant?.business_name ? `${merchant.business_name}${merchant.city ? ' — ' + merchant.city : ''}` : (post?.caption || ''),
-        fontFamily: "'Inter',sans-serif",
+        fontFamily: getBrandFontName(),
         fontSize: 15,
         fontWeight: 500,
         color: '#8B87A0',
@@ -1343,9 +1394,9 @@ function renderBrandPanel(){
   `).join('');
 
   brandFontTitleEl.textContent = `${fontFamily} — Titres`;
-  brandFontTitleEl.style.fontFamily = `'${fontFamily}', sans-serif`;
+  brandFontTitleEl.style.fontFamily = getFontCss(fontFamily);
   brandFontBodyEl.textContent = `${fontFamily === 'Sora' ? 'Inter' : fontFamily} — Texte`;
-  brandFontBodyEl.style.fontFamily = `'${fontFamily === 'Sora' ? 'Inter' : fontFamily}', sans-serif`;
+  brandFontBodyEl.style.fontFamily = getFontCss(fontFamily === 'Sora' ? 'Inter' : fontFamily);
   brandToneEl.textContent = `Ton : ${tone}`;
   brandStyleEl.textContent = `Style visuel : ${visualStyle}`;
 }
@@ -1382,12 +1433,14 @@ async function loadEditorData(){
     currentMerchant = data.merchant;
     currentBrandSettings = data.brandSettings || null;
     currentGalleryAssets = Array.isArray(data.galleryAssets) ? data.galleryAssets : [];
+    applyCanvasFormat(currentPost?.template_id==='rcu-poster' ? 'a4' : (currentPost?.builder_state?.format || 'square'));
+    applyDocumentModeUi();
     document.getElementById('filenameInput').value = currentPost.title || 'Post Instagram';
     document.getElementById('postTitleInput').value = currentPost.title || '';
     document.getElementById('postCaptionInput').value = currentPost.caption || '';
     state = mapRemotePostToState(currentPost, currentMerchant);
     if(currentBrandSettings?.social_font_family){
-      document.querySelectorAll('.text-style-btn.h1').forEach(el => { el.style.fontFamily = `'${currentBrandSettings.social_font_family}', sans-serif`; });
+      document.querySelectorAll('.text-style-btn.h1').forEach(el => { el.style.fontFamily = getBrandFontCss(); });
       const brandFont = getBrandFontCss();
       state.elements.forEach(element=>{
         if(element.type==='text' && (!element.fontFamily || element.fontFamily.includes('Sora') || element.fontFamily.includes('Inter'))){
@@ -1465,7 +1518,10 @@ function renderCtxToolbar(){
 
 function wireCtxToolbar(d){
   const q = s=>ctxToolbar.querySelector(s);
-  if(q('#ctxFont')) q('#ctxFont').addEventListener('change', e=>{ d.fontFamily=e.target.value; render(); selectEl(d.id); snapshot(); });
+  if(q('#ctxFont')){
+    q('#ctxFont').style.fontFamily=getFontCss(d.fontFamily);
+    q('#ctxFont').addEventListener('change', e=>{ d.fontFamily=e.target.value; render(); selectEl(d.id); snapshot(); });
+  }
   if(q('#fsInput')){
     q('#fsInput').addEventListener('change', e=>{ d.fontSize=Math.max(6,parseInt(e.target.value)||d.fontSize); render(); selectEl(d.id); snapshot();});
     q('#fsMinus').addEventListener('click', ()=>{ d.fontSize=Math.max(6,d.fontSize-2); render(); selectEl(d.id); snapshot();});
@@ -1756,9 +1812,15 @@ async function exportCurrentDesign({download=false}={}){
   document.querySelectorAll('.handle,.ctx-toolbar').forEach(h=>h.style.visibility='hidden');
   try{
     await waitForCanvasImages();
+    const usedFonts = [...new Set(state.elements.filter(element=>element.type==='text').map(element=>getFontName(element.fontFamily)))];
+    await Promise.all(usedFonts.map(font=>document.fonts.load(`700 32px "${font}"`).catch(()=>[])));
+    await document.fonts.ready;
+    const exportSize = getCanvasExportSize(currentCanvasFormat);
     const cv = await html2canvas(canvasEl, {
       backgroundColor:null,
-      scale:2,
+      width:canvasDisplayWidth,
+      height:canvasDisplayHeight,
+      scale:exportSize.width/canvasDisplayWidth,
       useCORS:true,
       allowTaint:false,
       imageTimeout:15000
@@ -1769,7 +1831,7 @@ async function exportCurrentDesign({download=false}={}){
       const response = await fetch(`/api/social/posts/${currentPostId}/export`, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({imageDataUrl,visualHtml:''})
+        body:JSON.stringify({imageDataUrl,visualHtml:'',format:currentCanvasFormat})
       });
       const data = await response.json();
       if(!response.ok) throw new Error(data.error || 'Enregistrement du visuel impossible');
@@ -1792,6 +1854,23 @@ const shareWrap = document.getElementById('shareWrap');
 const shareMenu = document.getElementById('shareMenu');
 const shareInstagramBtn = document.getElementById('shareInstagramBtn');
 const shareInstagramLabel = document.getElementById('shareInstagramLabel');
+const shareFacebookBtn = document.getElementById('shareFacebookBtn');
+
+function isInstagramPublishingAllowed(){
+  return currentPost?.template_id !== 'rcu-poster';
+}
+
+function applyDocumentModeUi(){
+  const isPoster = !isInstagramPublishingAllowed();
+  shareInstagramBtn.style.display = isPoster ? 'none' : '';
+  if(shareFacebookBtn) shareFacebookBtn.style.display = isPoster ? 'none' : '';
+  const captionField = document.getElementById('postCaptionInput')?.closest('.publication-field');
+  if(captionField) captionField.style.display = isPoster ? 'none' : '';
+  const publicationHelp = document.getElementById('publicationHelp');
+  if(publicationHelp) publicationHelp.textContent = isPoster
+    ? 'Affiche RCU au format A4. Elle est modifiable, téléchargeable et réservée à l’impression.'
+    : 'Ces champs accompagnent la publication Instagram. Ils ne modifient pas le texte présent sur le design.';
+}
 document.getElementById('shareBtn').addEventListener('click', event=>{
   event.stopPropagation();
   shareMenu.classList.toggle('open');
@@ -1811,6 +1890,7 @@ async function downloadCurrentDesign(){
 document.getElementById('shareDownloadBtn').addEventListener('click', downloadCurrentDesign);
 async function publishCurrentDesign({redirect=false}={}){
   if(!currentPostId) return toast('Enregistrez ce post avant de le publier');
+  if(!isInstagramPublishingAllowed()) return toast('Cette affiche A4 est réservée à l’impression');
   shareInstagramBtn.disabled=true;
   shareInstagramLabel.textContent='Publication en cours…';
   try{
@@ -1831,6 +1911,7 @@ async function publishCurrentDesign({redirect=false}={}){
 }
 shareInstagramBtn.addEventListener('click', ()=> void publishCurrentDesign());
 async function scheduleCurrentDesign(){
+  if(!isInstagramPublishingAllowed()) return toast('Cette affiche A4 ne peut pas être planifiée sur Instagram');
   const scheduledAt = initialScheduledAt ? new Date(initialScheduledAt) : null;
   if(!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()){
     toast('La date de planification est invalide');
@@ -1883,6 +1964,7 @@ async function init(){
     await runInitialAction();
     return;
   }
+  applyCanvasFormat('square');
   renderUploadGallery();
   render();
   snapshot();

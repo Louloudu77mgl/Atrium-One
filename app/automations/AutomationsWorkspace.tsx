@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { HansGeneratingModal } from "@/components/HansGeneratingModal";
 import { Icon } from "@/components/icons";
+import type { HansAutomationBlueprint } from "@/lib/automation-hans-blueprint";
 import type { AutomationExecutionLog, StoredAutomationFlow } from "@/lib/automation-execution-store";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewCounters } from "@/lib/review-counters";
@@ -20,12 +22,25 @@ import type { AutomationFlow, AutomationMode, AutomationStatus, AutomationView, 
 
 const shellCard = "rounded-[28px] border border-[#EBE6DF] bg-white shadow-[0_12px_32px_rgba(23,19,31,0.05)]";
 const inputClass = "w-full rounded-[14px] border border-[#EBE6DF] bg-white px-4 py-3 text-sm text-[#17131F] outline-none focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-[#6E4DE0]";
+const automationLibraryItems = NODE_LIBRARY.flatMap((group) => group.items);
+const operationalBlockCount = automationLibraryItems.filter((item) => item.availability !== "planned").length;
+const plannedBlockCount = automationLibraryItems.length - operationalBlockCount;
 const navTabs: Array<{ id: AutomationView; label: string }> = [
-  { id: "library", label: "Bibliothèque" },
+  { id: "library", label: "Mode simple" },
   { id: "automations", label: "Mes automatisations" },
   { id: "history", label: "Historique" },
   { id: "logs", label: "Logs" },
-  { id: "templates", label: "Templates" }
+  { id: "templates", label: "Recettes Hans" }
+];
+const AUTOMATION_OBJECTIVES = [
+  { title: "Obtenir plus d’avis", description: "Organiser le bon moment pour solliciter et traiter les avis.", theme: "Avis", prompt: "Construis une automatisation pour obtenir plus d’avis Google auprès de mes clients satisfaits, sans sollicitation excessive et avec validation si nécessaire.", icon: "star" as const },
+  { title: "Faire revenir les clients", description: "Relancer les clients qui ne sont pas revenus récemment.", theme: "Clients", prompt: "Construis une automatisation pour détecter les clients qui ne sont pas revenus et leur préparer une relance personnalisée en respectant leurs consentements.", icon: "refresh" as const },
+  { title: "Fidéliser les meilleurs clients", description: "Reconnaître les habitués et renforcer leur fidélité.", theme: "Clients", prompt: "Construis une automatisation qui repère mes meilleurs clients, les valorise et prépare une récompense ou un message personnalisé.", icon: "party" as const },
+  { title: "Réactiver les clients inactifs", description: "Créer une relance ciblée plutôt qu’une campagne générique.", theme: "Emails", prompt: "Construis une automatisation de réactivation pour mes clients inactifs, avec vérification du consentement et personnalisation par Hans.", icon: "mail" as const },
+  { title: "Publier régulièrement", description: "Transformer les signaux clients en idées Instagram.", theme: "Réseaux sociaux", prompt: "Construis une automatisation qui utilise les signaux de mes clients pour préparer régulièrement des publications Instagram et me demander validation avant publication.", icon: "phone" as const },
+  { title: "Protéger ma réputation", description: "Répondre vite tout en sécurisant les avis sensibles.", theme: "Avis", prompt: "Construis un gardien de réputation : réponse automatique aux avis positifs, mais validation humaine obligatoire pour tout avis sensible ou négatif.", icon: "lock" as const },
+  { title: "Promouvoir mon programme fidélité", description: "Expliquer les avantages au bon moment du parcours.", theme: "Clients", prompt: "Construis une automatisation pour présenter mon programme fidélité aux nouveaux clients et rappeler les avantages quand ils progressent.", icon: "sparkle" as const },
+  { title: "Augmenter la fréquence de visite", description: "Déclencher une action avant que l’habitude ne se perde.", theme: "Clients", prompt: "Construis une automatisation pour augmenter la fréquence de visite en détectant les baisses de rythme et en préparant une action personnalisée.", icon: "chart" as const }
 ];
 
 export function AutomationsWorkspace({
@@ -90,10 +105,12 @@ export function AutomationsWorkspace({
   const [future, setFuture] = useState<AutomationFlow[]>([]);
   const [autosaveLabel, setAutosaveLabel] = useState("Sauvegarde automatique active");
   const [testOpen, setTestOpen] = useState(false);
-  const [testScenario, setTestScenario] = useState<TestScenario>({ customerName: "Marie Dupont", visits: 8, rewards: 2, marketingConsent: true, reviewRating: 5, returnedAfterDelay: false });
+  const [testScenario, setTestScenario] = useState<TestScenario>({ customerName: "Marie Dupont", visits: 8, points: 180, daysSinceLastVisit: 36, rewards: 2, marketingConsent: true, reviewRating: 5, returnedAfterDelay: false });
   const [testResult, setTestResult] = useState<ReturnType<typeof buildExecutionPreview> | null>(null);
   const [hansPrompt, setHansPrompt] = useState("");
   const [hansSummary, setHansSummary] = useState<string | null>(null);
+  const [hansGenerating, setHansGenerating] = useState(false);
+  const [hansError, setHansError] = useState<string | null>(null);
   const [toolbarFeedback, setToolbarFeedback] = useState<string | null>(null);
   const [historyFeedback, setHistoryFeedback] = useState<string | null>(null);
   const [favoriteTypes, setFavoriteTypes] = useState<string[]>([]);
@@ -116,6 +133,17 @@ export function AutomationsWorkspace({
   const selectedRun = allHistory.find((run) => run.id === selectedRunId) ?? null;
   const runNodeIds = selectedRun?.steps.map((step) => step.nodeId) ?? [];
   const logRows = useMemo(() => allHistory.map((run) => ({ id: run.id, date: run.createdAt, automationTitle: run.automationTitle, result: run.steps[run.steps.length - 1]?.result ?? "Exécution terminée", status: run.status, duration: run.durationLabel })), [allHistory]);
+  const historySummary = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayRuns = allHistory.filter((run) => run.createdAt.slice(0, 10) === today);
+    return {
+      runs: todayRuns.length,
+      actions: todayRuns.reduce((total, run) => total + run.steps.filter((step) => step.nodeId).length, 0),
+      waiting: todayRuns.filter((run) => run.status === "pending" || run.status === "validation_required").length,
+      errors: todayRuns.filter((run) => run.status === "failed").length,
+      customers: new Set(todayRuns.map((run) => run.customerName).filter(Boolean)).size
+    };
+  }, [allHistory]);
   const grouped = useMemo(() => groupAutomations(automations), [automations]);
   const capabilities = useMemo(() => ({
     instagramConnected: instagramConfigured && instagramConnection?.status === "connected",
@@ -442,12 +470,34 @@ export function AutomationsWorkspace({
     setToolbarFeedback("Modification rétablie");
   }
 
-  function generateWithHans() {
-    const generated = buildHansFlow(hansPrompt, templates, creationTheme);
-    setHansSummary(generated.summary);
-    setAutomations((items) => [generated.flow, ...items.filter((item) => item.id !== generated.flow.id)]);
-    openWorkflow(generated.flow);
-    setCreateOpen(false);
+  async function generateWithHans() {
+    if (hansGenerating || !hansPrompt.trim()) return;
+    setHansGenerating(true);
+    setHansError(null);
+    const startedAt = Date.now();
+
+    try {
+      const response = await fetch("/api/automations/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: hansPrompt, theme: creationTheme })
+      });
+      const data = await response.json() as { blueprint?: HansAutomationBlueprint; error?: string };
+      if (!response.ok || !data.blueprint) throw new Error(data.error ?? "Hans n’a pas pu construire ce flow.");
+
+      const remainingDelay = Math.max(0, 4_000 - (Date.now() - startedAt));
+      if (remainingDelay) await new Promise((resolve) => window.setTimeout(resolve, remainingDelay));
+
+      const flow = materializeHansFlow(data.blueprint, capabilities);
+      setHansSummary(data.blueprint.understanding);
+      setAutomations((items) => [flow, ...items.filter((item) => item.id !== flow.id)]);
+      openWorkflow(flow);
+      setCreateOpen(false);
+    } catch (error) {
+      setHansError(error instanceof Error ? error.message : "Hans n’a pas pu construire ce flow.");
+    } finally {
+      setHansGenerating(false);
+    }
   }
 
   function recenterCanvas() {
@@ -468,10 +518,21 @@ export function AutomationsWorkspace({
     setCreateOpen(true);
   }
 
+  function startObjective(objective: (typeof AUTOMATION_OBJECTIVES)[number]) {
+    setCreationMode("hans");
+    setCreationTheme(objective.theme);
+    setHansPrompt(objective.prompt);
+    setHansSummary(null);
+    setHansError(null);
+    setCreationStep(3);
+    setCreateOpen(true);
+  }
+
   function openHansCreator() {
     setCreationMode("hans");
     setCreationStep(3);
     setHansSummary(null);
+    setHansError(null);
     setCreateOpen(true);
   }
 
@@ -601,7 +662,7 @@ export function AutomationsWorkspace({
   }
 
   return (
-    <div className="mx-auto flex max-w-[1520px] flex-col gap-6 pb-16">
+    <div className="flex w-full flex-col gap-6 pb-16">
       <section className={`${shellCard} p-7`}>
         <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-4xl">
@@ -610,9 +671,14 @@ export function AutomationsWorkspace({
             <p className="mt-3 text-[15px] leading-7 text-[#6E6A76]">
               Gagnez du temps sur vos avis, vos communications et votre relation client. Choisissez un modèle ou expliquez simplement votre besoin à Hans.
             </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-[11.5px] font-bold">
+              <span className="rounded-full bg-[#EAF7EE] px-3 py-1.5 text-[#237447]">{operationalBlockCount} blocs opérationnels</span>
+              <span className="rounded-full bg-[#F1ECFB] px-3 py-1.5 text-[#6E4DE0]">RCU, Google, Instagram et e-mail raccordés</span>
+              <span className="rounded-full bg-[#F6F3EF] px-3 py-1.5 text-[#736C62]">{plannedBlockCount} capacités avancées expliquées, non activables</span>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={openCreationModal} className="rounded-[12px] bg-[#2B1A4A] px-5 py-3 text-sm font-semibold text-white">Nouvelle automatisation</button>
+            <button type="button" onClick={openCreationModal} className="group flex min-w-[245px] items-center justify-between gap-5 rounded-[18px] bg-[linear-gradient(135deg,#2B1A4A,#6E4DE0)] px-5 py-4 text-left text-white shadow-[0_16px_34px_rgba(78,48,148,0.24)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(78,48,148,0.3)]"><span><span className="block text-[15px] font-extrabold">Nouvelle automatisation</span><span className="mt-1 block text-[11px] font-semibold text-white/70">Avec Hans ou un modèle recommandé</span></span><Icon name="sparkle" className="h-5 w-5 transition group-hover:rotate-12" /></button>
           </div>
         </div>
       </section>
@@ -632,6 +698,24 @@ export function AutomationsWorkspace({
 
       {view === "library" ? (
         <>
+          <section className={`${shellCard} overflow-hidden p-6`}>
+            <div className="max-w-3xl">
+              <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#6E4DE0]">Quel est votre objectif ?</div>
+              <h2 className="mt-2 text-[26px] font-extrabold tracking-[-0.035em] text-[#17131F]">Dites à Hans ce que vous voulez obtenir.</h2>
+              <p className="mt-2 text-[14px] leading-6 text-[#6E6A76]">Il construit l’automatisation qui s’en charge. Vous pourrez ensuite relire chaque étape, la modifier et l’activer.</p>
+            </div>
+            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {AUTOMATION_OBJECTIVES.map((objective) => (
+                <button key={objective.title} type="button" onClick={() => startObjective(objective)} className="group rounded-[22px] border border-[#E8E1F3] bg-[linear-gradient(145deg,#FCFAFF,#F8F4FF)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[#6E4DE0] hover:shadow-[0_14px_30px_rgba(75,46,131,0.1)]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-[15px] bg-white text-[#6E4DE0] shadow-sm"><Icon name={objective.icon} className="h-5 w-5" /></div>
+                  <div className="mt-4 text-[15px] font-extrabold text-[#17131F]">{objective.title}</div>
+                  <div className="mt-1 text-[12.5px] leading-5 text-[#6E6A76]">{objective.description}</div>
+                  <div className="mt-4 text-[12px] font-bold text-[#6E4DE0]">Construire avec Hans →</div>
+                </button>
+              ))}
+            </div>
+          </section>
+
           <section className="grid gap-4 xl:grid-cols-[1fr_340px]">
             <div className={`${shellCard} p-6`}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
@@ -686,6 +770,9 @@ export function AutomationsWorkspace({
                   <h3 className="mt-4 text-[18px] font-extrabold text-[#17131F]">{automation.title}</h3>
                   <p className="mt-2 text-[13px] leading-6 text-[#6E6A76]">{automation.summary}</p>
                   <div className="mt-4 grid gap-2 text-[12.5px] text-[#6E6A76]">
+                    <div>Exécutions : <strong className="text-[#17131F]">{automation.executionHistory.length}</strong></div>
+                    <div>Clients concernés : <strong className="text-[#17131F]">{new Set(automation.executionHistory.map((run) => run.customerName).filter(Boolean)).size}</strong></div>
+                    <div>Temps économisé estimé : <strong className="text-[#17131F]">{automation.executionHistory.length * 3} min</strong></div>
                     <div>Dernière exécution : <strong className="text-[#17131F]">{formatDateTime(automation.executionHistory[0]?.createdAt)}</strong></div>
                     <div>Prochaine exécution : <strong className="text-[#17131F]">{nextRunLabel(automation)}</strong></div>
                     <div>Nombre d’actions : <strong className="text-[#17131F]">{automation.executionHistory.reduce((count, run) => count + run.steps.length, 0)}</strong></div>
@@ -876,6 +963,15 @@ export function AutomationsWorkspace({
 
       {view === "history" ? (
         <>
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {[
+              ["Automatisations aujourd’hui", historySummary.runs],
+              ["Actions effectuées", historySummary.actions],
+              ["En attente", historySummary.waiting],
+              ["Erreurs", historySummary.errors],
+              ["Clients touchés", historySummary.customers]
+            ].map(([label, value]) => <div key={label} className={`${shellCard} p-4`}><div className="text-[11px] font-bold uppercase tracking-[0.07em] text-[#9A96A1]">{label}</div><div className="mt-2 text-[28px] font-black text-[#211432]">{value}</div></div>)}
+          </section>
           <section className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
             <AutomationHistory history={allHistory} selectedRunId={selectedRunId} onSelect={selectHistoryRun} />
             <div className={`${shellCard} p-6`}>
@@ -987,8 +1083,10 @@ export function AutomationsWorkspace({
           theme={creationTheme}
           prompt={hansPrompt}
           summary={hansSummary}
+          generating={hansGenerating}
+          error={hansError}
           templates={templates}
-          onClose={() => setCreateOpen(false)}
+          onClose={() => { if (!hansGenerating) setCreateOpen(false); }}
           onStepChange={setCreationStep}
           onModeChange={setCreationMode}
           onThemeChange={setCreationTheme}
@@ -1001,13 +1099,21 @@ export function AutomationsWorkspace({
             if (creationMode === "template") {
               useTemplate(filteredTemplates[0]?.id ?? templates[0].id);
             } else if (creationMode === "hans") {
-              generateWithHans();
+              void generateWithHans();
             } else {
               createBlankAutomation("manual");
             }
           }}
         />
       ) : null}
+      <HansGeneratingModal
+        open={hansGenerating}
+        title="Hans construit votre automatisation"
+        description="Il interprète votre demande, choisit les bons déclencheurs et organise chaque condition, branche et action sur le canvas."
+        steps={["Compréhension de votre demande", "Choix des déclencheurs et règles", "Construction des branches et actions", "Vérification du flow"]}
+        statusText="Hans raisonne sur votre scénario et vérifie qu’il peut réellement s’exécuter."
+        progressDurationMs={3_800}
+      />
     </div>
   );
 }
@@ -1237,23 +1343,74 @@ function buildStoredRunSteps(
   return steps;
 }
 
-function buildHansFlow(prompt: string, templates: AutomationFlow[], theme: string) {
-  const normalized = prompt.toLocaleLowerCase("fr-FR");
-  let flow = cloneFlow(templates[0]);
-  if (normalized.includes("instagram") || theme === "Réseaux sociaux") flow = cloneFlow(templates.find((item) => item.id === "template-instagram") ?? templates[0]);
-  else if (normalized.includes("email") || normalized.includes("e-mail") || normalized.includes("bienvenue") || theme === "Emails") flow = cloneFlow(templates.find((item) => item.id === "template-welcome") ?? templates[0]);
-  else if (normalized.includes("avis") || theme === "Avis") flow = cloneFlow(templates.find((item) => item.id === "template-reviews") ?? templates[0]);
-  else if (normalized.includes("récompense") || normalized.includes("fidel")) flow = cloneFlow(templates.find((item) => item.id === "template-loyalty") ?? templates[0]);
+function materializeHansFlow(
+  blueprint: HansAutomationBlueprint,
+  capabilities: { instagramConnected: boolean; googleConnected: boolean; emailProviderReady: boolean; emailSubscribersCount: number }
+) {
+  const timestamp = Date.now();
+  const library = new Map(NODE_LIBRARY.flatMap((group) => group.items).map((item) => [item.type, item]));
+  const ids = new Map<string, string>();
+  const nodes = blueprint.nodes.map((specification) => {
+    const item = library.get(specification.type);
+    if (!item) throw new Error(`La card « ${specification.type} » n’est pas disponible.`);
+    const node = createNodeFromLibrary(item);
+    const id = `hans-${timestamp}-${specification.key}`;
+    ids.set(specification.key, id);
+    const allowedConfigKeys = new Set([...Object.keys(item.defaultConfig), ...item.fields.map((field) => field.key)]);
+    const config = Object.fromEntries(Object.entries(specification.config).filter(([key]) => allowedConfigKeys.has(key)));
+    node.id = id;
+    node.title = specification.title;
+    node.config = normalizeHansNodeConfig(specification.type, { ...item.defaultConfig, ...config });
+    if (item.category === "action") node.mode = specification.mode ?? item.defaultMode ?? "semi_automatic";
+    return node;
+  });
+  const edges = blueprint.edges.map((edge, index) => ({
+    id: `hans-edge-${timestamp}-${index}`,
+    source: ids.get(edge.source)!,
+    target: ids.get(edge.target)!,
+    branch: edge.branch,
+    ...(edge.label ? { label: edge.label } : {})
+  }));
+  const assumptions = blueprint.assumptions.length ? ` Hypothèses : ${blueprint.assumptions.join(" ")}` : "";
+  const flow: AutomationFlow = {
+    id: `automation-${timestamp}`,
+    title: blueprint.title,
+    description: `${blueprint.understanding}${assumptions}`.trim(),
+    summary: blueprint.summary,
+    channel: blueprint.channel,
+    category: blueprint.channel,
+    installMinutes: Math.max(2, Math.ceil(nodes.length * 0.8)),
+    difficulty: nodes.length >= 8 ? "Avancé" : nodes.length >= 5 ? "Intermédiaire" : "Simple",
+    illustration: "gradient",
+    status: "draft",
+    source: "hans",
+    nodes,
+    edges,
+    updatedAt: new Date().toISOString(),
+    lastSavedLabel: "Flow construit par Hans",
+    version: 1,
+    validationIssues: [],
+    executionHistory: []
+  };
+  const laidOut = autoLayout(flow);
+  laidOut.validationIssues = [
+    ...validateFlow(laidOut, capabilities),
+    ...blueprint.warnings.map((message, index) => ({ id: `hans-warning-${index}`, level: "warning" as const, message }))
+  ];
+  return laidOut;
+}
 
-  flow.id = `automation-${Date.now()}`;
-  flow.source = "hans";
-  flow.status = "draft";
-  flow.summary = normalized.includes("sans mon accord")
-    ? "Hans prépare le contenu, mais garde toujours la main au commerçant avant publication."
-    : normalized.includes("mensuelle")
-      ? "Chaque mois, Hans prépare l’automatisation demandée puis vous laisse valider."
-      : "Hans a généré un flow complet, prêt à être relu puis activé.";
-  return { flow, summary: flow.summary };
+function normalizeHansNodeConfig(type: string, config: Record<string, string | number | boolean>) {
+  if (type === "google_review") {
+    return {
+      ...config,
+      interval_count: Math.min(52, Math.max(1, Number(config.interval_count) || 1)),
+      interval_unit: String(config.interval_unit).startsWith("semaine") ? "semaine(s)" : "jour(s)"
+    };
+  }
+  if (type === "review_rating_gte") return { ...config, rating: Math.min(5, Math.max(1, Number(config.rating) || 4)) };
+  if (type === "reward_count") return { ...config, count: Math.min(100, Math.max(1, Number(config.count) || 1)) };
+  return config;
 }
 
 function groupAutomations(automations: AutomationFlow[]) {
@@ -1280,9 +1437,9 @@ function deriveReviewAutomationSettings(flow: AutomationFlow) {
     reviews_four_star_action: actions.get(4) ?? "disabled",
     reviews_three_star_action: actions.get(3) ?? "disabled",
     reviews_one_two_star_action: actions.get(2) === actions.get(1) ? actions.get(2) ?? "disabled" : "disabled",
-    always_validate_negative_reviews: false,
-    block_sensitive_reviews: false,
-    sensitive_keywords: [] as string[]
+    always_validate_negative_reviews: true,
+    block_sensitive_reviews: true,
+    sensitive_keywords: ["juridique", "accident", "santé", "remboursement", "discrimination", "menace", "danger"]
   };
 }
 
@@ -1434,6 +1591,8 @@ function CreateAutomationModal({
   theme,
   prompt,
   summary,
+  generating,
+  error,
   templates,
   onClose,
   onStepChange,
@@ -1448,6 +1607,8 @@ function CreateAutomationModal({
   theme: string;
   prompt: string;
   summary: string | null;
+  generating: boolean;
+  error: string | null;
   templates: AutomationFlow[];
   onClose: () => void;
   onStepChange: (step: 1 | 2 | 3) => void;
@@ -1465,7 +1626,7 @@ function CreateAutomationModal({
             <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#9A96A1]">Nouvelle automatisation</div>
             <h2 className="mt-2 text-[24px] font-extrabold text-[#17131F]">Création guidée</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-[10px] border border-[#EBE6DF] px-3 py-2 text-sm font-semibold text-[#17131F]">Fermer</button>
+          <button type="button" onClick={onClose} disabled={generating} className="rounded-[10px] border border-[#EBE6DF] px-3 py-2 text-sm font-semibold text-[#17131F] disabled:cursor-not-allowed disabled:opacity-40">Fermer</button>
         </div>
 
         <div className="mt-5 flex gap-2">
@@ -1473,18 +1634,18 @@ function CreateAutomationModal({
         </div>
 
         {step === 1 ? (
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
             {[
-              { id: "template", title: "Choisir un template", icon: "document", text: "Commencer par un modèle prêt à l’emploi." },
-              { id: "manual", title: "Créer de zéro", icon: "chart", text: "Ouvrir un grand canvas vide." },
-              { id: "hans", title: "Demander à Hans", icon: "sparkle", text: "Décrire le besoin en langage naturel." }
+              { id: "hans", title: "Créer en promptant Hans", icon: "sparkle", text: "Décrivez simplement le résultat souhaité. Hans prépare le déclencheur, les règles et les actions." },
+              { id: "template", title: "Recommandations Hans", icon: "document", text: "Partez d’un scénario éprouvé, adapté aux avis, aux réseaux sociaux ou à la fidélisation." }
             ].map((item) => (
-              <button key={item.id} type="button" onClick={() => { onModeChange(item.id as typeof mode); onStepChange(2); }} className="rounded-[24px] border border-[#EBE6DF] bg-[#FCFBF9] p-5 text-left transition hover:border-[#6E4DE0] hover:bg-[#FBF8FF]">
-                <div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#F1ECFB] text-[#6E4DE0]"><Icon name={item.icon as "document" | "chart" | "sparkle"} className="h-5 w-5" /></div>
+              <button key={item.id} type="button" onClick={() => { onModeChange(item.id as typeof mode); onStepChange(2); }} className={`rounded-[24px] border p-6 text-left transition hover:-translate-y-0.5 hover:border-[#6E4DE0] hover:shadow-[0_16px_36px_rgba(75,46,131,0.1)] ${item.id === "hans" ? "border-[#D9CDF2] bg-[linear-gradient(145deg,#FBF8FF,#F2ECFF)]" : "border-[#EBE6DF] bg-[#FCFBF9]"}`}>
+                <div className="flex items-center justify-between gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-[18px] bg-[#F1ECFB] text-[#6E4DE0]"><Icon name={item.icon as "document" | "sparkle"} className="h-5 w-5" /></div>{item.id === "hans" ? <span className="rounded-full bg-[#6E4DE0] px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-white">Recommandé</span> : null}</div>
                 <div className="mt-4 text-[17px] font-extrabold text-[#17131F]">{item.title}</div>
                 <div className="mt-2 text-[13px] leading-6 text-[#6E6A76]">{item.text}</div>
               </button>
             ))}
+            <div className="md:col-span-2 flex justify-center pt-1"><button type="button" onClick={() => { onModeChange("manual"); onStepChange(2); }} className="text-xs font-bold text-[#6E6A76] underline decoration-[#CFC4DC] underline-offset-4 hover:text-[#5B2A9E]">Créer manuellement sur un canvas vide</button></div>
           </div>
         ) : null}
 
@@ -1515,6 +1676,8 @@ function CreateAutomationModal({
               <HansFlowGenerator
                 prompt={prompt}
                 summary={summary}
+                generating={generating}
+                error={error}
                 onPromptChange={onPromptChange}
                 onGenerate={onCreate}
                 onActivate={onCreate}

@@ -38,11 +38,9 @@ async function resolveMerchantLogoUrl({
 }
 
 
-export async function getMerchant(): Promise<MerchantRow | null> {
+export async function getMerchant(userId?: string): Promise<MerchantRow | null> {
   const supabase = await createServerSupabaseClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  const user = userId ? { id: userId } : (await supabase.auth.getUser()).data.user;
 
   if (!user) {
     return null;
@@ -61,11 +59,6 @@ export async function getMerchant(): Promise<MerchantRow | null> {
   const logoUrl = await resolveMerchantLogoUrl({
     supabase,
     logoUrl: data?.logo_url
-  });
-
-  console.log({
-    merchantName: data?.business_name,
-    logoUrl
   });
 
   return data ? { ...data, logo_url: logoUrl } : data;

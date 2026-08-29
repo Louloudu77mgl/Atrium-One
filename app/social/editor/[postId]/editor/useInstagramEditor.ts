@@ -348,8 +348,9 @@ export function useInstagramEditor({
     }, true);
   }, [canvasSize.height, canvasSize.width, selectedElement, updateSelectedElement]);
 
-  const addText = useCallback((kind: Parameters<typeof createTextElement>[0]) => {
-    const element = createTextElement(kind, canvasSize.width, canvasSize.height);
+  const addText = useCallback((kind: Parameters<typeof createTextElement>[0], fontFamily?: string) => {
+    const createdElement = createTextElement(kind, canvasSize.width, canvasSize.height);
+    const element = fontFamily ? { ...createdElement, fontFamily } : createdElement;
     mutateDocument((current) => ({
       ...current,
       elements: [
@@ -453,8 +454,8 @@ export function useInstagramEditor({
     if (saveState === "dirty" && !window.confirm("Appliquer un modèle remplacera la composition actuelle. Continuer ?")) {
       return;
     }
-    mutateDocument((current) => applyTemplate(current, templateId, merchant), { selectedElementId: null });
-  }, [merchant, mutateDocument, saveState]);
+    mutateDocument((current) => applyTemplate(current, templateId, merchant, brandSettings), { selectedElementId: null });
+  }, [brandSettings, merchant, mutateDocument, saveState]);
 
   const uploadImage = useCallback(async (file: File) => {
     const formData = new FormData();

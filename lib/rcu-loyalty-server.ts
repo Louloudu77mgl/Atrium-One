@@ -1,5 +1,7 @@
 import { randomBytes, randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { runAutomationEvent } from "@/lib/automation-event-runner";
 import { getMerchant } from "@/lib/merchants";
 import { buildRcuLoyaltySnapshot } from "@/lib/rcu-loyalty";
 import { getRcuVisitDay } from "@/lib/rcu-game-server";
@@ -8,6 +10,7 @@ import {
   listStoredRcuGameRecords,
   listStoredRcuRaffleDraws,
   listStoredRcuRewardRedemptions,
+  listStoredRcuLeads,
   getStoredRcuWalletForCustomer,
   saveStoredRcuRewardRedemption
 } from "@/lib/rcu-store";
@@ -23,7 +26,7 @@ export async function redeemRcuReward({ merchantId, customerKey, rewardId }: { m
   const reward = snapshot.availableRewards.find((item) => item.id === rewardId);
   if (!reward) throw new Error("Cette récompense n’est plus disponible.");
   const occurredAt = new Date().toISOString();
-  return saveStoredRcuRewardRedemption({
+  const persisted = await saveStoredRcuRewardRedemption({
     id: randomUUID(),
     public_token: randomBytes(16).toString("hex"),
     record_type: "reward_redemption",
@@ -37,6 +40,36 @@ export async function redeemRcuReward({ merchantId, customerKey, rewardId }: { m
     visit_day: getRcuVisitDay(),
     occurred_at: occurredAt
   });
+  const wallet = await getStoredRcuWalletForCustomer(merchantId, customerKey);
+  const leads = await listStoredRcuLeads(merchantId);
+  const lead = leads.find((item) => item.customer_key === customerKey) ?? null;
+  if (wallet) {
+    after(async () => {
+      try {
+        await runAutomationEvent({
+          merchantId,
+          id: `${persisted.id}:reward_used`,
+          type: "reward_used",
+          occurredAt,
+          customer: {
+            id: customerKey,
+            firstName: wallet.first_name,
+            lastName: wallet.last_name,
+            email: wallet.email,
+            phone: wallet.phone,
+            consentEmail: lead?.consent_email === true,
+            consentSms: lead?.consent_sms === true,
+            source: "RCU",
+            rewards: snapshot.availableRewards.length
+          },
+          details: { reward: reward.label, pointsCost: reward.pointsCost, points: snapshot.pointsBalance - reward.pointsCost }
+        });
+      } catch (error) {
+        console.error("[rcu/automation] reward_used_failed", { merchantId, customerKey, message: error instanceof Error ? error.message : "Erreur inconnue" });
+      }
+    });
+  }
+  return persisted;
 }
 
 export async function redeemRcuRewardAction(formData: FormData) {

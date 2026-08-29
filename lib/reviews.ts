@@ -1,7 +1,7 @@
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Review } from "@/lib/mock-data";
-import type { GeneratedReplyRow, ReviewRow } from "@/lib/supabase/types";
+import type { GeneratedReplyRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
 
 function normalizeStatus(status: string | null | undefined): Review["status"] {
   switch (status) {
@@ -77,8 +77,8 @@ export function mapReviewRow(row: ReviewRow, index = 0, reply?: GeneratedReplyRo
   };
 }
 
-export async function getReviews(): Promise<Review[]> {
-  const merchant = await getMerchant();
+export async function getReviews(currentMerchant?: MerchantRow | null): Promise<Review[]> {
+  const merchant = currentMerchant ?? await getMerchant();
 
   if (!merchant) {
     return [];

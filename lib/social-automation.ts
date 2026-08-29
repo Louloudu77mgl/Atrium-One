@@ -1,8 +1,8 @@
 import { getBrandSettings } from "@/lib/brand-settings";
-import { getAppShellData } from "@/lib/app-shell-data";
 import { generateDraftContent } from "@/lib/social-drafts";
-import { getFreshReviewInsights } from "@/lib/review-insights-server";
-import { getTopSocialRecommendations } from "@/lib/social-recommendations";
+import { mapInsightRow } from "@/lib/review-insights";
+import { getStoredReviewInsights } from "@/lib/review-insights-server";
+import { getStoredSocialRecommendations } from "@/lib/social-recommendations";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
 import { buildAutomationSlots, getMaxPostsForCycle, normalizeSocialAutomationWindow } from "@/lib/social-automation-shared";
@@ -53,12 +53,18 @@ export async function ensureAutomatedSocialDrafts({
     return keptPosts;
   }
 
-  const { reviews } = await getAppShellData();
-  const analysis = reviews.length > 0 ? await getFreshReviewInsights(reviews, merchant) : null;
-  const ideas = getTopSocialRecommendations({
+  const storedInsights = await getStoredReviewInsights(merchant);
+  const analysis = mapInsightRow(storedInsights);
+  const { data: publishedPosts } = await supabase
+    .from("social_posts")
+    .select("*")
+    .eq("merchant_id", merchant.id)
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(100);
+  const ideas = getStoredSocialRecommendations({
     analysis,
-    reviews,
-    merchant
+    posts: publishedPosts ?? []
   });
   const brand = await getBrandSettings(merchant);
   const plannedDates = buildAutomationSlots({
@@ -83,7 +89,8 @@ export async function ensureAutomatedSocialDrafts({
         platform: "instagram",
         title: idea.title,
         angle: idea.angle,
-        source: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? "Automatisation Hans"
+        source: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Automatisation Hans",
+        visualDirection: idea.visualDirection
       }
     });
     let imageUrl: string | null = null;
@@ -94,7 +101,7 @@ export async function ensureAutomatedSocialDrafts({
         title: draft.title,
         caption: draft.caption,
         visualPrompt: draft.visualPrompt,
-        source: [idea.sourcePainPoint, idea.sourceStrength, idea.seasonalMoment, idea.angle].filter(Boolean).join(" · ") || "Automatisation Hans",
+        source: [idea.sourcePainPoint, idea.sourceStrength, idea.localEvent, idea.seasonalMoment, idea.angle, idea.visualDirection].filter(Boolean).join(" · ") || "Automatisation Hans",
         styleOverride: brand?.visual_style ?? null
       })).imageUrl;
     } catch {

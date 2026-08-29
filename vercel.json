@@ -17,8 +17,16 @@
       "schedule": "0 6 * * *"
     },
     {
+      "path": "/api/cron/review-insights",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/emailing-send",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/customer-automation",
+      "schedule": "30 7 * * *"
     }
   ]
 }

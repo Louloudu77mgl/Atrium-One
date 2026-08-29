@@ -1,6 +1,6 @@
 import type { Json } from "@/lib/supabase/types";
 
-export type EditorFormat = "square" | "portrait" | "story";
+export type EditorFormat = "square" | "portrait" | "story" | "a4";
 
 export type EditorSaveState = "saved" | "saving" | "dirty" | "error";
 

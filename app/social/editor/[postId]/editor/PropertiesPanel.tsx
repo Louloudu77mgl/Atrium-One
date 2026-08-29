@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { buttonStyles } from "@/lib/design-system";
+import { SocialFontPicker } from "@/components/SocialFontPicker";
 import type {
   DesignElement,
   EditorFormat,
@@ -101,6 +102,7 @@ function GeneralPostProperties({
             <option value="square">Carré</option>
             <option value="portrait">Portrait</option>
             <option value="story">Story</option>
+            <option value="a4">A4 · impression</option>
           </select>
         </Field>
         <Field label="Couleur d’arrière-plan">
@@ -196,17 +198,7 @@ function TextProperties({
           />
         </Field>
         <Field label="Police">
-          <select
-            value={element.fontFamily}
-            onChange={(event) => onUpdate((current) => ({ ...current, fontFamily: event.target.value }))}
-            className={inputClass}
-          >
-            <option value="Inter">Inter</option>
-            <option value="Arial">Arial</option>
-            <option value="Georgia">Georgia</option>
-            <option value="Trebuchet MS">Trebuchet MS</option>
-            <option value="Helvetica Neue">Helvetica Neue</option>
-          </select>
+          <SocialFontPicker value={element.fontFamily} onChange={(fontFamily) => onUpdate((current) => ({ ...current, fontFamily }))} />
         </Field>
         <Field label="Taille">
           <input

@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AdminReviewForm } from "@/components/AdminReviewForm";
 import { BulkReplyModal, type BulkReplyProgress } from "@/components/BulkReplyModal";
-import { DevResetReviewsButton } from "@/components/DevResetReviewsButton";
 import { HansFloatingChat } from "@/components/HansFloatingChat";
 import { Header } from "@/components/Header";
 import { Icon } from "@/components/icons";
@@ -318,10 +316,6 @@ export function ReviewsPageClient({
 
   function updateReview(reviewId: string, updater: (review: Review) => Review) {
     setLocalReviews((current) => current.map((review) => (review.id === reviewId ? updater(review) : review)));
-  }
-
-  function addCreatedReview(review: Review) {
-    setLocalReviews((current) => [review, ...current]);
   }
 
   function openReviewInHans(review: Review) {
@@ -735,7 +729,7 @@ export function ReviewsPageClient({
         <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
         <main className={appShellStyles.content}>
           <div className={appShellStyles.width}>
-            <div className="mx-auto max-w-[1180px] px-6 pb-20 pt-8">
+            <div className="pb-20">
               <section className={`${surfaceStyles.hero} px-7 py-6`}>
                 <div className="flex flex-wrap items-start justify-between gap-6">
                   <div className="min-w-[260px] flex-1">
@@ -917,19 +911,6 @@ export function ReviewsPageClient({
                 )}
               </section>
 
-              <details className="rounded-[20px] border border-[#ECE9F4] bg-white p-4 shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)]">
-              <summary className="cursor-pointer list-none text-sm font-bold text-[var(--color-primary)]">Mode développeur</summary>
-              <div className="mt-4">
-                <AdminReviewForm onCreated={addCreatedReview} onToast={showToast} />
-                <DevResetReviewsButton
-                  onReset={() => showToast("Avis tests réinitialisés. Rechargez la page si besoin.", "success")}
-                  onClear={() => {
-                    setLocalReviews((current) => current.filter((review) => !review.id.startsWith("mock-")));
-                    showToast("Avis tests supprimés.", "success");
-                  }}
-                />
-              </div>
-              </details>
             </div>
           </div>
         </main>

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import type { MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
+import { SocialFontPicker } from "@/components/SocialFontPicker";
+import { getSocialFontStack } from "@/lib/social-fonts";
 
 type ActionFn = (formData: FormData) => void | Promise<void>;
 
@@ -117,7 +119,7 @@ export function BrandStyleForm({
   const [primary, setPrimary] = useState(brandSettings?.primary_color ?? "#4C1D95");
   const [secondary, setSecondary] = useState(brandSettings?.secondary_color ?? "#F3E8FF");
   const [accent, setAccent] = useState(brandSettings?.accent_color ?? "#A855F7");
-  const [visualStyle, setVisualStyle] = useState(brandSettings?.visual_style ?? "premium");
+  const visualStyle = brandSettings?.visual_style ?? "premium";
   const [font, setFont] = useState(brandSettings?.social_font_family ?? "Sora");
   const [tone, setTone] = useState(brandSettings?.tone ?? "professionnel");
   const [showLogo, setShowLogo] = useState(brandSettings?.show_logo_on_social_posts ?? false);
@@ -134,28 +136,10 @@ export function BrandStyleForm({
               <ColorField label="Couleur d'accent" name="accent_color" value={accent} onChange={setAccent} />
             </div>
 
-            <div className="grid gap-[18px] md:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-[12.5px] font-semibold text-[#6E6A76]">Style d'image IA</label>
-                <select name="visual_style" value={visualStyle} onChange={(event) => setVisualStyle(event.target.value as MerchantBrandSettingsRow["visual_style"])} className={fieldSelect}>
-                  <option value="moderne">Studio moderne</option>
-                  <option value="premium">Naturel & lumineux</option>
-                  <option value="dynamique">Éditorial</option>
-                  <option value="artisanal">Dessiné</option>
-                  <option value="minimaliste">Carte / illustration</option>
-                  <option value="chaleureux">Peinture</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-2 block text-[12.5px] font-semibold text-[#6E6A76]">Police des posts</label>
-                <select name="social_font_family" value={font} onChange={(event) => setFont(event.target.value)} className={fieldSelect}>
-                  <option value="Sora">Sora</option>
-                  <option value="Inter">Inter</option>
-                  <option value="Georgia">Georgia</option>
-                  <option value="Trebuchet MS">Trebuchet MS</option>
-                  <option value="Helvetica Neue">Helvetica Neue</option>
-                </select>
-              </div>
+            <input type="hidden" name="visual_style" value={visualStyle} />
+            <div>
+              <label className="mb-2 block text-[12.5px] font-semibold text-[#6E6A76]">Police des posts</label>
+              <SocialFontPicker name="social_font_family" value={font} onChange={setFont} />
             </div>
 
             <div>
@@ -209,7 +193,7 @@ export function BrandStyleForm({
                 <span className="h-[22px] w-[22px] rounded-full" style={{ background: primary }} />
                 <span className="text-[11.5px] font-bold text-[#17131F]">{businessName}</span>
               </div>
-              <div className="relative flex h-[150px] items-end p-3" style={{ background: `linear-gradient(135deg, ${primary}, ${secondary})`, fontFamily: getPreviewFont(font) }}>
+              <div className="relative flex h-[150px] items-end p-3" style={{ background: `linear-gradient(135deg, ${primary}, ${secondary})`, fontFamily: getSocialFontStack(font) }}>
                 {showLogo ? (
                   <span className={`absolute flex h-9 w-9 items-center justify-center overflow-hidden rounded-[10px] bg-white/90 p-1 shadow-sm ${
                     logoPosition.startsWith("bottom") ? "bottom-3" : "top-3"
@@ -221,7 +205,7 @@ export function BrandStyleForm({
                   {getVisualStyleLabel(visualStyle)}
                 </span>
               </div>
-              <div className="px-3 py-3 text-[12.5px] leading-[1.5] text-[#17131F]" style={{ fontFamily: getPreviewFont(font) }}>
+              <div className="px-3 py-3 text-[12.5px] leading-[1.5] text-[#17131F]" style={{ fontFamily: getSocialFontStack(font) }}>
                 {getToneCaption(tone)}
               </div>
             </div>
@@ -274,14 +258,6 @@ function ColorField({
       </div>
     </div>
   );
-}
-
-function getPreviewFont(value: string) {
-  if (value === "Georgia") return "Georgia, serif";
-  if (value === "Trebuchet MS") return "'Trebuchet MS', sans-serif";
-  if (value === "Helvetica Neue") return "'Helvetica Neue', sans-serif";
-  if (value === "Inter") return "Inter, sans-serif";
-  return "Sora, sans-serif";
 }
 
 function getLogoPositionLabel(value: "top_left" | "top_right" | "bottom_left" | "bottom_right") {

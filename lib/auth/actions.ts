@@ -62,7 +62,7 @@ export async function signup(formData: FormData) {
   const supabase = await createServerSupabaseClient();
   const origin = await getAppOriginFromHeaders();
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -74,7 +74,11 @@ export async function signup(formData: FormData) {
     redirect(`/signup?error=${encodeURIComponent(error.message)}`);
   }
 
-  redirect("/login?message=Compte%20créé.%20Connectez-vous%20pour%20continuer.");
+  if (data.session) {
+    redirect("/onboarding");
+  }
+
+  redirect("/login?message=Compte%20créé.%20Vérifiez%20votre%20boîte%20e-mail%20pour%20confirmer%20votre%20adresse%2C%20puis%20connectez-vous.");
 }
 
 export async function logout() {

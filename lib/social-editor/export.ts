@@ -1,6 +1,7 @@
 import type { DesignElement, EditorFormat, ExportSettings, ImageDesignElement, InstagramDesignDocument, ShapeDesignElement, TextDesignElement } from "./types";
 import { FORMAT_DIMENSIONS } from "./document";
 import { validateDesignDocumentLayout } from "./layout-safety";
+import { resolveSocialFontStack } from "@/lib/social-fonts";
 
 type RenderExportOptions = {
   scale?: number;
@@ -18,6 +19,11 @@ export async function renderDocumentToDataUrl(
   if (layoutErrors.length > 0) {
     throw new Error(`Export bloqué pour éviter un texte tronqué : ${layoutErrors[0]}`);
   }
+
+  await Promise.all(
+    [...new Set(designDocument.elements.filter((element): element is TextDesignElement => element.type === "text").map((element) => element.fontFamily))]
+      .map((fontFamily) => window.document.fonts.load(`700 32px ${resolveSocialFontStack(fontFamily)}`).catch(() => []))
+  );
 
   const scale = options.scale ?? 1;
   const canvas = window.document.createElement("canvas");
@@ -253,8 +259,7 @@ function fitCanvasText(context: CanvasRenderingContext2D, element: TextDesignEle
 }
 
 function getCanvasFont(element: TextDesignElement, fontSize: number) {
-  const family = element.fontFamily.includes(" ") ? `"${element.fontFamily}"` : element.fontFamily;
-  return `${element.fontStyle === "italic" ? "italic " : ""}${element.fontWeight} ${fontSize}px ${family}, Arial, sans-serif`;
+  return `${element.fontStyle === "italic" ? "italic " : ""}${element.fontWeight} ${fontSize}px ${resolveSocialFontStack(element.fontFamily)}`;
 }
 
 function loadImage(src: string) {

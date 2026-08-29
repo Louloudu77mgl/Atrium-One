@@ -1,4 +1,4 @@
-import { createGeneratedDesignDocument, createImageElement, createShapeElement, createTextElement, FORMAT_DIMENSIONS } from "@/lib/social-editor/document";
+import { createImageElement, createShapeElement, createTextElement, FORMAT_DIMENSIONS } from "@/lib/social-editor/document";
 import type { InstagramDesignDocument } from "@/lib/social-editor/types";
 import type { MerchantBrandSettingsRow, MerchantRow, RcuFormRow } from "@/lib/supabase/types";
 
@@ -347,7 +347,8 @@ export function createRcuPosterDocument({
   origin,
   merchant,
   brandSettings,
-  format = "portrait"
+  format = "a4",
+  heroImageUrl
 }: {
   form: Pick<
     RcuFormRow,
@@ -364,10 +365,12 @@ export function createRcuPosterDocument({
   origin: string;
   merchant?: MerchantRow | null;
   brandSettings?: MerchantBrandSettingsRow | null;
-  format?: "square" | "portrait" | "story";
+  format?: "a4";
+  heroImageUrl?: string | null;
 }): InstagramDesignDocument {
   const definition = getRcuTypeDefinition(form.form_type);
   const primary = brandSettings?.primary_color ?? "#4C1D95";
+  const secondary = brandSettings?.secondary_color ?? "#F3E8FF";
   const accent = brandSettings?.accent_color ?? "#A855F7";
   const fontFamily = brandSettings?.social_font_family ?? "Inter";
   const businessName = merchant?.business_name?.trim() || "Votre boutique";
@@ -376,19 +379,18 @@ export function createRcuPosterDocument({
   const body = form.poster_body?.trim() || form.incentive_text || definition.defaultPosterBody;
   const cta = form.cta_label?.trim() || definition.defaultCtaLabel;
   const dimensions = FORMAT_DIMENSIONS[format];
-  const document = createGeneratedDesignDocument({
-    title: headline,
+  const document: InstagramDesignDocument = {
+    version: 2,
+    format,
+    postTitle: `Affiche RCU · ${headline}`,
     caption: body,
-    visualHook: headline,
-    visualSubtitle: body,
-    merchant,
-    brandSettings
-  });
-  document.format = format;
-  document.altText = `${headline} — ${businessName}`;
-  const qrY = Math.round(dimensions.height * 0.4);
-  const motifY = Math.round(dimensions.height * 0.59);
-  const footerY = dimensions.height - 72;
+    hashtags: "",
+    altText: `${headline} — ${businessName}`,
+    backgroundColor: secondary,
+    backgroundImage: null,
+    safetyMargin: true,
+    elements: []
+  };
   const motif = form.form_type === "points"
     ? "+10 POINTS"
     : form.form_type === "wheel"
@@ -396,69 +398,179 @@ export function createRcuPosterDocument({
       : form.form_type === "raffle"
         ? "1 SCAN = 1 TICKET"
         : form.form_type === "stamps"
-          ? "1 · 2 · 3 · 4 · 🎁"
+          ? "1 · 2 · 3 · 4 · CADEAU"
           : "BONUS HANS IA";
 
-  document.elements = document.elements.map((element) => {
-    if (element.name === "Fond principal") return { ...element, width: dimensions.width, height: dimensions.height };
-    if (element.name === "Accroche") return { ...element, x: 78, y: 92, width: 620, height: 230, align: "left" as const };
-    if (element.name === "Tiret d’accent") return { ...element, x: 82, y: 330 };
-    if (element.name === "Sous-titre") return { ...element, x: 82, y: 362, width: 540, height: 150, align: "left" as const };
-    if (element.name === "Signature") return { ...element, x: 82, y: footerY, width: 620, align: "left" as const };
-    return element;
+  document.elements.push({
+    ...createShapeElement("rectangle", dimensions.width, dimensions.height, secondary),
+    name: "Fond A4",
+    x: 0,
+    y: 0,
+    width: dimensions.width,
+    height: dimensions.height,
+    fill: secondary,
+    borderColor: secondary,
+    borderWidth: 0,
+    borderRadius: 0,
+    zIndex: 0
   });
 
+  if (heroImageUrl) {
+    document.elements.push({
+      ...createImageElement(heroImageUrl, dimensions.width, dimensions.height, "Visuel principal RCU"),
+      x: 0,
+      y: 0,
+      width: dimensions.width,
+      height: 805,
+      fit: "cover",
+      cropX: 50,
+      cropY: 50,
+      scale: 1.08,
+      borderRadius: 0,
+      shadow: false,
+      zIndex: 1
+    });
+  }
+
   document.elements.push({
-    ...createShapeElement("circle", dimensions.width, dimensions.height, "rgba(255,255,255,0.13)"),
-    name: `Motif ${definition.shortLabel}`,
-    x: 72,
-    y: motifY,
-    width: 500,
-    height: 500,
-    fill: "rgba(255,255,255,0.10)",
-    borderColor: accent,
-    borderWidth: 5,
-    borderRadius: 999,
+    ...createImageElement(createRcuPosterGradient(primary, accent, Boolean(heroImageUrl)), dimensions.width, dimensions.height, "Dégradé de marque"),
+    x: 0,
+    y: 0,
+    width: dimensions.width,
+    height: 860,
+    fit: "cover",
+    borderRadius: 0,
+    shadow: false,
     zIndex: 2
   });
   document.elements.push({
-    ...createTextElement("title", dimensions.width, dimensions.height),
-    name: "Mécanique RCU",
-    text: motif,
-    x: 122,
-    y: motifY + 176,
-    width: 400,
-    height: 150,
+    ...createTextElement("small", dimensions.width, dimensions.height),
+    name: "Type de support",
+    text: `PROGRAMME ${definition.shortLabel.toUpperCase()}`,
+    x: 82,
+    y: 106,
+    width: 560,
+    height: 42,
     color: "#FFFFFF",
     fontFamily,
-    fontSize: motif.length > 14 ? 44 : 62,
-    fontWeight: 900,
-    align: "center",
-    lineHeight: 1.02,
+    fontSize: 24,
+    fontWeight: 800,
+    letterSpacing: 1.8,
+    align: "left",
     zIndex: 4
   });
   document.elements.push({
+    ...createTextElement("title", dimensions.width, dimensions.height),
+    name: "Titre de l’affiche",
+    text: headline,
+    x: 78,
+    y: 230,
+    width: 980,
+    height: 360,
+    color: "#FFFFFF",
+    fontFamily,
+    fontSize: headline.length > 48 ? 76 : 92,
+    fontWeight: 900,
+    lineHeight: 1.02,
+    align: "left",
+    zIndex: 4
+  });
+  document.elements.push({
+    ...createShapeElement("rectangle", dimensions.width, dimensions.height, primary),
+    name: "Bloc explication",
+    x: 70,
+    y: 850,
+    width: 650,
+    height: 710,
+    fill: primary,
+    borderColor: primary,
+    borderWidth: 0,
+    borderRadius: 42,
+    shadow: true,
+    zIndex: 4
+  });
+  document.elements.push({
+    ...createTextElement("small", dimensions.width, dimensions.height),
+    name: "Mécanique fidélité",
+    text: motif,
+    x: 120,
+    y: 930,
+    width: 550,
+    height: 58,
+    color: "#FFFFFF",
+    fontFamily,
+    fontSize: motif.length > 18 ? 30 : 38,
+    fontWeight: 900,
+    letterSpacing: 1,
+    align: "left",
+    zIndex: 6
+  });
+  document.elements.push({
+    ...createTextElement("body", dimensions.width, dimensions.height),
+    name: "Texte de l’affiche",
+    text: body,
+    x: 120,
+    y: 1050,
+    width: 520,
+    height: 330,
+    color: "#FFFFFF",
+    fontFamily,
+    fontSize: body.length > 150 ? 31 : 36,
+    fontWeight: 600,
+    lineHeight: 1.34,
+    align: "left",
+    zIndex: 6
+  });
+  document.elements.push({
+    ...createShapeElement("pill", dimensions.width, dimensions.height, accent),
+    name: "Pastille action",
+    x: 120,
+    y: 1430,
+    width: 410,
+    height: 74,
+    fill: accent,
+    borderColor: accent,
+    borderWidth: 0,
+    borderRadius: 999,
+    zIndex: 6
+  });
+  document.elements.push({
+    ...createTextElement("small", dimensions.width, dimensions.height),
+    name: "Action fidélité",
+    text: cta,
+    x: 145,
+    y: 1447,
+    width: 360,
+    height: 40,
+    color: "#FFFFFF",
+    fontFamily,
+    fontSize: 24,
+    fontWeight: 800,
+    align: "center",
+    zIndex: 7
+  });
+  document.elements.push({
     ...createShapeElement("rectangle", dimensions.width, dimensions.height, "#FFFFFF"),
-    name: "Carte QR Hans",
-    x: 650,
-    y: qrY,
-    width: 354,
-    height: 470,
+    name: "Carte QR",
+    x: 770,
+    y: 900,
+    width: 400,
+    height: 570,
     fill: "#FFFFFF",
     borderColor: "#FFFFFF",
     borderWidth: 0,
-    borderRadius: 40,
+    borderRadius: 44,
     shadow: true,
     zIndex: 8
   });
   document.elements.push({
     ...createImageElement(qrUrl, dimensions.width, dimensions.height, "QR code"),
     type: "image",
-    x: 702,
-    y: qrY + 50,
-    width: 250,
-    height: 250,
-    borderRadius: 22,
+    x: 820,
+    y: 960,
+    width: 300,
+    height: 300,
+    borderRadius: 24,
     fit: "contain",
     cropX: 50,
     cropY: 50,
@@ -470,13 +582,13 @@ export function createRcuPosterDocument({
     ...createTextElement("body", dimensions.width, dimensions.height),
     name: "Instruction QR",
     text: "SCANNEZ ICI",
-    x: 684,
-    y: qrY + 326,
-    width: 286,
+    x: 810,
+    y: 1310,
+    width: 320,
     height: 46,
     color: primary,
     fontFamily,
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: 900,
     align: "center",
     zIndex: 11
@@ -485,32 +597,54 @@ export function createRcuPosterDocument({
     ...createTextElement("small", dimensions.width, dimensions.height),
     name: "CTA QR",
     text: cta,
-    x: 684,
-    y: qrY + 382,
-    width: 286,
-    height: 48,
+    x: 810,
+    y: 1370,
+    width: 320,
+    height: 58,
     color: primary,
     fontFamily,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 700,
     align: "center",
     zIndex: 11
   });
 
-  if (merchant?.logo_url && !document.elements.some((element) => element.type === "logo")) {
+  document.elements.push({
+    ...createTextElement("small", dimensions.width, dimensions.height),
+    name: "Signature commerce",
+    text: businessName,
+    x: 76,
+    y: 1650,
+    width: 900,
+    height: 46,
+    color: primary,
+    fontFamily,
+    fontSize: 27,
+    fontWeight: 800,
+    align: "left",
+    zIndex: 10
+  });
+
+  if (merchant?.logo_url) {
     document.elements.push({
       ...createImageElement(merchant.logo_url, dimensions.width, dimensions.height, "Logo du commerce"),
       type: "logo",
-      x: 900,
+      x: 1030,
       y: 72,
-      width: 110,
-      height: 110,
+      width: 120,
+      height: 120,
       fit: "contain",
-      borderRadius: 20,
-      shadow: true,
+      borderRadius: 18,
+      shadow: false,
       zIndex: 12
     });
   }
 
   return document;
+}
+
+function createRcuPosterGradient(primary: string, accent: string, hasImage: boolean) {
+  const topOpacity = hasImage ? "0.42" : "1";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="860" viewBox="0 0 1240 860"><defs><linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${primary}" stop-opacity="${topOpacity}"/><stop offset="0.62" stop-color="${primary}" stop-opacity="0.72"/><stop offset="1" stop-color="${accent}" stop-opacity="0.9"/></linearGradient><linearGradient id="bottom" x1="0" y1="0" x2="0" y2="1"><stop offset="0.45" stop-color="#120E1C" stop-opacity="0"/><stop offset="1" stop-color="#120E1C" stop-opacity="0.72"/></linearGradient></defs><rect width="1240" height="860" fill="url(#brand)"/><rect width="1240" height="860" fill="url(#bottom)"/><circle cx="1100" cy="80" r="260" fill="#fff" fill-opacity="0.08"/><circle cx="980" cy="720" r="180" fill="#fff" fill-opacity="0.06"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }

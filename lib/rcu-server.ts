@@ -82,8 +82,8 @@ export async function submitRcuLead({
   const consentEmail = payload.consent_email === true;
   const privacyConsent = payload.privacy_consent === true;
 
-  if (!firstName || !phone || !privacyConsent) {
-    throw new Error("Prénom, téléphone valide et accord de participation obligatoires.");
+  if (!firstName || !phone || !privacyConsent || !consentSms || !consentEmail) {
+    throw new Error("Prénom, téléphone valide et accord global obligatoires.");
   }
   validateVisitCode(form, payload.visit_code, payload.validation_key);
 
@@ -91,11 +91,11 @@ export async function submitRcuLead({
   const favoriteProducts = String(payload.favorite_products ?? "").trim();
   const email = String(payload.email ?? "").trim();
   const birthday = /^\d{4}-\d{2}-\d{2}$/.test(String(payload.birthday ?? "")) ? String(payload.birthday) : null;
-  if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+  if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
     throw new Error("Vérifiez l’adresse e-mail saisie.");
   }
-  if (consentEmail && !email) {
-    throw new Error("Ajoutez une adresse e-mail pour accepter les offres par e-mail.");
+  if (!birthday || Number.isNaN(new Date(`${birthday}T00:00:00`).getTime()) || birthday > new Date().toISOString().slice(0, 10)) {
+    throw new Error("Ajoutez une date de naissance valide.");
   }
   const customerKey = getRcuCustomerKey(form.merchant_id, phone, email);
   const submittedAt = new Date().toISOString();
@@ -151,6 +151,10 @@ export async function submitRcuLead({
     after(async () => {
       try {
         const customerGames = await listStoredRcuGameRecords(form.merchant_id, { customerKey });
+        const previousVisit = customerGames.find((record) => record.id !== game.record.id) ?? null;
+        const points = typeof game.record.result.pointsTotal === "number"
+          ? game.record.result.pointsTotal
+          : Math.max(0, customerGames.reduce((total, record) => total + (record.result.pointsDelta ?? 0), 0));
         const rewards = customerGames.reduce((total, record) => total
           + (record.result.unlockedRewards?.length ?? 0)
           + (record.result.rewardUnlocked ? 1 : 0)
@@ -166,9 +170,21 @@ export async function submitRcuLead({
           source: "RCU",
           rewards
         };
+        const rcuDetails = {
+          program: form.title,
+          formType: form.form_type,
+          visits: customerGames.length,
+          points,
+          previousPoints: Math.max(0, points - (game.record.result.pointsDelta ?? 0)),
+          pointsToNextReward: game.record.result.nextReward ? Math.max(0, game.record.result.nextReward.points - points) : null,
+          previousVisitAt: previousVisit?.occurred_at ?? null,
+          visitDays: customerGames.map((record) => record.visit_day).join(","),
+          birthday,
+          profileComplete: Boolean(firstName && phone && email && birthday)
+        };
         const events: AutomationEvent[] = [
-          ...(isNewCustomer ? [{ merchantId: form.merchant_id, id: `${leadId}:new_customer`, type: "new_customer" as const, occurredAt: submittedAt, customer }] : []),
-          { merchantId: form.merchant_id, id: `${game.record.id}:new_visit`, type: "new_visit", occurredAt: game.record.occurred_at, customer, details: { program: form.title } }
+          ...(isNewCustomer ? [{ merchantId: form.merchant_id, id: `${leadId}:new_customer`, type: "new_customer" as const, occurredAt: submittedAt, customer, details: rcuDetails }] : []),
+          { merchantId: form.merchant_id, id: `${game.record.id}:new_visit`, type: "new_visit", occurredAt: game.record.occurred_at, customer, details: rcuDetails }
         ];
         const rewardUnlocked = Boolean(game.record.result.rewardUnlocked || game.record.result.unlockedRewards?.length || (game.record.result.wheelPrize && !/rien|retentez|rejouez/i.test(game.record.result.wheelPrize)));
         if (rewardUnlocked) events.push({ merchantId: form.merchant_id, id: `${game.record.id}:new_reward`, type: "new_reward", occurredAt: game.record.occurred_at, customer, details: { rewards } });

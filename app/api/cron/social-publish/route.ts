@@ -28,6 +28,19 @@ async function runScheduledPublications(request: Request) {
   const supabase = createSupabaseAdminClient();
   const now = new Date();
   const nowIso = now.toISOString();
+  const staleClaimCutoff = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+
+  await supabase
+    .from("social_posts")
+    .update({
+      status: "scheduled",
+      error_message: "Nouvelle tentative automatique de publication.",
+      updated_at: nowIso
+    })
+    .eq("status", "ready")
+    .not("scheduled_at", "is", null)
+    .lte("updated_at", staleClaimCutoff);
+
   const { data: posts, error } = await supabase
     .from("social_posts")
     .select("*")
@@ -46,7 +59,6 @@ async function runScheduledPublications(request: Request) {
       .from("social_posts")
       .update({
         status: "ready",
-        scheduled_at: null,
         published_at: null,
         error_message: null,
         updated_at: queuedAt.toISOString(),
@@ -96,19 +108,18 @@ async function runScheduledPublications(request: Request) {
       return { id: row.id, status: "published", postId: post.id };
     } catch (publishError) {
       const message = publishError instanceof Error ? publishError.message : "Publication planifiée impossible.";
-      const retryAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
       await supabase
         .from("social_posts")
         .update({
           status: "scheduled",
-          scheduled_at: retryAt,
+          scheduled_at: queuedPost.scheduled_at,
           published_at: null,
           error_message: message,
           updated_at: new Date().toISOString()
         })
         .eq("id", row.id)
         .eq("status", "ready");
-      return { id: row.id, status: "error", error: message, retryAt };
+      return { id: row.id, status: "error", error: message, scheduledAt: queuedPost.scheduled_at };
     }
   }));
 

@@ -7,11 +7,17 @@ import { HansAvatar } from "@/components/hans-avatar";
 export function HansGeneratingModal({
   open,
   title = "Hans prépare votre contenu",
-  description = "Hans analyse le contexte, rédige le post et prépare un visuel cohérent avec votre identité."
+  description = "Hans analyse le contexte, rédige le post et prépare un visuel cohérent avec votre identité.",
+  steps,
+  statusText = "Hans prépare cela pour vous.",
+  progressDurationMs
 }: {
   open: boolean;
   title?: string;
   description?: string;
+  steps?: [string, string, string, string];
+  statusText?: string;
+  progressDurationMs?: number;
 }) {
   const [progress, setProgress] = useState(8);
   const [mounted, setMounted] = useState(false);
@@ -26,18 +32,23 @@ export function HansGeneratingModal({
       return;
     }
 
+    const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      setProgress((current) => {
-        if (current >= 92) {
-          return current;
-        }
-
-        return Math.min(92, current + Math.max(2, Math.round((100 - current) / 8)));
-      });
-    }, 280);
+      const elapsed = Date.now() - startedAt;
+      const target = progressDurationMs
+        ? Math.min(94, 8 + (elapsed / progressDurationMs) * 86)
+        : elapsed < 4_000
+          ? 8 + (elapsed / 4_000) * 20
+          : elapsed < 12_000
+            ? 28 + ((elapsed - 4_000) / 8_000) * 30
+            : elapsed < 30_000
+              ? 58 + ((elapsed - 12_000) / 18_000) * 26
+              : Math.min(94, 84 + ((elapsed - 30_000) / 30_000) * 10);
+      setProgress((current) => Math.max(current, Math.round(target)));
+    }, 500);
 
     return () => window.clearInterval(timer);
-  }, [open]);
+  }, [open, progressDurationMs]);
 
   useEffect(() => {
     if (!open) {
@@ -68,6 +79,15 @@ export function HansGeneratingModal({
     return null;
   }
 
+  const progressSteps = steps ?? ["Analyse de votre demande", "Préparation du contenu", "Direction artistique et mise en page", "Vérifications finales"];
+  const progressLabel = progress < 28
+    ? progressSteps[0]
+    : progress < 58
+      ? progressSteps[1]
+      : progress < 84
+        ? progressSteps[2]
+        : progressSteps[3];
+
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] grid place-items-center bg-[#F4EEFF] px-4"
@@ -94,7 +114,7 @@ export function HansGeneratingModal({
           />
         </div>
         <div className="mb-6 flex items-center justify-between text-[13px] text-[#7B7393]">
-          <span>Génération en cours...</span>
+          <span>{progressLabel}</span>
           <span>{progress}%</span>
         </div>
 
@@ -103,7 +123,7 @@ export function HansGeneratingModal({
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[#E9D5FF] bg-white shadow-sm">
               <span className="h-3.5 w-3.5 rounded-full border-2 border-[#DDD6FE] border-t-[#8B5CF6] [animation:spin-once_0.8s_linear_infinite]" />
             </span>
-            Hans prépare cela pour vous.
+            {statusText}
           </div>
         </div>
       </div>

@@ -1,20 +1,16 @@
 import type { MerchantBrandSettingsRow, MerchantMediaAssetRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { createInitialBuilderState, parseBuilderState, type ImageLayer, type SocialBuilderState, type SocialLayer, type TextLayer } from "@/lib/social-builder";
 import { isEditorDocument, type DesignElement, type EditorFormat, type ImageDesignElement, type InstagramDesignDocument, type ShapeDesignElement, type TextDesignElement } from "./types";
+import { SOCIAL_FONT_VALUES } from "@/lib/social-fonts";
 
 export const FORMAT_DIMENSIONS: Record<EditorFormat, { width: number; height: number; label: string }> = {
   square: { width: 1080, height: 1080, label: "Carré 1080 × 1080" },
   portrait: { width: 1080, height: 1350, label: "Portrait 1080 × 1350" },
-  story: { width: 1080, height: 1920, label: "Story 1080 × 1920" }
+  story: { width: 1080, height: 1920, label: "Story 1080 × 1920" },
+  a4: { width: 1240, height: 1754, label: "A4 · 210 × 297 mm" }
 };
 
-export const DEFAULT_FONTS = [
-  "Inter",
-  "Arial",
-  "Georgia",
-  "Trebuchet MS",
-  "Helvetica Neue"
-] as const;
+export const DEFAULT_FONTS = SOCIAL_FONT_VALUES;
 
 type TemplateDefinition = {
   id: string;
@@ -88,7 +84,19 @@ export function createEditorDocument({
   };
 }
 
-export function createGeneratedDesignDocument({
+export function createGeneratedDesignDocument(args: {
+  title: string;
+  caption: string;
+  visualHook?: string | null;
+  visualSubtitle?: string | null;
+  imageUrl?: string | null;
+  merchant?: MerchantRow | null;
+  brandSettings?: MerchantBrandSettingsRow | null;
+}): InstagramDesignDocument {
+  return createEditorialGeneratedDocument(args);
+}
+
+function createEditorialGeneratedDocument({
   title,
   caption,
   visualHook,
@@ -114,8 +122,8 @@ export function createGeneratedDesignDocument({
   const logoPosition = brandSettings?.social_logo_position ?? "top_left";
   const logoAtBottom = logoPosition.startsWith("bottom");
   const logoOnRight = logoPosition.endsWith("right");
-  const hook = limitVisualText(visualHook?.trim() || title.trim(), 6, 40);
-  const subtitle = limitVisualSubtitle(visualSubtitle?.trim() || caption, 96);
+  const hook = limitVisualText(sanitizeDesignText(visualHook?.trim() || title.trim()), 6, 40);
+  const subtitle = limitVisualSubtitle(sanitizeDesignText(visualSubtitle?.trim() || caption), 96);
   const signature = [businessName, merchant?.city].filter(Boolean).join(" · ");
   const rawVariant = Math.abs(hashString(`${hook}|${subtitle}|${businessName}`)) % 4;
   const variant = showLogo && logoAtBottom && (rawVariant === 0 || rawVariant === 3)
@@ -161,7 +169,7 @@ export function createGeneratedDesignDocument({
       borderRadius: 0,
       cropX: 50,
       cropY: 50,
-      fit: "contain",
+      fit: "cover",
       scale: 1,
       shadow: false,
       zIndex: 0
@@ -291,10 +299,96 @@ export function createGeneratedDesignDocument({
   return normalizeDocument(document);
 }
 
+function createArtisanGeneratedDocument({
+  title, caption, visualHook, visualSubtitle, imageUrl, merchant, brandSettings
+}: {
+  title: string; caption: string; visualHook?: string | null; visualSubtitle?: string | null; imageUrl?: string | null;
+  merchant?: MerchantRow | null; brandSettings?: MerchantBrandSettingsRow | null;
+}): InstagramDesignDocument {
+  const primary = brandSettings?.primary_color ?? "#5B3427";
+  const secondary = brandSettings?.secondary_color ?? "#F2DEC3";
+  const accent = brandSettings?.accent_color ?? "#C9793A";
+  const font = brandSettings?.social_font_family ?? "Playfair Display";
+  const hook = limitVisualText(sanitizeDesignText(visualHook?.trim() || title), 6, 42);
+  const subtitle = limitVisualSubtitle(sanitizeDesignText(visualSubtitle?.trim() || caption), 106);
+  const signature = [merchant?.business_name || "Votre commerce", merchant?.city].filter(Boolean).join(" · ");
+  const reversed = Math.abs(hashString(`${merchant?.id}|${merchant?.business_name}`)) % 2 === 1;
+  const photoX = reversed ? 80 : 520;
+  const copyX = reversed ? 520 : 80;
+  const document: InstagramDesignDocument = { version: 2, format: "square", postTitle: title, caption, hashtags: "", altText: caption.slice(0, 160), backgroundColor: secondary, backgroundImage: null, safetyMargin: true, elements: [] };
+
+  document.elements.push({ ...createShapeElement("rectangle", 1080, 1080, secondary), name: "Fond papier", x: 0, y: 0, width: 1080, height: 1080, borderRadius: 0, borderWidth: 0, fill: secondary, zIndex: 0 });
+  document.elements.push({ ...createShapeElement("circle", 1080, 1080, withOpacity(accent, 0.16)), name: "Halo matière", x: reversed ? 780 : -90, y: -100, width: 420, height: 420, borderWidth: 0, fill: withOpacity(accent, 0.16), zIndex: 1 });
+  if (imageUrl) {
+    document.elements.push({ ...createImageElement(imageUrl, 1080, 1080, "Photo signature"), x: photoX, y: 72, width: 480, height: 690, borderRadius: 240, cropX: 50, cropY: 48, scale: 1.16, shadow: true, zIndex: 2 });
+    document.elements.push({ ...createShapeElement("frame", 1080, 1080, "rgba(255,255,255,0.72)"), name: "Arche", x: photoX - 14, y: 58, width: 508, height: 718, borderRadius: 254, fill: "transparent", borderColor: "rgba(255,255,255,0.72)", borderWidth: 5, zIndex: 3 });
+  } else {
+    document.elements.push({ ...createShapeElement("rectangle", 1080, 1080, primary), name: "Arche couleur", x: photoX, y: 72, width: 480, height: 690, borderRadius: 240, fill: primary, borderWidth: 0, zIndex: 2 });
+  }
+  document.elements.push({ ...createTextElement("small", 1080, 1080), name: "Sur-titre", text: "LA SIGNATURE", x: copyX, y: 142, width: 400, height: 40, fontSize: 19, fontWeight: 800, letterSpacing: 4, color: primary, fontFamily: font, align: "left", zIndex: 4 });
+  document.elements.push({ ...createTextElement("title", 1080, 1080), name: "Accroche", text: hook, x: copyX, y: 208, width: 420, height: 300, fontSize: hook.length > 30 ? 62 : 76, fontWeight: 700, fontStyle: "italic", color: primary, fontFamily: font, align: "left", lineHeight: 1.02, zIndex: 5 });
+  document.elements.push({ ...createShapeElement("line", 1080, 1080, accent), name: "Ornement", x: copyX, y: 532, width: 112, height: 5, borderRadius: 99, fill: accent, borderWidth: 0, zIndex: 6 });
+  document.elements.push({ ...createTextElement("body", 1080, 1080), name: "Sous-titre", text: subtitle, x: copyX, y: 572, width: 410, height: 154, fontSize: subtitle.length > 80 ? 25 : 29, fontWeight: 500, color: primary, fontFamily: font, align: "left", lineHeight: 1.28, zIndex: 7 });
+  document.elements.push({ ...createShapeElement("band", 1080, 1080, primary), name: "Cartouche bas", x: 0, y: 850, width: 1080, height: 230, borderRadius: 0, borderWidth: 0, fill: primary, zIndex: 8 });
+  document.elements.push({ ...createTextElement("small", 1080, 1080), name: "Signature", text: signature, x: 84, y: 925, width: 912, height: 54, fontSize: 28, fontWeight: 700, color: getReadableTextColor(primary), fontFamily: font, align: "center", letterSpacing: 1.5, zIndex: 9 });
+  appendBrandLogo(document, merchant, brandSettings, 10);
+  return normalizeDocument(document);
+}
+
+function createImpactGeneratedDocument({
+  title, caption, visualHook, visualSubtitle, imageUrl, merchant, brandSettings
+}: {
+  title: string; caption: string; visualHook?: string | null; visualSubtitle?: string | null; imageUrl?: string | null;
+  merchant?: MerchantRow | null; brandSettings?: MerchantBrandSettingsRow | null;
+}): InstagramDesignDocument {
+  const primary = brandSettings?.primary_color ?? "#24133C";
+  const secondary = brandSettings?.secondary_color ?? "#F7F2FF";
+  const accent = brandSettings?.accent_color ?? "#FFDD55";
+  const font = brandSettings?.social_font_family ?? "Sora";
+  const hook = limitVisualText(sanitizeDesignText(visualHook?.trim() || title), 5, 38).toLocaleUpperCase("fr-FR");
+  const subtitle = limitVisualSubtitle(sanitizeDesignText(visualSubtitle?.trim() || caption), 92);
+  const signature = [merchant?.business_name || "Votre commerce", merchant?.city].filter(Boolean).join(" · ");
+  const reversed = Math.abs(hashString(`${merchant?.id}|impact|${merchant?.business_name}`)) % 2 === 1;
+  const copyX = reversed ? 590 : 72;
+  const imageX = reversed ? 0 : 540;
+  const document: InstagramDesignDocument = { version: 2, format: "square", postTitle: title, caption, hashtags: "", altText: caption.slice(0, 160), backgroundColor: secondary, backgroundImage: null, safetyMargin: true, elements: [] };
+  document.elements.push({ ...createShapeElement("rectangle", 1080, 1080, secondary), name: "Fond graphique", x: 0, y: 0, width: 1080, height: 1080, borderRadius: 0, borderWidth: 0, fill: secondary, zIndex: 0 });
+  if (imageUrl) document.elements.push({ ...createImageElement(imageUrl, 1080, 1080, "Photo impact"), x: imageX, y: 0, width: 540, height: 1080, borderRadius: 0, cropX: 50, cropY: 50, scale: 1.12, shadow: false, zIndex: 1 });
+  else document.elements.push({ ...createShapeElement("rectangle", 1080, 1080, primary), name: "Bloc visuel", x: imageX, y: 0, width: 540, height: 1080, borderRadius: 0, borderWidth: 0, fill: primary, zIndex: 1 });
+  document.elements.push({ ...createShapeElement("rectangle", 1080, 1080, accent), name: "Barre dynamique", x: reversed ? 500 : 458, y: -80, width: 94, height: 1240, rotation: reversed ? 8 : -8, borderRadius: 0, borderWidth: 0, fill: accent, zIndex: 2 });
+  document.elements.push({ ...createShapeElement("pill", 1080, 1080, primary), name: "Badge", x: copyX, y: 94, width: 198, height: 58, borderRadius: 999, borderWidth: 0, fill: primary, zIndex: 3 });
+  document.elements.push({ ...createTextElement("small", 1080, 1080), name: "Badge texte", text: "NOUVEAU", x: copyX + 22, y: 106, width: 154, height: 32, fontSize: 18, fontWeight: 900, letterSpacing: 3, color: getReadableTextColor(primary), fontFamily: font, align: "center", zIndex: 4 });
+  document.elements.push({ ...createTextElement("title", 1080, 1080), name: "Accroche", text: hook, x: copyX, y: 216, width: 400, height: 360, fontSize: hook.length > 27 ? 70 : 88, fontWeight: 900, color: primary, fontFamily: font, align: "left", lineHeight: 0.94, letterSpacing: -2, zIndex: 5 });
+  document.elements.push({ ...createTextElement("body", 1080, 1080), name: "Sous-titre", text: subtitle, x: copyX, y: 650, width: 398, height: 160, fontSize: subtitle.length > 80 ? 24 : 28, fontWeight: 600, color: primary, fontFamily: font, align: "left", lineHeight: 1.24, zIndex: 6 });
+  document.elements.push({ ...createShapeElement("line", 1080, 1080, primary), name: "Trait fort", x: copyX, y: 840, width: 280, height: 8, borderRadius: 0, borderWidth: 0, fill: primary, zIndex: 7 });
+  document.elements.push({ ...createTextElement("small", 1080, 1080), name: "Signature", text: signature, x: copyX, y: 878, width: 400, height: 72, fontSize: 22, fontWeight: 800, color: primary, fontFamily: font, align: "left", zIndex: 8 });
+  appendBrandLogo(document, merchant, brandSettings, 9);
+  return normalizeDocument(document);
+}
+
+function appendBrandLogo(document: InstagramDesignDocument, merchant?: MerchantRow | null, brandSettings?: MerchantBrandSettingsRow | null, zIndex = 20) {
+  if (!brandSettings?.show_logo_on_social_posts || !merchant?.logo_url) return;
+  const position = brandSettings.social_logo_position ?? "top_left";
+  const x = position.endsWith("right") ? 904 : 64;
+  const y = position.startsWith("bottom") ? 904 : 64;
+  document.elements.push({ ...createShapeElement("rectangle", 1080, 1080, "rgba(255,255,255,0.94)"), name: "Fond du logo", x, y, width: 112, height: 112, borderRadius: 22, fill: "rgba(255,255,255,0.94)", borderColor: "rgba(255,255,255,0.5)", borderWidth: 2, shadow: true, zIndex });
+  document.elements.push({ ...createImageElement(merchant.logo_url, 88, 88, "Logo du commerce"), type: "logo", x: x + 12, y: y + 12, width: 88, height: 88, fit: "contain", borderRadius: 12, shadow: false, zIndex: zIndex + 1 });
+}
+
 function limitVisualSubtitle(value: string, _maxCharacters: number) {
   const normalized = value.replace(/^[^A-Za-zÀ-ÿ0-9]+/, "").replace(/\s+/g, " ").trim();
   const completeSentence = normalized.match(/^.*?[.!?](?=\s|$)/)?.[0]?.trim();
   return completeSentence || (/[.!?]$/.test(normalized) ? normalized : `${normalized}.`);
+}
+
+function sanitizeDesignText(value: string) {
+  return value
+    .normalize("NFC")
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[\u200D\uFE0E\uFE0F]/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function createVignetteOverlayDataUrl(variant: number) {
@@ -861,10 +955,10 @@ export function createImageElement(src: string, canvasWidth: number, canvasHeigh
   };
 }
 
-export function applyTemplate(document: InstagramDesignDocument, templateId: string, merchant?: MerchantRow | null): InstagramDesignDocument {
+export function applyTemplate(document: InstagramDesignDocument, templateId: string, merchant?: MerchantRow | null, _brandSettings?: MerchantBrandSettingsRow | null): InstagramDesignDocument {
   const accent = findPrimaryColor(document);
-  const primaryImage = document.elements.find((element) => (element.type === "image" || element.type === "logo") && element.visible) as ImageDesignElement | undefined;
-  const title = document.elements.find((element) => element.type === "text") as TextDesignElement | undefined;
+  const primaryImage = document.elements.find((element) => element.type === "image" && element.visible && !element.name.toLocaleLowerCase("fr-FR").includes("vignettage")) as ImageDesignElement | undefined;
+  const title = (document.elements.find((element) => element.type === "text" && (element.name === "Accroche" || element.name === "Titre principal")) ?? document.elements.find((element) => element.type === "text")) as TextDesignElement | undefined;
   const canvas = FORMAT_DIMENSIONS[document.format];
 
   const next = structuredClone(document) as InstagramDesignDocument;
@@ -1016,7 +1110,7 @@ function mapBuilderLayerToElement(layer: SocialLayer): DesignElement {
     locked: Boolean(layer.locked),
     zIndex: layer.zIndex,
     text: layer.text,
-    fontFamily: "Inter",
+    fontFamily: layer.fontFamily ?? "Inter",
     fontSize: layer.fontSize,
     fontWeight: layer.fontWeight,
     fontStyle: "normal",
@@ -1045,6 +1139,7 @@ function mapElementToBuilderLayer(element: DesignElement): SocialLayer {
       color: element.color,
       fontSize: element.fontSize,
       fontWeight: element.fontWeight,
+      fontFamily: element.fontFamily,
       align: element.align,
       background: element.backgroundColor ?? undefined,
       paddingX: 18,

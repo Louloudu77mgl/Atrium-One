@@ -4,6 +4,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { useMemo, useRef } from "react";
 import type { DesignElement, TextDesignElement } from "@/lib/social-editor/types";
 import styles from "./editor-shell.module.css";
+import { getSocialFontStack } from "@/lib/social-fonts";
 
 type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
@@ -274,7 +275,7 @@ function TextElementView({
         }}
         className="h-full w-full resize-none border-0 bg-white/90 p-2 outline-none"
         style={{
-          fontFamily: element.fontFamily,
+          fontFamily: getSocialFontStack(element.fontFamily),
           fontSize: element.fontSize,
           fontWeight: element.fontWeight,
           color: element.color,
@@ -288,7 +289,7 @@ function TextElementView({
     <div
       className="h-full w-full whitespace-pre-wrap"
       style={{
-        fontFamily: element.fontFamily,
+        fontFamily: getSocialFontStack(element.fontFamily),
         fontSize: element.fontSize,
         fontWeight: element.fontWeight,
         fontStyle: element.fontStyle,

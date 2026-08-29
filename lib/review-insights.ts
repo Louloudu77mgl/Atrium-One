@@ -38,6 +38,10 @@ export type ReviewSocialPostIdea = {
   sourceStrength?: string;
   category?: string;
   seasonalMoment?: string;
+  localEvent?: string;
+  eventDate?: string;
+  sourceUrl?: string;
+  visualDirection?: string;
   assetUrl?: string;
   assetAltText?: string;
 };
@@ -47,9 +51,16 @@ export type ReviewInsightsAnalysis = {
   strengths: ReviewStrength[];
   priorityActions: ReviewPriorityAction[];
   socialPostIdeas: ReviewSocialPostIdea[];
+  reviewSnapshot?: {
+    reviewsCount: number;
+    positiveCount: number;
+    neutralCount: number;
+    negativeCount: number;
+  };
 };
 
 export const MIN_REVIEWS_FOR_SOCIAL_RECOMMENDATIONS = 5;
+export const REVIEW_INSIGHTS_STORAGE_TITLE = "__atrium_review_insights_v1__";
 
 export const emptyAnalysis: ReviewInsightsAnalysis = {
   painPoints: [],
@@ -59,19 +70,10 @@ export const emptyAnalysis: ReviewInsightsAnalysis = {
 };
 
 export function getSocialRecommendationsTargetCount(reviewsCount: number) {
-  if (reviewsCount < MIN_REVIEWS_FOR_SOCIAL_RECOMMENDATIONS) {
-    return 0;
-  }
-
-  if (reviewsCount >= 15) {
-    return 5;
-  }
-
-  if (reviewsCount >= 10) {
-    return 4;
-  }
-
-  return 3;
+  if (reviewsCount >= 25) return 10;
+  if (reviewsCount >= 15) return 8;
+  if (reviewsCount >= MIN_REVIEWS_FOR_SOCIAL_RECOMMENDATIONS) return 6;
+  return 5;
 }
 
 function asString(value: unknown, fallback = "") {
@@ -185,6 +187,11 @@ function normalizePlatform(value: unknown): SocialPlatform {
   return asString(value).toLowerCase().includes("facebook") ? "facebook" : "instagram";
 }
 
+function asNonNegativeInteger(value: unknown) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? Math.max(0, Math.round(numericValue)) : 0;
+}
+
 export function validateReviewInsights(raw: unknown): ReviewInsightsAnalysis {
   if (!raw || typeof raw !== "object") {
     return emptyAnalysis;
@@ -240,19 +247,48 @@ export function validateReviewInsights(raw: unknown): ReviewInsightsAnalysis {
           title: asString(idea.title, "Post recommandé à partir des avis"),
           angle: asString(idea.angle, "Transformer un insight client en contenu utile et rassurant."),
           sourcePainPoint: asString(idea.sourcePainPoint) || undefined,
-          sourceStrength: asString(idea.sourceStrength) || undefined
+          sourceStrength: asString(idea.sourceStrength) || undefined,
+          category: asString(idea.category) || undefined,
+          seasonalMoment: asString(idea.seasonalMoment) || undefined,
+          localEvent: asString(idea.localEvent) || undefined,
+          eventDate: asString(idea.eventDate) || undefined,
+          sourceUrl: asString(idea.sourceUrl) || undefined,
+          visualDirection: asString(idea.visualDirection) || undefined,
+          assetUrl: asString(idea.assetUrl) || undefined,
+          assetAltText: asString(idea.assetAltText) || undefined
         };
-      }).slice(0, 6)
+      }).slice(0, 10)
     : [];
   const socialPostIdeas = rawSocialPostIdeas.length > 0
     ? rawSocialPostIdeas
     : buildSocialPostIdeasFromInsights({ painPoints, strengths });
+  const rawReviewSnapshot = source.reviewSnapshot && typeof source.reviewSnapshot === "object"
+    ? source.reviewSnapshot as Record<string, unknown>
+    : null;
+  const reviewSnapshot = rawReviewSnapshot
+    ? {
+        reviewsCount: asNonNegativeInteger(rawReviewSnapshot.reviewsCount),
+        positiveCount: asNonNegativeInteger(rawReviewSnapshot.positiveCount),
+        neutralCount: asNonNegativeInteger(rawReviewSnapshot.neutralCount),
+        negativeCount: asNonNegativeInteger(rawReviewSnapshot.negativeCount)
+      }
+    : undefined;
 
   return {
     painPoints,
     strengths,
     priorityActions,
-    socialPostIdeas
+    socialPostIdeas,
+    reviewSnapshot
+  };
+}
+
+export function getReviewSnapshotSummary(reviews: Review[]): NonNullable<ReviewInsightsAnalysis["reviewSnapshot"]> {
+  return {
+    reviewsCount: reviews.length,
+    positiveCount: reviews.filter((review) => review.sentiment === "positif").length,
+    neutralCount: reviews.filter((review) => review.sentiment === "neutre").length,
+    negativeCount: reviews.filter((review) => review.sentiment === "negatif").length
   };
 }
 
@@ -346,13 +382,6 @@ function dedupeSocialPostIdeas(ideas: ReviewSocialPostIdea[]) {
 export function enforceSocialPostIdeaRules(analysis: ReviewInsightsAnalysis, reviews: Review[]): ReviewInsightsAnalysis {
   const targetCount = getSocialRecommendationsTargetCount(reviews.length);
 
-  if (targetCount === 0) {
-    return {
-      ...analysis,
-      socialPostIdeas: []
-    };
-  }
-
   const inferredIdeas = dedupeSocialPostIdeas([
     ...analysis.socialPostIdeas,
     ...buildSocialPostIdeasFromInsights({
@@ -385,20 +414,6 @@ export function ensureReviewInsightsPostIdeas(analysis: ReviewInsightsAnalysis |
       strengths: analysis.strengths
     })
   };
-}
-
-export function prepareReviewInsightsForDisplay(
-  analysis: ReviewInsightsAnalysis | null | undefined,
-  reviews: Review[]
-): ReviewInsightsAnalysis | null {
-  if (!analysis) {
-    return null;
-  }
-
-  return enforceSocialPostIdeaRules(
-    alignInsightsWithReviews(ensureReviewInsightsPostIdeas(analysis) ?? analysis, reviews),
-    reviews
-  );
 }
 
 export function getFallbackReviewInsights(reviews: Review[]): ReviewInsightsAnalysis {
@@ -516,7 +531,8 @@ export function getFallbackReviewInsights(reviews: Review[]): ReviewInsightsAnal
             angle: firstStrength?.communicationAngle ?? "Valoriser les avis positifs pour rassurer les nouveaux clients.",
             sourceStrength: firstStrength?.title
           }
-    ]
+    ],
+    reviewSnapshot: getReviewSnapshotSummary(reviews)
   }, reviews);
 }
 
@@ -547,6 +563,29 @@ export function getReviewInsightsVersion(reviews: Review[]) {
     reviewsCount: reviews.length,
     latestReviewUpdatedAt: getLatestReviewDate(reviews)
   };
+}
+
+export function hasReviewInsightsSourceChanged(
+  stored: { reviews_count?: number | null; latest_review_updated_at?: string | null } | null | undefined,
+  reviews: Review[]
+) {
+  if (!stored || stored.reviews_count === null || stored.reviews_count === undefined) {
+    return true;
+  }
+
+  const current = getReviewInsightsVersion(reviews);
+  if (stored.reviews_count !== current.reviewsCount) {
+    return true;
+  }
+
+  const storedTimestamp = stored.latest_review_updated_at
+    ? new Date(stored.latest_review_updated_at).getTime()
+    : null;
+  const currentTimestamp = current.latestReviewUpdatedAt
+    ? new Date(current.latestReviewUpdatedAt).getTime()
+    : null;
+
+  return storedTimestamp !== currentTimestamp;
 }
 
 const REVIEW_INSIGHTS_TIME_ZONE = "Europe/Paris";
@@ -582,48 +621,4 @@ export function isDailyReviewInsightsRefreshDue(updatedAt: string | null | undef
   const lastUpdate = getReviewInsightsLocalParts(new Date(updatedAt));
 
   return now.hour >= REVIEW_INSIGHTS_REFRESH_HOUR && now.dateKey !== lastUpdate.dateKey;
-}
-
-export function shouldRefreshReviewInsights({
-  reviews,
-  storedInsights,
-  now = new Date()
-}: {
-  reviews: Review[];
-  storedInsights: ReviewInsightRow | null | undefined;
-  now?: Date;
-}) {
-  if (reviews.length === 0) {
-    return false;
-  }
-
-  if (!storedInsights?.updated_at) {
-    return true;
-  }
-
-  if (isDailyReviewInsightsRefreshDue(storedInsights.updated_at, now)) {
-    return true;
-  }
-
-  const { reviewsCount, latestReviewUpdatedAt } = getReviewInsightsVersion(reviews);
-
-  if (!latestReviewUpdatedAt) {
-    return false;
-  }
-
-  if (
-    typeof storedInsights.reviews_count === "number" &&
-    storedInsights.reviews_count !== reviewsCount
-  ) {
-    return true;
-  }
-
-  if (
-    storedInsights.latest_review_updated_at &&
-    storedInsights.latest_review_updated_at !== latestReviewUpdatedAt
-  ) {
-    return true;
-  }
-
-  return new Date(latestReviewUpdatedAt).getTime() > new Date(storedInsights.updated_at).getTime();
 }

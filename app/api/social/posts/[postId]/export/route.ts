@@ -1,6 +1,33 @@
 import { NextResponse } from "next/server";
+import sharp from "sharp";
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+
+const EXPORT_DIMENSIONS = {
+  square: { width: 1080, height: 1080 },
+  portrait: { width: 1080, height: 1350 },
+  story: { width: 1080, height: 1920 },
+  a4: { width: 1240, height: 1754 }
+} as const;
+
+function getExportDimensions(format: unknown, builderState: unknown, templateId: string | null) {
+  if (templateId === "rcu-poster") {
+    return EXPORT_DIMENSIONS.a4;
+  }
+
+  if (typeof format === "string" && format in EXPORT_DIMENSIONS) {
+    return EXPORT_DIMENSIONS[format as keyof typeof EXPORT_DIMENSIONS];
+  }
+
+  if (builderState && typeof builderState === "object" && !Array.isArray(builderState)) {
+    const format = (builderState as { format?: unknown }).format;
+    if (typeof format === "string" && format in EXPORT_DIMENSIONS) {
+      return EXPORT_DIMENSIONS[format as keyof typeof EXPORT_DIMENSIONS];
+    }
+  }
+
+  return EXPORT_DIMENSIONS.square;
+}
 
 export async function POST(
   request: Request,
@@ -24,11 +51,11 @@ export async function POST(
 
   const { data: existingPost } = await supabase
     .from("social_posts")
-    .select("status,published_at")
+    .select("status,published_at,builder_state,template_id")
     .eq("id", postId)
     .eq("merchant_id", merchant.id)
     .maybeSingle();
-  const payload = await request.json() as { imageDataUrl?: string; visualHtml?: string; sourceImageUrl?: string };
+  const payload = await request.json() as { imageDataUrl?: string; visualHtml?: string; sourceImageUrl?: string; format?: string };
   const imageDataUrl = payload.imageDataUrl ?? "";
   const base64 = imageDataUrl.split(",")[1];
   let visualUrl = payload.sourceImageUrl ?? null;
@@ -38,10 +65,15 @@ export async function POST(
       return NextResponse.json({ error: "PNG invalide." }, { status: 400 });
     }
 
+    const dimensions = getExportDimensions(payload.format, existingPost?.builder_state, existingPost?.template_id ?? null);
+    const normalizedPng = await sharp(Buffer.from(base64, "base64"))
+      .resize(dimensions.width, dimensions.height, { fit: "fill" })
+      .png()
+      .toBuffer();
     const path = `${user.id}/${postId}/visual-${Date.now()}.png`;
     const { error: uploadError } = await supabase.storage
       .from("social-visuals")
-      .upload(path, Buffer.from(base64, "base64"), {
+      .upload(path, normalizedPng, {
         contentType: "image/png",
         upsert: true
       });

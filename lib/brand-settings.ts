@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
+import { SOCIAL_FONT_VALUES } from "@/lib/social-fonts";
 
 export const DEFAULT_BRAND_SETTINGS = {
   primary_color: "#4C1D95",
@@ -71,14 +72,13 @@ export async function updateBrandSettings(formData: FormData) {
   const requestedLogoPosition = String(formData.get("social_logo_position") ?? DEFAULT_BRAND_SETTINGS.social_logo_position);
   const allowedStyles = ["premium", "chaleureux", "moderne", "artisanal", "minimaliste", "dynamique"];
   const allowedTones = ["simple", "professionnel", "convivial", "haut_de_gamme"];
-  const allowedFontFamilies = ["Sora", "Inter", "Georgia", "Trebuchet MS", "Helvetica Neue"];
   const allowedLogoPositions = ["top_left", "top_right", "bottom_left", "bottom_right"] as const;
   const payload = {
     merchant_id: merchant.id,
     primary_color: normalizeColor(String(formData.get("primary_color") ?? DEFAULT_BRAND_SETTINGS.primary_color)),
     secondary_color: normalizeColor(String(formData.get("secondary_color") ?? DEFAULT_BRAND_SETTINGS.secondary_color)),
     accent_color: normalizeColor(String(formData.get("accent_color") ?? DEFAULT_BRAND_SETTINGS.accent_color)),
-    social_font_family: allowedFontFamilies.includes(socialFontFamily) ? socialFontFamily : DEFAULT_BRAND_SETTINGS.social_font_family,
+    social_font_family: SOCIAL_FONT_VALUES.includes(socialFontFamily) ? socialFontFamily : DEFAULT_BRAND_SETTINGS.social_font_family,
     show_logo_on_social_posts: showLogoOnSocialPosts,
     social_logo_position: allowedLogoPositions.includes(requestedLogoPosition as typeof allowedLogoPositions[number])
       ? requestedLogoPosition as typeof allowedLogoPositions[number]

@@ -40,14 +40,6 @@ export type RcuLeadRecord = {
   last_purchase_date?: string | null;
 };
 
-export type RcuDeveloperEmailConsent = {
-  merchant_id: string;
-  customer_key: string;
-  enabled: boolean;
-  source: "developer";
-  updated_at: string;
-};
-
 export type RcuGameRecord = {
   id: string;
   public_token: string;
@@ -124,8 +116,7 @@ export type RcuCustomerDetail = {
 
 export type RcuCustomerRow = CustomerRow & {
   opt_in_email: boolean;
-  developer_email_consent: boolean;
-  email_consent_source: "customer" | "developer" | null;
+  email_consent_source: "customer" | null;
 };
 
 let bucketPromise: Promise<void> | null = null;
@@ -155,10 +146,6 @@ function getCustomerWalletPath(merchantId: string, customerKey: string) {
   return `merchants/${merchantId}/wallets/${customerKey}.json`;
 }
 
-function getDeveloperEmailConsentPath(merchantId: string, customerKey: string) {
-  return `merchants/${merchantId}/customer-consents/${customerKey}.json`;
-}
-
 function getRaffleDrawPath(merchantId: string, programId: string, month: string) {
   return `merchants/${merchantId}/records/raffle_draw_${programId}_${month}.json`;
 }
@@ -174,7 +161,7 @@ function withVisitValidation(program: RcuProgram): RcuProgram {
     ...program,
     game_config: {
       ...normalizedConfig,
-      visitValidationEnabled: normalizedConfig.visitValidationEnabled ?? true,
+      visitValidationEnabled: true,
       visitValidationCode: existingCode ?? createVisitValidationCode(),
       visitValidationUpdatedAt: existingCode
         ? normalizedConfig.visitValidationUpdatedAt
@@ -347,6 +334,7 @@ export async function updateStoredRcuVisitCode({ merchantId, slug, code }: { mer
   await ensureRcuBucket();
   const stored = normalizeStoredProgram(await downloadJson<RcuProgram>(getFormPath(slug)));
   if (!stored || stored.merchant_id !== merchantId) throw new Error("RCU introuvable.");
+  if (!stored.is_active) throw new Error("Activez ce RCU avant de modifier son code commerçant.");
   const normalizedCode = code ? normalizeRcuVisitCode(code) : createVisitValidationCode();
   if (!normalizedCode) throw new Error("Le code doit contenir 2 à 4 lettres ou chiffres.");
   const updated: RcuProgram = {
@@ -365,6 +353,35 @@ export async function updateStoredRcuVisitCode({ merchantId, slug, code }: { mer
   return updated;
 }
 
+export async function updateStoredRcuStatus({ merchantId, slug, isActive }: { merchantId: string; slug: string; isActive: boolean }) {
+  await ensureRcuBucket();
+  const stored = normalizeStoredProgram(await downloadJson<RcuProgram>(getFormPath(slug)));
+  if (!stored || stored.merchant_id !== merchantId) throw new Error("RCU introuvable.");
+  const updated = withVisitValidation({ ...stored, is_active: isActive });
+  await Promise.all([
+    uploadJson(getFormPath(slug), updated, true),
+    uploadJson(getMerchantFormPath(merchantId, slug), updated, true)
+  ]);
+
+  const supabase = createSupabaseAdminClient();
+  await supabase.from("rcu_forms").update({ is_active: isActive }).eq("merchant_id", merchantId).eq("slug", slug);
+  return updated;
+}
+
+export async function deleteStoredRcuForm({ merchantId, slug }: { merchantId: string; slug: string }) {
+  await ensureRcuBucket();
+  const stored = normalizeStoredProgram(await downloadJson<RcuProgram>(getFormPath(slug)));
+  if (!stored || stored.merchant_id !== merchantId) throw new Error("RCU introuvable.");
+
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase.storage.from(RCU_BUCKET).remove([
+    getFormPath(slug),
+    getMerchantFormPath(merchantId, slug)
+  ]);
+  if (error) throw new Error(`Suppression impossible : ${error.message}`);
+  await supabase.from("rcu_forms").delete().eq("merchant_id", merchantId).eq("slug", slug);
+}
+
 export async function getStoredRcuForm(slugValue: string) {
   await ensureRcuBucket();
   const slug = slugifyRcuValue(slugValue);
@@ -378,7 +395,7 @@ export async function getStoredRcuForm(slugValue: string) {
     return null;
   }
 
-  if (!normalizeRcuVisitCode(form.game_config.visitValidationCode)) {
+  if (form.game_config.visitValidationEnabled === false || !normalizeRcuVisitCode(form.game_config.visitValidationCode)) {
     form = withVisitValidation(form);
     await Promise.all([
       uploadJson(getFormPath(slug), form, true),
@@ -431,7 +448,7 @@ export async function listStoredRcuForms(merchantId: string) {
     .sort((left, right) => right.created_at.localeCompare(left.created_at));
 
   return Promise.all(normalizedForms.map(async (form) => {
-    if (normalizeRcuVisitCode(form.game_config.visitValidationCode)) return form;
+    if (form.game_config.visitValidationEnabled !== false && normalizeRcuVisitCode(form.game_config.visitValidationCode)) return form;
     const migrated = withVisitValidation(form);
     await Promise.all([
       uploadJson(getFormPath(form.slug), migrated, true),
@@ -702,78 +719,11 @@ export async function listStoredRcuLeads(merchantId: string): Promise<RcuLeadRec
     .sort((left, right) => right.submitted_at.localeCompare(left.submitted_at));
 }
 
-export async function listStoredRcuDeveloperEmailConsents(merchantId: string): Promise<RcuDeveloperEmailConsent[]> {
-  await ensureRcuBucket();
-  const supabase = createSupabaseAdminClient();
-  const prefix = `merchants/${merchantId}/customer-consents`;
-  const { data, error } = await supabase.storage.from(RCU_BUCKET).list(prefix, {
-    limit: 1000,
-    sortBy: { column: "updated_at", order: "desc" }
-  });
-
-  if (error) {
-    throw new Error(`Impossible de charger les consentements de test : ${error.message}`);
-  }
-
-  const records = await Promise.all(
-    (data ?? [])
-      .filter((item) => item.name.endsWith(".json"))
-      .map((item) => downloadJson<RcuDeveloperEmailConsent>(`${prefix}/${item.name}`))
-  );
-
-  return records.filter((record): record is RcuDeveloperEmailConsent => Boolean(
-    record
-      && record.merchant_id === merchantId
-      && /^[a-f0-9]{24}$/i.test(record.customer_key)
-      && record.source === "developer"
-  ));
-}
-
-export async function setStoredRcuDeveloperEmailConsent({
-  merchantId,
-  customerKey,
-  enabled
-}: {
-  merchantId: string;
-  customerKey: string;
-  enabled: boolean;
-}) {
-  if (!/^[a-f0-9]{24}$/i.test(customerKey)) {
-    throw new Error("Identifiant client invalide.");
-  }
-
-  const leads = await listStoredRcuLeads(merchantId);
-  const customerLead = leads.find((lead) => getRcuCustomerKey(merchantId, lead.phone, lead.email) === customerKey);
-
-  if (!customerLead) {
-    throw new Error("Client introuvable.");
-  }
-
-  if (!/^\S+@\S+\.\S+$/.test(customerLead.email?.trim() ?? "")) {
-    throw new Error("Ce client ne possède pas d’adresse e-mail valide.");
-  }
-
-  const consent: RcuDeveloperEmailConsent = {
-    merchant_id: merchantId,
-    customer_key: customerKey,
-    enabled,
-    source: "developer",
-    updated_at: new Date().toISOString()
-  };
-
-  await uploadJson(getDeveloperEmailConsentPath(merchantId, customerKey), consent, true);
-  return consent;
-}
-
 function buildStoredRcuCustomers(
   merchantId: string,
-  records: RcuLeadRecord[],
-  developerEmailConsents: RcuDeveloperEmailConsent[] = []
+  records: RcuLeadRecord[]
 ): RcuCustomerRow[] {
   const latestByIdentity = new Map<string, RcuLeadRecord>();
-  const developerConsentByCustomer = new Map(
-    developerEmailConsents.map((consent) => [consent.customer_key, consent.enabled])
-  );
 
   records.forEach((lead) => {
     const customerKey = getRcuCustomerKey(merchantId, lead.phone, lead.email);
@@ -782,7 +732,6 @@ function buildStoredRcuCustomers(
 
   return Array.from(latestByIdentity.entries()).map(([customerKey, lead]) => {
     const customerConsent = lead.consent_email === true;
-    const developerConsent = developerConsentByCustomer.get(customerKey) === true;
 
     return {
       id: customerKey,
@@ -793,9 +742,8 @@ function buildStoredRcuCustomers(
       email: lead.email,
       gender_guess: null,
       opt_in_sms: lead.consent_sms,
-      opt_in_email: customerConsent || developerConsent,
-      developer_email_consent: developerConsent,
-      email_consent_source: customerConsent ? "customer" : developerConsent ? "developer" : null,
+      opt_in_email: customerConsent,
+      email_consent_source: customerConsent ? "customer" : null,
       sms_unsubscribed: false,
       favorite_products: lead.favorite_products ? [lead.favorite_products] : [],
       last_purchase_date: lead.last_purchase_date ?? null,
@@ -807,23 +755,19 @@ function buildStoredRcuCustomers(
 }
 
 export async function listStoredRcuCustomers(merchantId: string): Promise<RcuCustomerRow[]> {
-  const [records, developerEmailConsents] = await Promise.all([
-    listStoredRcuLeads(merchantId),
-    listStoredRcuDeveloperEmailConsents(merchantId)
-  ]);
-  return buildStoredRcuCustomers(merchantId, records, developerEmailConsents);
+  const records = await listStoredRcuLeads(merchantId);
+  return buildStoredRcuCustomers(merchantId, records);
 }
 
 export async function getStoredRcuCustomerDetail(merchantId: string, customerKey: string): Promise<RcuCustomerDetail | null> {
-  const [leads, allPlays, allRedemptions, allRaffleDraws, directWallet, developerEmailConsents] = await Promise.all([
+  const [leads, allPlays, allRedemptions, allRaffleDraws, directWallet] = await Promise.all([
     listStoredRcuLeads(merchantId),
     listStoredRcuGameRecords(merchantId),
     listStoredRcuRewardRedemptions(merchantId),
     listStoredRcuRaffleDraws(merchantId),
-    getStoredRcuWalletForCustomer(merchantId, customerKey),
-    listStoredRcuDeveloperEmailConsents(merchantId)
+    getStoredRcuWalletForCustomer(merchantId, customerKey)
   ]);
-  const customers = buildStoredRcuCustomers(merchantId, leads, developerEmailConsents);
+  const customers = buildStoredRcuCustomers(merchantId, leads);
   const customer = customers.find((item) => item.id === customerKey);
   if (!customer) return null;
 

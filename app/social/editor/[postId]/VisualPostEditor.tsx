@@ -20,7 +20,7 @@ export function VisualPostEditor({
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#F5F1E9]">
       <iframe
-        src={`/social-editor-canva-reference.html?postId=${encodeURIComponent(post.id)}${initialAction ? `&action=${encodeURIComponent(initialAction)}` : ""}${scheduledAt ? `&scheduledAt=${encodeURIComponent(scheduledAt)}` : ""}`}
+        src={`/social-editor-canva-reference.html?v=20260828-fonts&postId=${encodeURIComponent(post.id)}${initialAction ? `&action=${encodeURIComponent(initialAction)}` : ""}${scheduledAt ? `&scheduledAt=${encodeURIComponent(scheduledAt)}` : ""}`}
         title="Éditeur de design du post"
         className="h-full w-full border-0"
       />

@@ -69,7 +69,7 @@ function getActivityItems(reviews: Review[]): TimelineItem[] {
     items.push({
       id: "validated",
       title: "Réponses validées",
-      body: `${counters.readyToPublish} réponse${counters.readyToPublish > 1 ? "s sont" : " est"} prête${counters.readyToPublish > 1 ? "s" : ""} pour la future publication Google.`,
+      body: `${counters.readyToPublish} réponse${counters.readyToPublish > 1 ? "s sont" : " est"} prête${counters.readyToPublish > 1 ? "s" : ""} à publier sur Google.`,
       dateLabel: "Cette semaine",
       tone: "green"
     });

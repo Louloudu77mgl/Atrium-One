@@ -42,6 +42,14 @@ export function TestFlowPanel({
             <input className={inputClass} type="number" value={scenario.visits} onChange={(event) => onScenarioChange({ ...scenario, visits: Number(event.target.value) })} />
           </label>
           <label className="block">
+            <span className="mb-1 block text-[12px] font-bold text-[#6E6A76]">Solde de points fidélité</span>
+            <input className={inputClass} type="number" value={scenario.points} onChange={(event) => onScenarioChange({ ...scenario, points: Number(event.target.value) })} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[12px] font-bold text-[#6E6A76]">Jours depuis la visite précédente</span>
+            <input className={inputClass} type="number" value={scenario.daysSinceLastVisit} onChange={(event) => onScenarioChange({ ...scenario, daysSinceLastVisit: Number(event.target.value) })} />
+          </label>
+          <label className="block">
             <span className="mb-1 block text-[12px] font-bold text-[#6E6A76]">Récompenses gagnées</span>
             <input className={inputClass} type="number" value={scenario.rewards} onChange={(event) => onScenarioChange({ ...scenario, rewards: Number(event.target.value) })} />
           </label>

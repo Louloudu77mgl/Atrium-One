@@ -165,8 +165,9 @@ select {
 }
 
 .ao-page-width {
-  margin-inline: auto;
-  max-width: 84rem;
+  width: 100%;
+  margin-inline: 0;
+  max-width: none;
 }
 
 .ao-stack-6 > * + * {

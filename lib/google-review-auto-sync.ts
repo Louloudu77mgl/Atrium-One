@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getGoogleConnection, upsertGoogleConnection } from "@/lib/google-connections";
 import { syncGoogleBusinessReviews } from "@/lib/google-review-sync";
 import { runReviewAutomationsForMerchant } from "@/lib/review-automation-runner";
+import { getOrRefreshReviewInsights } from "@/lib/review-insights-server";
+import { mapReviewRow } from "@/lib/reviews";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Database, GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
 
@@ -37,6 +39,22 @@ export async function syncGoogleReviewsIfStale({
   try {
     const imported = await syncGoogleBusinessReviews(connection, merchant, databaseClient);
     await runReviewAutomationsForMerchant(merchant.id, 5);
+    const supabase = databaseClient ?? createSupabaseAdminClient();
+    const { data: reviewRows, error: reviewsError } = await supabase
+      .from("reviews")
+      .select("*")
+      .eq("merchant_id", merchant.id)
+      .order("created_at", { ascending: false });
+
+    if (reviewsError) {
+      throw new Error(reviewsError.message);
+    }
+
+    await getOrRefreshReviewInsights(
+      merchant,
+      (reviewRows ?? []).map((review, index) => mapReviewRow(review, index)),
+      supabase
+    );
     return { attempted: true, imported, error: null };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Synchronisation Google impossible.";

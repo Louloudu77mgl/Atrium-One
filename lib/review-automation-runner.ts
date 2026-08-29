@@ -11,6 +11,7 @@ import {
 import { hansHtmlToPlainText, sanitizeHansHtml } from "@/lib/sanitize-hans-html";
 import { createTriggeredSocialDraft } from "@/lib/social-automation";
 import { publishPostToInstagram } from "@/lib/social-publish";
+import { createMerchantNotification } from "@/lib/merchant-notifications";
 import { getEmailingDashboardData } from "@/lib/emailing-data";
 import { generateEmailWithHans } from "@/lib/emailing-hans";
 import { createEmailCampaign, createEmailRecipients } from "@/lib/emailing-store";
@@ -70,6 +71,7 @@ type ReviewFlowPlan = {
 };
 
 const ratings: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
+const reviewTriggerTypes = new Set(["google_review", "review_by_rating", "review_keyword"]);
 
 export async function runReviewAutomations(limit = 5) {
   const supabase = createSupabaseAdminClient();
@@ -113,7 +115,7 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
     if (connectionError) throw new Error(connectionError.message);
 
     const activeReviewFlows = storedFlows
-      .filter((flow) => flow.status === "active" && flow.nodes.some((node) => node.type === "google_review"))
+      .filter((flow) => flow.status === "active" && flow.nodes.some((node) => reviewTriggerTypes.has(node.type)))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
     if (!activeReviewFlows.length) {
@@ -179,14 +181,15 @@ export async function runReviewAutomationsForMerchant(merchantId: string, limit 
 }
 
 function hasConfiguredReviewWatch(flow: StoredAutomationFlow) {
-  const trigger = flow.nodes.find((node) => node.type === "google_review");
+  const trigger = getReviewTrigger(flow);
+  if (trigger?.type !== "google_review") return Boolean(trigger);
   const count = Number(trigger?.config.interval_count);
   const unit = String(trigger?.config.interval_unit ?? "").toLocaleLowerCase("fr-FR");
   return Number.isFinite(count) && count >= 1 && count <= 52 && (unit.startsWith("jour") || unit.startsWith("semaine"));
 }
 
 function isReviewWatchDue(flow: StoredAutomationFlow, lastCheckedAt: string, now: Date) {
-  const trigger = flow.nodes.find((node) => node.type === "google_review");
+  const trigger = getReviewTrigger(flow);
   const count = Math.min(52, Math.max(1, Math.floor(Number(trigger?.config.interval_count ?? 1) || 1)));
   const unit = String(trigger?.config.interval_unit ?? "jour(s)").toLocaleLowerCase("fr-FR");
   const intervalDays = unit.startsWith("semaine") ? count * 7 : count;
@@ -234,7 +237,7 @@ async function processMerchantReviews({
       const rating = ratings[review.starRating ?? ""] ?? 3;
       const plans = flows
         .filter((flow) => !completedExecutions.has(`${review.name}:${flow.id}`))
-        .map((flow) => buildReviewFlowPlan(flow, rating))
+        .map((flow) => buildReviewFlowPlan(flow, review, rating))
         .filter((plan) => plan.action !== "disabled");
       if (!plans.length) {
         const alreadyHandled = flows.some((flow) => completedExecutions.has(`${review.name}:${flow.id}`));
@@ -286,6 +289,7 @@ async function processGoogleReview({
   const supabase = createSupabaseAdminClient();
   const rating = ratings[review.starRating ?? ""] ?? 3;
   const reviewText = review.comment?.trim() || "Avis sans commentaire";
+  const requiresHumanReview = mustKeepHumanValidation(rating, reviewText);
   const localReview = await findOrCreateReview({ merchant, review, rating, reviewText });
   const { data: existingReply, error: existingReplyError } = await supabase
     .from("generated_replies")
@@ -315,14 +319,13 @@ async function processGoogleReview({
   try {
     for (const node of plan.nodes) {
       activeNode = node;
-    if (node.type === "google_review") {
+    if (reviewTriggerTypes.has(node.type)) {
       steps.push(step(node, "success", `Avis ${rating}/5 reçu pour ce compte.`));
       continue;
     }
 
-    if (node.type === "review_rating_gte") {
-      const threshold = Number(node.config.rating ?? 4);
-      steps.push(step(node, "success", rating >= threshold ? `Condition validée : ${rating} ≥ ${threshold}.` : `Condition non validée : ${rating} < ${threshold}.`));
+    if (["review_rating_gte", "review_rating_compare", "review_content", "review_status"].includes(node.type)) {
+      steps.push(step(node, "success", evaluateReviewCondition(node, review, rating) ? "Condition validée : branche Oui." : "Condition non validée : branche Non."));
       continue;
     }
 
@@ -353,10 +356,22 @@ async function processGoogleReview({
     if (node.type === "notify_merchant") {
       await updateReviewStatus(localReview.id, "generated");
       const body = String(node.config.message ?? "Une automatisation Avis nécessite votre attention.");
-      const notification = await supabase.from("notifications").insert({ merchant_id: merchant.id, title: plan.flow.title, body, type: "hans_task_done", read: false });
-      if (notification.error) throw new Error(notification.error.message);
-      steps.push(step(node, "success", "Notification créée dans AtriumOne."));
+      const storage = await createMerchantNotification({ supabase, merchantId: merchant.id, title: plan.flow.title, body });
+      steps.push(step(
+        node,
+        "success",
+        storage === "notification"
+          ? "Notification créée dans AtriumOne."
+          : "Notification enregistrée dans l’historique de l’automatisation."
+      ));
       continue;
+    }
+
+    if (node.type === "request_human_validation") {
+      const body = String(node.config.message ?? "Une automatisation Avis attend votre validation.");
+      await createMerchantNotification({ supabase, merchantId: merchant.id, title: `Validation · ${plan.flow.title}`, body });
+      steps.push(step(node, "waiting", "Validation demandée au commerçant."));
+      return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "drafted", message: "Le scénario attend une validation humaine.", flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
     }
 
     if (node.type === "limit_once") {
@@ -381,6 +396,29 @@ async function processGoogleReview({
           rating,
           status: "drafted",
           message: "Le scénario a préparé la réponse et attend l’action prévue dans le flow.",
+          flow_id: plan.flow.id,
+          flow_title: plan.flow.title,
+          steps
+        };
+      }
+
+      if (requiresHumanReview) {
+        await updateReviewStatus(localReview.id, "generated");
+        await createMerchantNotification({
+          supabase,
+          merchantId: merchant.id,
+          title: "Avis sensible à valider",
+          body: `Une réponse à l’avis ${rating}/5 de ${getGoogleReviewerName(review)} attend votre validation humaine.`
+        });
+        steps.push(step(node, "waiting", "Publication automatique bloquée par le garde-fou des avis sensibles."));
+        return {
+          merchant_id: merchant.id,
+          local_review_id: localReview.id,
+          review_name: review.name,
+          customer_name: getGoogleReviewerName(review),
+          rating,
+          status: "drafted",
+          message: "Avis sensible : réponse préparée, validation humaine obligatoire.",
           flow_id: plan.flow.id,
           flow_title: plan.flow.title,
           steps
@@ -424,6 +462,29 @@ async function processGoogleReview({
       } catch (error) {
         steps.push(step(node, "error", error instanceof Error ? error.message : "Publication Instagram impossible."));
       }
+      continue;
+    }
+
+    if (node.type === "schedule_instagram") {
+      if (!socialPost) {
+        steps.push(step(node, "skipped", "Planification ignorée car aucun post n'a été préparé."));
+        continue;
+      }
+      const delayHours = Math.max(1, Number(node.config.delay_hours ?? 24));
+      const scheduledAt = new Date(Date.now() + delayHours * 3_600_000).toISOString();
+      const { data: scheduledPost, error } = await supabase.from("social_posts").update({ status: "scheduled", scheduled_at: scheduledAt, updated_at: new Date().toISOString() }).eq("id", socialPost.id).select("*").single();
+      if (error) throw new Error(error.message);
+      socialPost = scheduledPost;
+      steps.push(step(node, "success", `Publication Instagram planifiée dans ${delayHours} heure(s).`));
+      continue;
+    }
+
+    if (node.type === "allowed_window") {
+      if (!isWithinAllowedWindow(node.config)) {
+        steps.push(step(node, "skipped", "Avis reçu hors de la plage horaire autorisée."));
+        return { merchant_id: merchant.id, local_review_id: localReview.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Scénario arrêté hors de la plage horaire autorisée.", flow_id: plan.flow.id, flow_title: plan.flow.title, steps };
+      }
+      steps.push(step(node, "success", "Plage horaire autorisée."));
       continue;
     }
 
@@ -577,6 +638,11 @@ async function processGoogleReview({
   }
 }
 
+function mustKeepHumanValidation(rating: number, reviewText: string) {
+  if (rating <= 2) return true;
+  return /avocat|juridique|justice|plainte|accident|bless|sant[ée]|malade|allerg|rembours|arnaque|discrimin|racis|harc[eè]l|agress|violence|menace|conflit|litige|danger|urgence/i.test(reviewText);
+}
+
 function getApplicationOrigin() {
   const configured = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.SITE_URL;
   if (configured) return configured.replace(/\/$/, "");
@@ -584,14 +650,15 @@ function getApplicationOrigin() {
   return vercelHost ? `https://${vercelHost}` : "http://localhost:3000";
 }
 
-function buildReviewFlowPlan(flow: StoredAutomationFlow, rating: number): ReviewFlowPlan {
+function buildReviewFlowPlan(flow: StoredAutomationFlow, review: GoogleReview, rating: number): ReviewFlowPlan {
   const nodesById = new Map(flow.nodes.map((node) => [node.id, node]));
   const nodes: StoredAutomationFlow["nodes"] = [];
   const visited = new Set<string>();
-  let current = flow.nodes.find((node) => node.type === "google_review");
+  let current: StoredAutomationFlow["nodes"][number] | undefined = getReviewTrigger(flow);
   let requiresValidation = false;
   let action: ReviewFlowPlan["action"] = "disabled";
   let tone: string | null = null;
+  if (!current || !reviewMatchesTrigger(current, review, rating)) return { flow, nodes, action: "disabled", tone };
 
   while (current && !visited.has(current.id)) {
     visited.add(current.id);
@@ -606,15 +673,60 @@ function buildReviewFlowPlan(flow: StoredAutomationFlow, rating: number): Review
 
     let branch: "default" | "yes" | "no" = "default";
     if (current.category === "condition") {
-      if (current.type !== "review_rating_gte") return { flow, nodes, action: "disabled", tone };
-      branch = rating >= Number(current.config.rating ?? 4) ? "yes" : "no";
+      if (!["review_rating_gte", "review_rating_compare", "review_content", "review_status"].includes(current.type)) return { flow, nodes, action: "disabled", tone };
+      branch = evaluateReviewCondition(current, review, rating) ? "yes" : "no";
     }
-    const edge = flow.edges.find((candidate) => candidate.source === current?.id && candidate.branch === branch);
+    const edge: StoredAutomationFlow["edges"][number] | undefined = flow.edges.find((candidate) => candidate.source === current?.id && candidate.branch === branch);
     current = edge ? nodesById.get(edge.target) : undefined;
   }
 
-  if (action === "disabled" && nodes.some((node) => node.type === "generate_review_reply")) action = "validation";
+  if (action === "disabled" && nodes.some((node) => node.category === "action")) action = nodes.some((node) => node.mode !== "automatic") ? "validation" : "automatic";
   return { flow, nodes, action, tone };
+}
+
+function getReviewTrigger(flow: StoredAutomationFlow) {
+  return flow.nodes.find((node) => reviewTriggerTypes.has(node.type));
+}
+
+function reviewMatchesTrigger(node: StoredAutomationFlow["nodes"][number], review: GoogleReview, rating: number) {
+  if (node.type === "review_by_rating") return rating === Number(node.config.rating ?? 5);
+  if (node.type === "review_keyword") {
+    const keyword = normalizeReviewText(String(node.config.keyword ?? ""));
+    return Boolean(keyword && normalizeReviewText(review.comment ?? "").includes(keyword));
+  }
+  return node.type === "google_review";
+}
+
+function evaluateReviewCondition(node: StoredAutomationFlow["nodes"][number], review: GoogleReview, rating: number) {
+  if (node.type === "review_rating_gte") return rating >= Number(node.config.rating ?? 4);
+  if (node.type === "review_rating_compare") {
+    const threshold = Number(node.config.rating ?? 4);
+    const operator = String(node.config.operator ?? "Au moins");
+    return operator === "Au plus" ? rating <= threshold : operator === "Égale à" ? rating === threshold : rating >= threshold;
+  }
+  if (node.type === "review_content") {
+    const keyword = normalizeReviewText(String(node.config.keyword ?? ""));
+    return Boolean(keyword && normalizeReviewText(review.comment ?? "").includes(keyword));
+  }
+  if (node.type === "review_status") {
+    const status = String(node.config.status ?? "Sensible");
+    if (status === "Positif") return rating >= 4;
+    if (status === "Négatif") return rating <= 2;
+    if (status === "Déjà répondu") return Boolean(review.reviewReply?.comment);
+    return mustKeepHumanValidation(rating, review.comment ?? "");
+  }
+  return false;
+}
+
+function normalizeReviewText(value: string) {
+  return value.toLocaleLowerCase("fr-FR").normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/\s+/g, " ").trim();
+}
+
+function isWithinAllowedWindow(config: Record<string, string | number | boolean>) {
+  const hour = Number(new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", hour12: false, timeZone: "Europe/Paris" }).format(new Date()));
+  const start = Math.max(0, Math.min(23, Number(config.start_hour ?? 8)));
+  const end = Math.max(0, Math.min(23, Number(config.end_hour ?? 20)));
+  return start <= end ? hour >= start && hour < end : hour >= start || hour < end;
 }
 
 function step(node: StoredAutomationFlow["nodes"][number], status: AutomationResultStep["status"], result: string): AutomationResultStep {

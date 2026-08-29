@@ -22,7 +22,7 @@ export default async function ReviewsPage() {
     redirect("/login");
   }
 
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
 
   if (!merchant) {
     redirect("/onboarding");
@@ -30,7 +30,7 @@ export default async function ReviewsPage() {
 
   const googleConnection = await getGoogleConnectionWithAutoSync(merchant);
   const [reviews, automationSettings] = await Promise.all([
-    getReviews(),
+    getReviews(merchant),
     getAutomationSettings(merchant)
   ]);
 

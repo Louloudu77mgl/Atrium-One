@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Icon } from "@/components/icons";
 import { buttonStyles } from "@/lib/design-system";
 import { TEMPLATE_LIBRARY } from "@/lib/social-editor/document";
+import { SOCIAL_FONTS } from "@/lib/social-fonts";
 import type { EditorSidebarTab } from "@/lib/social-editor/types";
 import type { MerchantBrandSettingsRow, MerchantMediaAssetRow } from "@/lib/supabase/types";
 import styles from "./editor-shell.module.css";
@@ -33,7 +34,7 @@ export function EditorSidebar({
   activeTab: EditorSidebarTab;
   onTabChange: (tab: EditorSidebarTab) => void;
   onApplyTemplate: (templateId: string) => void;
-  onAddText: (kind: "title" | "subtitle" | "body" | "small") => void;
+  onAddText: (kind: "title" | "subtitle" | "body" | "small", fontFamily?: string) => void;
   onAddShape: (shape: "rectangle" | "circle" | "line" | "band" | "frame" | "pill" | "divider") => void;
   onUploadImage: (file: File) => void;
   onSelectGalleryImage: (url: string, name: string) => void;
@@ -116,7 +117,7 @@ function TemplatesPanel({ onApplyTemplate }: { onApplyTemplate: (templateId: str
   );
 }
 
-function TextPanel({ onAddText }: { onAddText: (kind: "title" | "subtitle" | "body" | "small") => void }) {
+function TextPanel({ onAddText }: { onAddText: (kind: "title" | "subtitle" | "body" | "small", fontFamily?: string) => void }) {
   const items = [
     { kind: "title" as const, label: "Ajouter un titre", desc: "Grand texte pour l’accroche." },
     { kind: "subtitle" as const, label: "Ajouter un sous-titre", desc: "Texte intermédiaire." },
@@ -132,6 +133,22 @@ function TextPanel({ onAddText }: { onAddText: (kind: "title" | "subtitle" | "bo
           <button key={item.kind} type="button" onClick={() => onAddText(item.kind)} className={styles.cardButton}>
             <div className="text-[13px] font-bold text-[#181227]">{item.label}</div>
             <div className="mt-1 text-[11px] text-[#8B87A0]">{item.desc}</div>
+          </button>
+        ))}
+      </div>
+      <div className={styles.spSectionTitle}>Toutes les typographies</div>
+      <div className="grid gap-2">
+        {SOCIAL_FONTS.map((font) => (
+          <button
+            key={font.value}
+            type="button"
+            onClick={() => onAddText("title", font.value)}
+            className={styles.cardButton}
+          >
+            <div className="text-[11px] font-semibold text-[#8B87A0]">{font.label}</div>
+            <div className="mt-1 truncate text-[20px] leading-6 text-[#181227]" style={{ fontFamily: font.stack }}>
+              Belle histoire
+            </div>
           </button>
         ))}
       </div>

@@ -4,7 +4,7 @@ import { getGoogleConnectionWithAutoSync } from "@/lib/google-review-auto-sync";
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { getMerchant } from "@/lib/merchants";
 import { reviews as mockReviews } from "@/lib/mock-data";
-import { getFallbackReviewInsights, mapInsightRow, prepareReviewInsightsForDisplay } from "@/lib/review-insights";
+import { getFallbackReviewInsights, mapInsightRow } from "@/lib/review-insights";
 import { getStoredReviewInsights } from "@/lib/review-insights-server";
 import { getReviews } from "@/lib/reviews";
 import { getSocialPosts } from "@/lib/social-posts";
@@ -25,7 +25,7 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
 
   if (!merchant) {
     redirect("/onboarding");
@@ -33,14 +33,14 @@ export default async function DashboardPage() {
 
   const googleConnection = await getGoogleConnectionWithAutoSync(merchant);
   const [reviews, instagramConnection, storedInsights, socialPosts] = await Promise.all([
-    getReviews(),
+    getReviews(merchant),
     getInstagramConnection(merchant),
     getStoredReviewInsights(merchant),
     getSocialPosts(merchant)
   ]);
   const visibleInsights = storedInsights
-    ? prepareReviewInsightsForDisplay(mapInsightRow(storedInsights), reviews)
-    : getFallbackReviewInsights(reviews);
+    ? mapInsightRow(storedInsights)
+    : null;
 
   return <AtriumHubDashboard reviews={reviews} merchant={merchant} googleConnection={googleConnection} instagramConnected={instagramConnection?.status === "connected"} insights={visibleInsights} insightsUpdatedAt={storedInsights?.updated_at ?? null} socialPosts={socialPosts} shouldAutoAnalyze={false} />;
 }

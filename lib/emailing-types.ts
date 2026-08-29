@@ -26,16 +26,27 @@ export type EmailSegmentRuleId =
   | "registered_via_rcu"
   | "visited_this_month"
   | "absent_days"
-  | "upcoming_birthday";
+  | "upcoming_birthday"
+  | "regular_customers"
+  | "at_risk_customers"
+  | "dormant_customers"
+  | "lost_customers"
+  | "available_reward"
+  | "close_to_reward"
+  | "preferred_category"
+  | "visits_last_30_days"
+  | "visits_last_90_days";
 
 export type EmailSegmentRule = {
   id: EmailSegmentRuleId;
-  value?: number;
+  value?: number | string;
 };
 
 export type EmailSubscriberProfile = {
   id: string;
   email: string;
+  emailConsent: boolean;
+  emailValid: boolean;
   firstName: string;
   lastName: string;
   source: "rcu" | "import";
@@ -47,6 +58,9 @@ export type EmailSubscriberProfile = {
   points: number;
   reviewRating: number | null;
   birthday: string | null;
+  preferences: string[];
+  visitsLast30Days: number;
+  visitsLast90Days: number;
 };
 
 export type EmailCampaignContent = {

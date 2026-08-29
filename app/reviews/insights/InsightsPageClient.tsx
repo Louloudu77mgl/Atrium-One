@@ -1,20 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { Icon } from "@/components/icons";
 import { Sidebar } from "@/components/Sidebar";
-import { Toast } from "@/components/Toast";
-import { useToast } from "@/hooks/useToast";
-import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import type { Review } from "@/lib/mock-data";
 import { getAppNotifications } from "@/lib/notifications";
 import type { RecommendedActionChannel, ReviewInsightsAnalysis } from "@/lib/review-insights";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import type { GoogleConnectionRow, MerchantRow } from "@/lib/supabase/types";
-import { getUserErrorMessage } from "@/lib/user-feedback";
-import { appShellStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
+import { appShellStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 
 export function InsightsPageClient({
   reviews,
@@ -22,90 +18,35 @@ export function InsightsPageClient({
   googleConnection,
   initialAnalysis,
   initialUpdatedAt,
-  shouldAutoAnalyze
+  initialReviewsCount
 }: {
   reviews: Review[];
   merchant?: MerchantRow | null;
   googleConnection?: GoogleConnectionRow | null;
   initialAnalysis: ReviewInsightsAnalysis | null;
   initialUpdatedAt?: string | null;
-  shouldAutoAnalyze: boolean;
+  initialReviewsCount: number;
 }) {
-  const [analysis, setAnalysis] = useState(initialAnalysis);
-  const [loading, setLoading] = useState(false);
-  const [silentLoading, setSilentLoading] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [lastAnalysisDate, setLastAnalysisDate] = useState(initialUpdatedAt ?? null);
   const [openExamples, setOpenExamples] = useState<Record<string, boolean>>({});
-  const autoStarted = useRef(false);
-  const inFlightRef = useRef(false);
-  const { toast, showToast } = useToast();
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
   const hasReviews = reviews.length > 0;
-  const hasAnalysis = Boolean(analysis);
+  const hasAnalysis = Boolean(initialAnalysis);
 
   const sentiment = useMemo(() => {
-    const positive = reviews.filter((review) => review.sentiment === "positif").length;
-    const neutral = reviews.filter((review) => review.sentiment === "neutre").length;
-    const negative = reviews.filter((review) => review.sentiment === "negatif").length;
-    const total = reviews.length || 1;
+    const snapshot = initialAnalysis?.reviewSnapshot;
+    if (!snapshot) return null;
+    const total = snapshot.reviewsCount || 1;
+    const positive = snapshot.positiveCount;
+    const neutral = snapshot.neutralCount;
+    const negative = snapshot.negativeCount;
     const positivePercent = Math.round((positive / total) * 100);
     const neutralPercent = Math.round((neutral / total) * 100);
     const negativePercent = Math.max(0, 100 - positivePercent - neutralPercent);
     return { positive, neutral, negative, positivePercent, neutralPercent, negativePercent };
-  }, [reviews]);
+  }, [initialAnalysis]);
 
-  async function runAnalysis({ force = false, visible = true }: { force?: boolean; visible?: boolean } = {}) {
-    if (inFlightRef.current) return;
-
-    inFlightRef.current = true;
-    if (visible) {
-      setLoading(true);
-      showToast(force ? "Hans relance l’analyse..." : "Hans analyse vos avis...", "saving");
-    } else {
-      setSilentLoading(true);
-    }
-    setAnalysisError(null);
-
-    try {
-      const response = await fetchWithTimeout("/api/reviews/insights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force })
-      });
-      const data = (await response.json()) as { analysis?: ReviewInsightsAnalysis; updated_at?: string; cached?: boolean; save_error?: string; error?: string };
-
-      if (!response.ok || !data.analysis) {
-        throw new Error(data.error ?? "Impossible d’analyser les avis pour le moment.");
-      }
-
-      setAnalysis(data.analysis);
-      setLastAnalysisDate(data.updated_at ?? new Date().toISOString());
-      if (visible) {
-        showToast(
-          data.save_error ? `Analyse générée mais non sauvegardée : ${data.save_error}` : data.cached ? "Analyse déjà à jour" : "Analyse IA sauvegardée",
-          data.save_error ? "error" : "success"
-        );
-      }
-    } catch (error) {
-      const message = getUserErrorMessage(error, "Impossible d’analyser les avis pour le moment.");
-      setAnalysisError(message);
-      showToast(message, "error");
-    } finally {
-      inFlightRef.current = false;
-      setLoading(false);
-      setSilentLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!hasReviews || !shouldAutoAnalyze || loading || silentLoading || autoStarted.current) return;
-    autoStarted.current = true;
-    void runAnalysis({ force: false, visible: !hasAnalysis });
-  }, [hasAnalysis, hasReviews, loading, shouldAutoAnalyze, silentLoading]);
-
-  const analysisView = analysis ?? { painPoints: [], strengths: [], priorityActions: [], socialPostIdeas: [] };
+  const analysisView = initialAnalysis ?? { painPoints: [], strengths: [], priorityActions: [], socialPostIdeas: [] };
 
   return (
     <div className={appShellStyles.page}>
@@ -114,7 +55,7 @@ export function InsightsPageClient({
         <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
         <main className={appShellStyles.content}>
           <div className={appShellStyles.width}>
-            <div className="mx-auto max-w-[1180px] px-6 pb-20 pt-8">
+            <div className="pb-20">
               {!hasReviews ? (
                 <section className={`${surfaceStyles.empty} p-10 text-center`}>
                   <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F1EAFB] text-[#5B2A9E]">
@@ -123,6 +64,16 @@ export function InsightsPageClient({
                   <h2 className={typographyStyles.h2}>Aucun avis à analyser</h2>
                   <p className={`${typographyStyles.body} mx-auto mt-2 max-w-xl`}>
                     Ajoutez ou importez des avis clients pour que Hans détecte les sujets récurrents et propose des actions marketing.
+                  </p>
+                </section>
+              ) : !hasAnalysis ? (
+                <section className={`${surfaceStyles.empty} p-10 text-center`}>
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F1EAFB] text-[#5B2A9E]">
+                    <Icon name="sparkle" className="h-6 w-6" />
+                  </div>
+                  <h2 className={typographyStyles.h2}>Analyse en cours de préparation</h2>
+                  <p className={`${typographyStyles.body} mx-auto mt-2 max-w-xl`}>
+                    Hans analyse tous les avis présents. Le résultat restera ensuite figé jusqu’à l’arrivée ou la modification d’un avis.
                   </p>
                 </section>
               ) : (
@@ -137,24 +88,18 @@ export function InsightsPageClient({
                       <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-[#9895A8]">
                         <span>
                           Dernière analyse :{" "}
-                          {lastAnalysisDate
-                            ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(lastAnalysisDate))
+                          {initialUpdatedAt
+                            ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(initialUpdatedAt))
                             : "Non disponible"}
                         </span>
                         <span className="h-1 w-1 rounded-full bg-[#9895A8]" />
-                        <span>{reviews.length} avis passés au crible</span>
+                        <span>{analysisView.reviewSnapshot?.reviewsCount ?? initialReviewsCount} avis passés au crible</span>
                         <span className="h-1 w-1 rounded-full bg-[#9895A8]" />
-                        <span>Actualisation automatique chaque jour à 8 h</span>
-                        {silentLoading ? (
-                          <>
-                            <span className="h-1 w-1 rounded-full bg-[#9895A8]" />
-                            <span>Hans vérifie les nouveaux avis…</span>
-                          </>
-                        ) : null}
+                        <span>Actualisée uniquement quand les avis changent</span>
                       </div>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-[22px]">
+                    {sentiment ? <div className="flex shrink-0 items-center">
                       <div className="flex items-center gap-[14px] rounded-[14px] border border-[#F1EEF8] bg-[#F8F5FC] px-4 py-3">
                         <div
                           className="flex h-16 w-16 items-center justify-center rounded-full"
@@ -173,36 +118,11 @@ export function InsightsPageClient({
                           <LegendRow color="#D64545" label={`${sentiment.negativePercent}% négatifs`} />
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={() => runAnalysis({ force: true, visible: true })}
-                        disabled={loading}
-                        className={`${buttonStyles.primary} gap-2 disabled:cursor-not-allowed disabled:opacity-60`}
-                      >
-                        <Icon name="refresh" className={`h-4 w-4 ${loading ? "[animation:spin-once_0.8s_linear_infinite]" : ""}`} />
-                        {hasAnalysis ? "Relancer l’analyse" : "Lancer l’analyse"}
-                      </button>
-                    </div>
+                    </div> : null}
                   </header>
 
                   <section className="mb-9">
-                    {analysisError ? (
-                      <div className="mb-4 rounded-[14px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#DC2626]">{analysisError}</div>
-                    ) : null}
-
-                    {loading && !hasAnalysis ? (
-                      <section className={`${surfaceStyles.section} p-8 text-center`}>
-                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F1EAFB] text-[#5B2A9E]">
-                          <Icon name="refresh" className="h-6 w-6 [animation:spin-once_0.8s_linear_infinite]" />
-                        </div>
-                        <h3 className="text-[20px] font-extrabold text-[#1E1B2E]">Hans analyse vos avis</h3>
-                        <p className="mx-auto mt-2 max-w-xl text-[14px] leading-[1.55] text-[#6E6B80]">
-                          Hans lit les avis, repère les douleurs clients récurrentes, les points forts et prépare vos prochaines actions.
-                        </p>
-                      </section>
-                    ) : (
-                      <div className="space-y-[18px]">
+                    <div className="space-y-[18px]">
                         <div className="grid items-start gap-[18px] xl:grid-cols-2">
                           <InsightColumn
                             id="pains"
@@ -252,8 +172,7 @@ export function InsightsPageClient({
                             strategyPoints: item.strategyPoints
                           }))}
                         />
-                      </div>
-                    )}
+                    </div>
                   </section>
                 </>
               )}
@@ -261,7 +180,6 @@ export function InsightsPageClient({
           </div>
         </main>
       </div>
-      <Toast toast={toast} />
     </div>
   );
 }

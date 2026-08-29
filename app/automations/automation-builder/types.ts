@@ -21,7 +21,7 @@ export type NodeLibraryItem = {
   category: NodeCategory;
   title: string;
   description: string;
-  icon: "alert" | "sparkle" | "mail" | "star" | "bell" | "chart" | "document" | "store" | "message" | "party" | "refresh" | "lock" | "phone";
+  icon: "alert" | "sparkle" | "mail" | "star" | "bell" | "chart" | "document" | "store" | "message" | "party" | "refresh" | "lock" | "phone" | "check" | "inbox" | "search" | "image" | "link";
   color: string;
   provider?: string;
   tags?: string[];
@@ -29,6 +29,8 @@ export type NodeLibraryItem = {
   defaultConfig: Record<string, string | number | boolean>;
   defaultMode?: AutomationMode;
   branchLabels?: EdgeBranch[];
+  availability?: "ready" | "planned";
+  availabilityNote?: string;
 };
 
 export type AutomationNodeData = {
@@ -115,6 +117,8 @@ export type CanvasConnectionDraft = {
 export type TestScenario = {
   customerName: string;
   visits: number;
+  points: number;
+  daysSinceLastVisit: number;
   rewards: number;
   marketingConsent: boolean;
   reviewRating: number;

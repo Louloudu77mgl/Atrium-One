@@ -4,15 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createRcuPosterDocument } from "@/lib/rcu";
 import { renderDocumentToDataUrl } from "@/lib/social-editor/export";
-import type { EditorFormat, ExportSettings } from "@/lib/social-editor/types";
+import type { ExportSettings } from "@/lib/social-editor/types";
 import { buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 import type { MerchantBrandSettingsRow, MerchantRow, RcuFormRow } from "@/lib/supabase/types";
-
-const FORMAT_OPTIONS: Array<{ id: EditorFormat; label: string; description: string }> = [
-  { id: "portrait", label: "Affiche portrait", description: "Le plus adapté pour une vitrine, un comptoir ou un chevalet." },
-  { id: "square", label: "Visuel carré", description: "Pratique pour une impression compacte ou un repost sur les réseaux." },
-  { id: "story", label: "Format story", description: "Utile pour réutiliser le visuel en story ou écran vertical." }
-];
 
 export function RcuPosterStudio({
   form,
@@ -36,15 +30,14 @@ export function RcuPosterStudio({
   merchant?: MerchantRow | null;
   brandSettings?: MerchantBrandSettingsRow | null;
 }) {
-  const [format, setFormat] = useState<EditorFormat>("portrait");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const document = useMemo(
-    () => createRcuPosterDocument({ form, origin, merchant, brandSettings, format }),
-    [brandSettings, form, format, merchant, origin]
+    () => createRcuPosterDocument({ form, origin, merchant, brandSettings, format: "a4" }),
+    [brandSettings, form, merchant, origin]
   );
 
   useEffect(() => {
@@ -87,7 +80,7 @@ export function RcuPosterStudio({
       const settings: ExportSettings = {
         format: "png",
         jpegQuality: 0.92,
-        fileName: `rcu-${form.slug}-${format}.png`,
+        fileName: `affiche-rcu-${form.slug}-a4.png`,
         transparentBackground: false
       };
       const url = await renderDocumentToDataUrl(document, settings);
@@ -124,30 +117,15 @@ export function RcuPosterStudio({
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[0.38fr_0.62fr]">
+      <section className="grid gap-6 xl:grid-cols-[0.34fr_0.66fr]">
         <section className={surfaceStyles.section}>
-          <h3 className={typographyStyles.h3}>Formats</h3>
-          <div className="mt-4 grid gap-3">
-            {FORMAT_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => setFormat(option.id)}
-                className={`rounded-[20px] border px-4 py-4 text-left transition ${
-                  option.id === format
-                    ? "border-[var(--color-primary)] bg-[var(--color-primary-soft)]"
-                    : "border-[var(--color-border)] bg-white hover:border-[var(--color-primary)]/40"
-                }`}
-              >
-                <div className="text-sm font-black text-[var(--color-text)]">{option.label}</div>
-                <p className="mt-1 text-sm text-[var(--color-text-muted)]">{option.description}</p>
-              </button>
-            ))}
-          </div>
+          <div className="inline-flex rounded-full bg-[#F0E8FF] px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-[#5B2A9E]">Affiche RCU · A4</div>
+          <h3 className={`${typographyStyles.h3} mt-4`}>Prête à imprimer</h3>
+          <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Le format est verrouillé en A4 pour garantir une impression nette en vitrine, sur comptoir ou près de la caisse.</p>
           <div className="mt-6 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-4">
-            <div className="text-sm font-black text-[var(--color-text)]">Conseil boutique</div>
+            <div className="text-sm font-black text-[var(--color-text)]">Support d’impression uniquement</div>
             <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-              Utilisez le format portrait pour une impression caisse ou vitrine, puis le carré pour republier le même message sur Instagram ou WhatsApp.
+              Cette affiche ne peut ni être planifiée ni être publiée sur Instagram. Elle reste modifiable et téléchargeable depuis vos designs.
             </p>
           </div>
         </section>

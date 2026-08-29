@@ -27,7 +27,7 @@ export function SocialCreatePostClient({
       if (!unique.has(key)) unique.set(key, { ...idea, platform: "instagram" });
     });
 
-    return [...unique.values()].slice(0, 2);
+    return [...unique.values()].slice(0, 6);
   }, [ideas, initialIdea]);
   const [selectedKey, setSelectedKey] = useState(() => initialIdea ? getIdeaKey(initialIdea) : "");
   const [prompt, setPrompt] = useState("");
@@ -47,9 +47,13 @@ export function SocialCreatePostClient({
           platform: "instagram",
           title: selectedIdea.title,
           angle: selectedIdea.angle,
-          source: selectedIdea.sourcePainPoint ?? selectedIdea.sourceStrength ?? selectedIdea.seasonalMoment ?? "Recommandation Hans",
+          source: selectedIdea.sourcePainPoint ?? selectedIdea.sourceStrength ?? selectedIdea.localEvent ?? selectedIdea.seasonalMoment ?? "Recommandation Hans",
           category: selectedIdea.category,
-          seasonalMoment: selectedIdea.seasonalMoment
+          seasonalMoment: selectedIdea.seasonalMoment,
+          localEvent: selectedIdea.localEvent,
+          eventDate: selectedIdea.eventDate,
+          sourceUrl: selectedIdea.sourceUrl,
+          visualDirection: selectedIdea.visualDirection
         }
       : {
           platform: "instagram",
@@ -78,7 +82,7 @@ export function SocialCreatePostClient({
   }
 
   return (
-    <div className="mx-auto max-w-[980px] px-6 pb-20 pt-8">
+    <div className="pb-20">
       <Link href="/social" className="mb-5 inline-flex items-center gap-2 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
         Retour à Instagram
@@ -105,7 +109,7 @@ export function SocialCreatePostClient({
                 <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Les recommandations de Hans</p>
                 <p className="mt-1 text-[13px] text-[#777287]">Sélectionnez l’idée qui vous convient.</p>
               </div>
-              <span className="rounded-full bg-[#F1EAFB] px-3 py-1 text-[11.5px] font-semibold text-[#4B2E83]">2 idées maximum</span>
+              <span className="rounded-full bg-[#F1EAFB] px-3 py-1 text-[11.5px] font-semibold text-[#4B2E83]">{recommendationIdeas.length} idées disponibles</span>
             </div>
 
             {recommendationIdeas.length > 0 ? (
@@ -113,7 +117,7 @@ export function SocialCreatePostClient({
                 {recommendationIdeas.map((idea) => {
                   const key = getIdeaKey(idea);
                   const selected = key === selectedKey;
-                  const source = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? "Votre activité";
+                  const source = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Votre activité";
 
                   return (
                     <button
@@ -140,7 +144,7 @@ export function SocialCreatePostClient({
               </div>
             ) : (
               <div className="rounded-[18px] border border-dashed border-[#DCD3E8] bg-[#FBFAFD] p-5 text-[13px] leading-[1.55] text-[#6E6B80]">
-                Hans n’a pas encore assez d’avis pour proposer des recommandations. Vous pouvez tout de même lui décrire votre idée ci-dessous.
+                Hans prépare actuellement de nouvelles idées à partir de votre activité et du calendrier local. Vous pouvez aussi lui décrire votre propre idée ci-dessous.
               </div>
             )}
           </div>

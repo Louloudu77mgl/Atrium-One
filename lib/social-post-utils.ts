@@ -16,10 +16,21 @@ export function getPostStatusLabel(status: SocialPostRow["status"]) {
 
 type PublishableSocialPost = Pick<
   SocialPostRow,
-  "builder_state" | "visual_text" | "visual_url" | "image_url"
+  "builder_state" | "visual_text" | "visual_url" | "image_url" | "template_id"
 >;
 
+export type SocialDesignKind = "instagram" | "rcu_poster";
+
+export function getSocialDesignKind(post: Pick<SocialPostRow, "template_id">): SocialDesignKind {
+  return post.template_id === "rcu-poster" ? "rcu_poster" : "instagram";
+}
+
+export function canPublishSocialDesignToInstagram(post: Pick<SocialPostRow, "template_id">) {
+  return getSocialDesignKind(post) === "instagram";
+}
+
 export function getPublishableInstagramImageUrl(post: PublishableSocialPost) {
+  if (!canPublishSocialDesignToInstagram(post)) return null;
   const document = post.builder_state && typeof post.builder_state === "object" && !Array.isArray(post.builder_state)
     ? post.builder_state as Record<string, unknown>
     : null;

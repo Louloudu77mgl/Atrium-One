@@ -14,6 +14,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { appShellStyles } from "@/lib/design-system";
 import { mapUserFacingError } from "@/lib/user-feedback";
+import { logout } from "@/lib/auth/actions";
 import { BrandStyleForm, MerchantIdentityForm } from "./SettingsClientForms";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ const shellCard = "rounded-[20px] border border-[#EBE6DF] bg-white shadow-[0_1px
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ error?: string; saved?: string; schema?: string }>;
+  searchParams?: Promise<{ error?: string; saved?: string }>;
 }) {
   const params = await searchParams;
 
@@ -70,13 +71,6 @@ export default async function SettingsPage({
               </section>
 
               {params?.saved ? <div className="rounded-[12px] border border-[#EBE6DF] bg-[#F1ECFB] px-4 py-3 text-sm font-semibold text-[#6E4DE0]">Paramètres sauvegardés.</div> : null}
-              {params?.schema ? (
-                <div className="rounded-[12px] border border-[#F5C66A] bg-[#FFF8E7] px-4 py-3 text-sm leading-6 text-[#8A5A00]">
-                  Les couleurs ont été sauvegardées, mais la police et les options du logo nécessitent encore la migration Supabase
-                  <code className="mx-1 rounded bg-white/80 px-1.5 py-0.5 font-bold">supabase/social-branding-upgrade.sql</code>.
-                  Sans cette migration, Supabase remet automatiquement la police sur Sora.
-                </div>
-              ) : null}
               {params?.error ? <div className="rounded-[12px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#DC2626]">{mapUserFacingError(params.error)}</div> : null}
 
               <section className="grid gap-4 md:grid-cols-2">
@@ -125,6 +119,19 @@ export default async function SettingsPage({
                   <p className="mt-1 text-[13.5px] text-[#6E6A76]">Ces réglages servent uniquement à la création de posts sur les réseaux sociaux.</p>
                 </div>
                 <BrandStyleForm brandSettings={brandSettings} businessName={merchant.business_name} logoUrl={merchant.logo_url} action={updateBrandSettings} />
+              </section>
+
+              <section className={`${shellCard} flex flex-col gap-4 px-[30px] py-[24px] sm:flex-row sm:items-center sm:justify-between`}>
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9A96A1]">Compte</span>
+                  <h2 className="mt-1 text-[17px] font-extrabold text-[#17131F]">Se déconnecter d’AtriumOne</h2>
+                  <p className="mt-1 text-[13px] text-[#6E6A76]">Vous devrez vous reconnecter pour accéder à votre espace.</p>
+                </div>
+                <form action={logout}>
+                  <button type="submit" className="inline-flex items-center justify-center rounded-full border border-[#E4DBF6] bg-white px-[18px] py-[10px] text-[13.5px] font-semibold text-[#4C1D95] transition hover:bg-[#F5F0FF]">
+                    Se déconnecter
+                  </button>
+                </form>
               </section>
             </div>
           </div>

@@ -381,6 +381,7 @@ export type Database = {
           secondary_color: string;
           accent_color: string;
           social_font_family: string;
+          social_template_style: "editorial" | "artisan" | "impact";
           show_logo_on_social_posts: boolean;
           social_logo_position: "top_left" | "top_right" | "bottom_left" | "bottom_right";
           visual_style: "premium" | "chaleureux" | "moderne" | "artisanal" | "minimaliste" | "dynamique";
@@ -395,6 +396,7 @@ export type Database = {
           secondary_color?: string;
           accent_color?: string;
           social_font_family?: string;
+          social_template_style?: "editorial" | "artisan" | "impact";
           show_logo_on_social_posts?: boolean;
           social_logo_position?: "top_left" | "top_right" | "bottom_left" | "bottom_right";
           visual_style?: "premium" | "chaleureux" | "moderne" | "artisanal" | "minimaliste" | "dynamique";
@@ -409,6 +411,7 @@ export type Database = {
           secondary_color?: string;
           accent_color?: string;
           social_font_family?: string;
+          social_template_style?: "editorial" | "artisan" | "impact";
           show_logo_on_social_posts?: boolean;
           social_logo_position?: "top_left" | "top_right" | "bottom_left" | "bottom_right";
           visual_style?: "premium" | "chaleureux" | "moderne" | "artisanal" | "minimaliste" | "dynamique";

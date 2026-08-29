@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { GmailConnectionActions } from "@/components/GmailConnectionActions";
+import { IntegrationDisconnectButton } from "@/components/IntegrationDisconnectButton";
 import { Sidebar } from "@/components/Sidebar";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { getGmailConnection, isGmailConnectionReady } from "@/lib/gmail-connections";
 import { hasGmailOAuthConfig } from "@/lib/gmail-oauth";
-import { getGoogleDiagnosticState } from "@/lib/google-diagnostics";
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
 import { getAppNotifications } from "@/lib/notifications";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import { mapUserFacingError } from "@/lib/user-feedback";
+import { appShellStyles } from "@/lib/design-system";
 
 export const dynamic = "force-dynamic";
 
@@ -26,27 +27,19 @@ export default async function IntegrationsPage({
     : [null, null];
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
-  const googleDiagnostic = await getGoogleDiagnosticState(googleConnection);
   const instagramConfigured = hasInstagramOAuthConfig();
   const gmailConfigured = hasGmailOAuthConfig();
   const gmailConnected = isGmailConnectionReady(gmailConnection);
   const googleConnected = googleConnection?.status === "connected";
   const googleLocationConnected = Boolean(googleConnection?.google_location_id);
-  const googleReviewsApiDisabled = Boolean(
-    params?.sync_error && (
-      params.sync_error.toLowerCase().includes("mybusiness.googleapis.com") ||
-      params.sync_error.toLowerCase().includes("service_disabled") ||
-      params.sync_error.toLowerCase().includes("google my business api has not been used")
-    )
-  );
 
   return (
-    <div className="min-h-screen bg-[#F8F7F4]">
+    <div className={appShellStyles.page}>
       <Sidebar active="integrations" merchant={merchant} counters={counters} />
-      <div className="min-h-screen md:ml-60">
+      <div className={appShellStyles.pageInner}>
         <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
-        <main className="px-4 py-6 pb-24 md:px-7 md:py-7">
-          <div className="mx-auto max-w-5xl space-y-6">
+        <main className={appShellStyles.content}>
+          <div className={appShellStyles.width}>
             <section className="rounded-[28px] border border-[#E9D5FF] bg-white p-6 shadow-[0_14px_44px_rgba(76,29,149,0.08)]">
               <p className="mb-1 text-xs font-semibold uppercase tracking-[0.9px] text-[#8B7AA8]">Intégrations</p>
               <h1 className="text-3xl font-black tracking-[-0.05em] text-[#211432]">Quels comptes sont connectés&nbsp;?</h1>
@@ -65,16 +58,6 @@ export default async function IntegrationsPage({
             {params?.sync_error ? (
               <div className="rounded-lg border border-[#FED7AA] bg-[#FFF7ED] px-3.5 py-2.5 text-sm text-[#C2410C]">
                 Google est connecté, mais l’import des avis n’a pas abouti : {mapUserFacingError(params.sync_error)}
-                {googleReviewsApiDisabled ? (
-                  <a
-                    href="https://console.developers.google.com/apis/api/mybusiness.googleapis.com/overview?project=650116804104"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="ml-2 font-bold underline"
-                  >
-                    Activer l’API des avis
-                  </a>
-                ) : null}
               </div>
             ) : null}
             {params?.error ? <div className="rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3.5 py-2.5 text-sm text-[#DC2626]">{mapUserFacingError(params.error)}</div> : null}
@@ -90,25 +73,15 @@ export default async function IntegrationsPage({
                     ? `${googleConnection.google_account_email ?? "Compte Google"}${googleConnection.google_location_name ? ` · ${googleConnection.google_location_name}` : " · choisissez la fiche pour importer les avis"}`
                     : "Connectez votre fiche Google pour importer vos avis."}
                 </p>
-                <div className="mt-4 space-y-2 rounded-2xl bg-[#FBFAFF] p-4 text-sm text-[#6B617F]">
-                  <div>OAuth configuré : <strong className="text-[#211432]">{googleDiagnostic.oauthConfigured ? "oui" : "non"}</strong></div>
-                  <div>Token disponible : <strong className="text-[#211432]">{googleDiagnostic.tokenAvailable ? "oui" : "non"}</strong></div>
-                  <div>Fiche connectée : <strong className="text-[#211432]">{googleDiagnostic.locationConnected ? "oui" : "non"}</strong></div>
-                  <div>Synchronisation des avis : <strong className="text-[#211432]">{googleLocationConnected ? "automatique" : "en attente de la fiche"}</strong></div>
-                  {googleConnection?.last_sync_at ? <div>Dernière récupération : <strong className="text-[#211432]">{new Date(googleConnection.last_sync_at).toLocaleString("fr-FR")}</strong></div> : null}
-                </div>
-                {!googleConnection ? (
-                  <div className="mt-4 rounded-2xl border border-[#FED7AA] bg-[#FFF7ED] p-4 text-sm leading-6 text-[#9A3412]">
-                    Si Google affiche une page 403, ajoutez votre compte dans les test users Google Cloud ou passez l’audience OAuth en externe.
-                  </div>
+                {googleConnection?.last_sync_at ? (
+                  <p className="mt-4 text-xs font-semibold text-[#8B7AA8]">
+                    Dernière récupération : {new Date(googleConnection.last_sync_at).toLocaleString("fr-FR")}
+                  </p>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-3">
                   <a href="/api/google/connect" className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]">
                     {googleConnection?.status === "connected" ? "Reconnecter Google" : "Connecter Google"}
                   </a>
-                  <Link href="/integrations/google-diagnostic" className="inline-flex items-center justify-center rounded-lg bg-[#F3E8FF] px-4 py-2.5 text-sm font-semibold text-[#4C1D95] transition hover:bg-[#E9D5FF]">
-                    Diagnostic Google
-                  </Link>
                   {googleConnection?.status === "connected" && !googleConnection.google_location_id ? (
                     <Link href="/settings/google-business/select-location" className="inline-flex items-center justify-center rounded-lg bg-[#FFF7ED] px-4 py-2.5 text-sm font-semibold text-[#C2410C] transition hover:bg-[#FFEDD5]">
                       Finaliser la fiche
@@ -121,6 +94,7 @@ export default async function IntegrationsPage({
                       </button>
                     </form>
                   ) : null}
+                  {googleConnected ? <IntegrationDisconnectButton endpoint="/api/google/disconnect" label="Google Fiche Business" /> : null}
                 </div>
               </section>
 
@@ -146,6 +120,7 @@ export default async function IntegrationsPage({
                   <Link href="/social" className="inline-flex items-center justify-center rounded-lg bg-[#F3E8FF] px-4 py-2.5 text-sm font-semibold text-[#4C1D95] transition hover:bg-[#E9D5FF]">
                     Ouvrir Instagram
                   </Link>
+                  {instagramConnection?.status === "connected" ? <IntegrationDisconnectButton endpoint="/api/instagram/disconnect" label="Instagram" /> : null}
                 </div>
               </section>
 

@@ -11,7 +11,6 @@ import { getDynamicHansRecommendations } from "@/lib/hans-dynamic-recommendation
 import { getAppNotifications } from "@/lib/notifications";
 import type { ReviewInsightsAnalysis } from "@/lib/review-insights";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
-import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import type { GoogleConnectionRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 
 export function AtriumHubDashboard({
@@ -37,7 +36,7 @@ export function AtriumHubDashboard({
   const businessName = merchant?.business_name ?? "votre commerce";
   const googleConnected = googleConnection?.status === "connected";
   const analysis = insights ?? null;
-  const postsRecommended = getTopSocialRecommendations({ analysis, reviews }).slice(0, 3);
+  const postsRecommended = analysis?.socialPostIdeas.slice(0, 3) ?? [];
   const activeDrafts = socialPosts.filter((post) => ["draft", "editing", "saved", "ready"].includes(post.status));
   const publishedPosts = socialPosts.filter((post) => post.status === "published");
   const hansRecommendations = buildDashboardRecommendations({
@@ -82,7 +81,7 @@ export function AtriumHubDashboard({
     {
       title: "Posts recommandés par Hans",
       value: `${postsRecommended.length}`,
-      description: postsRecommended.length > 0 ? "Découvrez les recommandations de Hans pour vos prochains posts dans Instagram." : "Lancez une analyse Hans puis découvrez les idées de posts dans Instagram.",
+      description: postsRecommended.length > 0 ? "Découvrez les recommandations de Hans pour vos prochains posts dans Instagram." : "Les prochaines idées seront préparées automatiquement lors de l’analyse quotidienne de 8 h.",
       ctaLabel: "Découvrir les recommandations",
       href: "/social",
       icon: "sparkle" as const

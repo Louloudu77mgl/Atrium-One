@@ -1,18 +1,23 @@
 import { InsightsPageClient } from "./InsightsPageClient";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { isDemoMode } from "@/lib/demo-mode";
-import { getFallbackReviewInsights, mapInsightRow, prepareReviewInsightsForDisplay, shouldRefreshReviewInsights } from "@/lib/review-insights";
-import { getStoredReviewInsights } from "@/lib/review-insights-server";
+import { getFallbackReviewInsights, mapInsightRow } from "@/lib/review-insights";
+import { getOrRefreshReviewInsights } from "@/lib/review-insights-server";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export default async function ReviewInsightsPage() {
   const { reviews, merchant, googleConnection } = await getAppShellData();
-  const storedInsights = hasSupabaseEnv() && !isDemoMode() ? await getStoredReviewInsights(merchant) : null;
+  const storedInsights = hasSupabaseEnv() && !isDemoMode() && merchant
+    ? await getOrRefreshReviewInsights(merchant, reviews)
+    : null;
   const initialAnalysis = storedInsights
-    ? prepareReviewInsightsForDisplay(mapInsightRow(storedInsights), reviews)
-    : getFallbackReviewInsights(reviews);
+    ? mapInsightRow(storedInsights)
+    : !hasSupabaseEnv() || isDemoMode()
+      ? getFallbackReviewInsights(reviews)
+      : null;
 
   return (
     <InsightsPageClient
@@ -21,9 +26,7 @@ export default async function ReviewInsightsPage() {
       googleConnection={googleConnection}
       initialAnalysis={initialAnalysis}
       initialUpdatedAt={storedInsights?.updated_at ?? null}
-      shouldAutoAnalyze={Boolean(
-        merchant && reviews.length > 0 && shouldRefreshReviewInsights({ reviews, storedInsights })
-      )}
+      initialReviewsCount={storedInsights?.reviews_count ?? reviews.length}
     />
   );
 }

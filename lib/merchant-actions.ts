@@ -95,14 +95,21 @@ export async function createMerchant(formData: FormData) {
     redirect(`/onboarding?error=${encodeURIComponent(message)}`);
   }
 
+  const businessName = String(formData.get("business_name") ?? "").trim().slice(0, 120);
+  const businessType = String(formData.get("business_type") ?? "").trim().slice(0, 80);
+  const city = String(formData.get("city") ?? "").trim().slice(0, 100);
+  if (!businessName || !businessType || !city) {
+    redirect("/onboarding?error=Renseignez%20le%20nom%20du%20commerce%2C%20son%20activit%C3%A9%20et%20sa%20ville.");
+  }
+
   const basePayload = {
     user_id: user.id,
-    business_name: String(formData.get("business_name") ?? ""),
-    business_type: String(formData.get("business_type") ?? ""),
-    city: String(formData.get("city") ?? ""),
-    phone: String(formData.get("phone") ?? "") || null,
-    description: String(formData.get("description") ?? "") || null,
-    website_url: String(formData.get("website_url") ?? "") || null
+    business_name: businessName,
+    business_type: businessType,
+    city,
+    phone: String(formData.get("phone") ?? "").trim().slice(0, 40) || null,
+    description: String(formData.get("description") ?? "").trim().slice(0, 1000) || null,
+    website_url: String(formData.get("website_url") ?? "").trim().slice(0, 500) || null
   };
   const payload = {
     ...basePayload,

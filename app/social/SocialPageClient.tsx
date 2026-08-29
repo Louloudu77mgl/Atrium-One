@@ -8,7 +8,7 @@ import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { buildCreatePostHref } from "@/lib/social-recommendations";
-import { getPostStatusLabel, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
+import { canPublishSocialDesignToInstagram, getPostStatusLabel, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
 import type { MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
@@ -33,7 +33,6 @@ export function SocialPageClient({
   automationSettings,
   instagramConnection,
   instagramConfigured,
-  schedulingConfigured,
   isInstagramUnavailable,
   instagramError,
   instagramSaved,
@@ -47,7 +46,6 @@ export function SocialPageClient({
   automationSettings: MerchantAutomationSettingsRow | null;
   instagramConnection: InstagramConnectionLike;
   instagramConfigured: boolean;
-  schedulingConfigured: boolean;
   isInstagramUnavailable: boolean;
   instagramError: string | null;
   instagramSaved: boolean;
@@ -76,11 +74,11 @@ export function SocialPageClient({
   const { toast, showToast } = useToast();
 
   useEffect(() => {
-    const timer = window.setInterval(() => setCurrentTime(Date.now()), 1_000);
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 15_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const instagramConnected = instagramConnection?.status === "connected" && instagramConfigured;
+  const instagramConnected = instagramConnection?.status === "connected";
   const publishingConfigured = instagramConnected;
   const instagramUiState = useMemo<InstagramOnboardingState>(() => {
     if (instagramActionState) return instagramActionState;
@@ -148,6 +146,11 @@ export function SocialPageClient({
 
   async function publishPost(postId: string) {
     if (busyId === postId) return;
+    const targetPost = posts.find((post) => post.id === postId);
+    if (targetPost && !canPublishSocialDesignToInstagram(targetPost)) {
+      showToast("Une affiche RCU est réservée à l’impression.", "error");
+      return;
+    }
     setBusyId(postId);
     try {
       const response = await fetchWithTimeout(`/api/social/posts/${postId}/publish-instagram`, { method: "POST" });
@@ -224,12 +227,12 @@ export function SocialPageClient({
       showToast("Post introuvable.", "error");
       return;
     }
-    if (!publishingConfigured) {
-      showToast("Connectez Instagram avant de planifier.", "error");
+    if (!canPublishSocialDesignToInstagram(post)) {
+      showToast("Une affiche RCU ne peut pas être planifiée sur Instagram.", "error");
       return;
     }
-    if (!schedulingConfigured) {
-      showToast("La planification serveur doit encore être configurée.", "error");
+    if (!publishingConfigured) {
+      showToast("Connectez Instagram avant de planifier.", "error");
       return;
     }
     const scheduledAt = new Date(value);
@@ -397,7 +400,7 @@ export function SocialPageClient({
 
   return (
     <>
-      <div className="mx-auto max-w-[1180px] px-6 pb-20 pt-8">
+      <div className="pb-20">
         <div className="section-block">
           <div className={`${surfaceStyles.hero} px-7 py-[26px]`}>
             <div className="hero-top flex flex-wrap justify-between gap-7">
@@ -428,7 +431,7 @@ export function SocialPageClient({
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5B2A9E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
                   Comment ça marche
                 </div>
-                <StepperRow state={stepStatus.ideaReady ? "done" : "active"} label="Idée recommandée" detail={ideas[0] ? "Hans analyse vos avis" : "En attente d'analyse"} />
+                <StepperRow state={stepStatus.ideaReady ? "done" : "active"} label="Idée recommandée" detail={ideas[0] ? "Insights, calendrier et activité croisés" : "Veille en cours"} />
                 <StepperRow state={stepStatus.postPrepared ? "active" : "idle"} label="Post préparé par Hans" detail={stepStatus.postPrepared ? "Prêt à relire et modifier" : "Créez votre premier post"} />
                 <StepperRow state={stepStatus.publicationReady ? "done" : "blocked"} label="Publication au bon moment" detail={stepStatus.publicationReady ? "Instagram prêt à publier" : "Instagram à connecter"} />
               </div>
@@ -460,11 +463,12 @@ export function SocialPageClient({
           <div className="section-head mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="eyebrow mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Ce que Hans recommande</p>
-              <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Des idées construites à partir de vos avis et de votre activité</h2>
+              <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">5 à 10 idées utiles, jamais les mêmes</h2>
+              <p className="mt-1 max-w-[620px] text-[13px] leading-5 text-[#777287]">Hans privilégie les Insights IA, écarte les sujets déjà publiés et complète avec les temps forts proches de votre ville.</p>
             </div>
             <Link href="/reviews/insights" className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
-              Relancer l&apos;analyse
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg>
+              Voir l&apos;analyse du jour
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
             </Link>
           </div>
 
@@ -496,13 +500,14 @@ export function SocialPageClient({
               {displayedIdeas.map((idea, index) => {
                 const ideaIndex = recommendationStart + index;
                 const revealKey = `idea-${ideaIndex}`;
-                const sourceLabel = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? "Avis clients";
+                const sourceLabel = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Activité du commerce";
                 const sourceExample = findSourceExample(reviews, sourceLabel);
+                const sourceKind = idea.sourcePainPoint || idea.sourceStrength ? "Insights IA" : idea.localEvent ? "Veille locale" : idea.seasonalMoment ? "Calendrier" : "Hans";
                 return (
                   <div key={`${idea.title}-${ideaIndex}`} className="reco-card flex min-w-0 flex-col gap-[10px] rounded-[20px] border border-[#ECE9F4] bg-white px-[18px] pb-4 pt-[18px] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)] transition hover:-translate-y-[2px] hover:shadow-[0_10px_28px_rgba(46,26,84,0.1)]">
                     <div className="reco-top-row flex items-center justify-between">
                       <span className="pill pill-purple inline-flex rounded-full bg-[#F1EAFB] px-[10px] py-1 text-[11.5px] font-semibold text-[#4B2E83]">{idea.platform === "instagram" ? "Instagram" : "Facebook"}</span>
-                      <span className="reco-by text-[11.5px] font-semibold text-[#9895A8]">Hans</span>
+                      <span className="reco-by text-[11.5px] font-semibold text-[#9895A8]">{sourceKind}</span>
                     </div>
                     <h3 className="reco-title text-[14px] font-bold leading-[1.35] text-[#1E1B2E]">{idea.title}</h3>
                     <p className="reco-text flex-1 text-[12.6px] leading-[1.5] text-[#6E6B80]">{idea.angle}</p>
@@ -515,7 +520,7 @@ export function SocialPageClient({
                     </button>
                     {expandedSources[revealKey] ? (
                       <div className="source-reveal rounded-[10px] bg-[#F8F5FC] px-[9px] py-2 text-[11.8px] leading-[1.45] text-[#6E6B80]">
-                        {sourceExample ? <><b>{sourceExample.author} · {sourceExample.date}</b> — {sourceExample.text}</> : <><b>Source détectée</b> — Cette recommandation vient du thème “{sourceLabel}”.</>}
+                        {sourceExample ? <><b>{sourceExample.author} · {sourceExample.date}</b> — {sourceExample.text}</> : <><b>{sourceKind}</b> — Cette recommandation vient du thème “{sourceLabel}”{idea.eventDate ? ` prévu le ${new Date(`${idea.eventDate}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}` : ""}.{idea.sourceUrl ? <> <a href={idea.sourceUrl} target="_blank" rel="noreferrer" className="font-bold text-[#5B2A9E] underline">Vérifier la source</a></> : null}</>}
                       </div>
                     ) : null}
                     <CreatePostButton
@@ -611,7 +616,7 @@ export function SocialPageClient({
                   >
                     <div className="post-thumb relative h-[88px] w-[88px] overflow-hidden rounded-[16px] border border-[#ECE9F4] bg-[#F8F5FC] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] max-md:w-full max-md:max-w-[120px]">
                       {post.visual_url || post.image_url ? (
-                        <img src={post.visual_url ?? post.image_url ?? ""} alt={post.title} className="h-full w-full object-cover" />
+                        <img src={post.visual_url ?? post.image_url ?? ""} alt={post.title} className={`h-full w-full ${canPublishSocialDesignToInstagram(post) ? "object-cover" : "bg-white object-contain"}`} />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-[24px] text-white" style={{ background: getPostThumbBackground(post, merchant?.business_type) }}>
                           {getPostEmoji(post.title)}
@@ -621,15 +626,19 @@ export function SocialPageClient({
                     </div>
                     <div className="post-main min-w-0 self-center">
                       <div className="post-date mb-[3px] text-[11px] font-semibold text-[#9895A8]">
-                        {post.scheduled_at ? formatSocialDate(post.scheduled_at) : "Non planifié"}
+                        {canPublishSocialDesignToInstagram(post) ? (post.scheduled_at ? formatSocialDate(post.scheduled_at) : "Non planifié") : "Support d’impression"}
                       </div>
                       <p className="post-title mb-[3px] text-[13.5px] font-bold text-[#1E1B2E]">{post.title}</p>
                       <p className="post-desc line-clamp-2 max-w-[640px] text-[12.8px] leading-[1.5] text-[#6E6B80]">{post.caption}</p>
                     </div>
                     <div className="post-status self-center max-md:w-full">
-                      <span className={`inline-flex rounded-full px-[10px] py-1 text-[11.5px] font-semibold ${getPostStatusClass(post.status, post, currentTime)}`}>
-                        {getVisiblePostStatus(post, currentTime)}
-                      </span>
+                      {canPublishSocialDesignToInstagram(post) ? (
+                        <span className={`inline-flex rounded-full px-[10px] py-1 text-[11.5px] font-semibold ${getPostStatusClass(post.status, post, currentTime)}`}>
+                          {getVisiblePostStatus(post, currentTime)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-[#F0E8FF] px-[10px] py-1 text-[11.5px] font-bold text-[#5B2A9E]">Affiche RCU · A4</span>
+                      )}
                     </div>
                     <div className="post-actions relative flex shrink-0 items-center justify-end gap-2 max-md:w-full max-md:justify-start" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                       <div className="relative">
@@ -651,22 +660,28 @@ export function SocialPageClient({
                             <span className="text-base">↓</span>
                             Télécharger
                           </button>
-                          <button type="button" onClick={() => hasFinalPng(post) ? void publishPost(post.id) : router.push(buildEditorActionHref(post.id, "publish"))} disabled={!publishingConfigured || hasPublicationStarted(post) || busyId === post.id} className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left text-[12.8px] font-semibold text-[#1E1B2E] hover:bg-[#F8F5FC] disabled:cursor-not-allowed disabled:opacity-45">
-                            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[linear-gradient(135deg,#833AB4,#FD1D1D,#FCAF45)] text-[10px] font-black text-white">IG</span>
-                            {isPublicationPending(post, currentTime) ? "Publication en cours…" : hasPublicationStarted(post) ? "Publié sur Instagram" : "Publier sur Instagram"}
-                          </button>
-                          <button type="button" disabled className="flex w-full cursor-not-allowed items-center justify-between gap-2 rounded-[10px] px-3 py-2.5 text-left text-[12.8px] font-semibold text-[#9895A8] opacity-70">
-                            <span className="flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#1877F2] text-[11px] font-black text-white">f</span>Publier sur Facebook</span>
-                            <span className="text-[10px] font-bold uppercase">Non disponible</span>
-                          </button>
+                          {canPublishSocialDesignToInstagram(post) ? (
+                            <>
+                              <button type="button" onClick={() => hasFinalPng(post) ? void publishPost(post.id) : router.push(buildEditorActionHref(post.id, "publish"))} disabled={!publishingConfigured || hasPublicationStarted(post) || busyId === post.id} className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2.5 text-left text-[12.8px] font-semibold text-[#1E1B2E] hover:bg-[#F8F5FC] disabled:cursor-not-allowed disabled:opacity-45">
+                                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[linear-gradient(135deg,#833AB4,#FD1D1D,#FCAF45)] text-[10px] font-black text-white">IG</span>
+                                {isPublicationPending(post, currentTime) ? "Publication en cours…" : hasPublicationStarted(post) ? "Publié sur Instagram" : "Publier sur Instagram"}
+                              </button>
+                              <button type="button" disabled className="flex w-full cursor-not-allowed items-center justify-between gap-2 rounded-[10px] px-3 py-2.5 text-left text-[12.8px] font-semibold text-[#9895A8] opacity-70">
+                                <span className="flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#1877F2] text-[11px] font-black text-white">f</span>Publier sur Facebook</span>
+                                <span className="text-[10px] font-bold uppercase">Bientôt</span>
+                              </button>
+                            </>
+                          ) : (
+                            <div className="rounded-[10px] bg-[#F8F5FC] px-3 py-2 text-[11.5px] font-semibold leading-5 text-[#6E6B80]">Document A4 réservé au téléchargement et à l’impression.</div>
+                          )}
                         </div>
                       </div>
-                      <div className="relative">
+                      {canPublishSocialDesignToInstagram(post) ? <div className="relative">
                         <button
                           type="button"
                           aria-label="Planifier"
-                          title={!schedulingConfigured ? "Planification serveur non configurée" : "Planifier"}
-                          disabled={!schedulingConfigured || !publishingConfigured || busyId === post.id}
+                          title="Planifier"
+                          disabled={!publishingConfigured || busyId === post.id}
                           onClick={() => {
                             setOpenMenuId((current) => (current === post.id ? null : post.id));
                             setShareMenuId(null);
@@ -682,7 +697,7 @@ export function SocialPageClient({
                             Planifier
                           </button>
                         </div>
-                      </div>
+                      </div> : null}
                       <button type="button" aria-label="Dupliquer" title="Dupliquer" onClick={() => void duplicatePost(post.id)} disabled={busyId === post.id} className="flex h-9 w-9 items-center justify-center rounded-full border border-[#DED7EA] bg-white text-[#5B2A9E] shadow-sm transition hover:border-[#7C4DCB] hover:bg-[#F5F0FF] disabled:cursor-not-allowed disabled:opacity-40">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
                       </button>

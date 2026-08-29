@@ -34,7 +34,7 @@ export function PageSkeleton({ variant = "dashboard" }: { variant?: SkeletonPage
       <SkeletonSidebar />
       <div className="min-h-screen md:ml-60">
         <SkeletonHeader />
-        <main className="ao-page-content md:px-7 md:py-7">
+        <main className="ao-page-content md:py-7">
           <div className="ao-page-width ao-stack-6">
             <section className="ao-hero md:p-6">
               <div className="flex flex-wrap items-start justify-between gap-5">

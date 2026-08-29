@@ -1,7 +1,7 @@
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { validateDesignDocumentLayout } from "@/lib/social-editor/layout-safety";
 import { isEditorDocument } from "@/lib/social-editor/types";
-import { getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
+import { canPublishSocialDesignToInstagram, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import type { InstagramConnectionRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -23,6 +23,10 @@ export async function publishPostToInstagram({
   instagramConnection?: InstagramConnectionRow | null;
   supabaseClient?: Awaited<ReturnType<typeof createServerSupabaseClient>>;
 }) {
+  if (!canPublishSocialDesignToInstagram(post)) {
+    throw new Error("Une affiche RCU est un document A4 destiné à l’impression et ne peut pas être publiée sur Instagram.");
+  }
+
   const connection = instagramConnection ?? await getInstagramConnection(merchant, supabaseClient);
 
   if (connection?.status !== "connected" || !connection.instagram_account_id || !connection.access_token_encrypted) {

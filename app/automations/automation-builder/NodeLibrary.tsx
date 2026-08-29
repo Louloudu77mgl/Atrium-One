@@ -5,13 +5,17 @@ import { Icon } from "@/components/icons";
 import { NODE_LIBRARY } from "./templates";
 
 const TABS = [
+  "Opérationnels",
+  "Bientôt",
   "Déclencheurs",
-  "Actions IA",
-  "Instagram",
-  "Google",
-  "Emails",
-  "CRM",
   "Conditions",
+  "Hans / IA",
+  "Google",
+  "Instagram",
+  "E-mails",
+  "Clients / CRM",
+  "Calendrier / Temps",
+  "Contrôle du flow",
   "Notifications",
   "Favoris",
   "Récents"
@@ -28,7 +32,7 @@ export function NodeLibrary({
   recentTypes: string[];
   onToggleFavorite: (type: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Déclencheurs");
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Opérationnels");
   const [query, setQuery] = useState("");
   const items = useMemo(() => {
     const allItems = NODE_LIBRARY.flatMap((group) => group.items);
@@ -46,7 +50,7 @@ export function NodeLibrary({
       <div>
         <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#9A96A1]">Bibliothèque</div>
         <h2 className="mt-1 text-[18px] font-extrabold text-[#17131F]">Blocs à glisser</h2>
-        <p className="mt-1 text-[13px] leading-5 text-[#6E6A76]">Un onglet à la fois, pour rester concentré.</p>
+        <p className="mt-1 text-[13px] leading-5 text-[#6E6A76]">Commencez par les blocs opérationnels. Les autres arrivent bientôt.</p>
       </div>
       <input
         value={query}
@@ -77,26 +81,27 @@ export function NodeLibrary({
               key={item.type}
               role="button"
               tabIndex={0}
-              draggable
+              draggable={item.availability !== "planned"}
               onDragStart={(event) => {
+                if (item.availability === "planned") return;
                 event.dataTransfer.setData("application/atrium-node", item.type);
               }}
-              onClick={() => onAdd(item.type)}
+              onClick={() => { if (item.availability !== "planned") onAdd(item.type); }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  onAdd(item.type);
+                  if (item.availability !== "planned") onAdd(item.type);
                 }
               }}
-              className="flex w-full cursor-pointer items-start gap-3 rounded-[20px] border border-[#EBE6DF] bg-[#F9F7F4] px-3 py-3 text-left transition hover:border-[#6E4DE0] hover:bg-[#FBF8FF] focus:outline-none focus:ring-2 focus:ring-[#6E4DE0]"
+              className={`flex w-full items-start gap-3 rounded-[20px] border px-3 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#6E4DE0] ${item.availability === "planned" ? "cursor-not-allowed border-[#E8E4DE] bg-[#F7F6F3]" : "cursor-pointer border-[#EBE6DF] bg-[#F9F7F4] hover:border-[#6E4DE0] hover:bg-[#FBF8FF]"}`}
             >
               <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-2xl text-white" style={{ backgroundColor: item.color }}>
                 <Icon name={item.icon} className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-bold text-[#17131F]">{item.title}</div>
+                <div className="flex flex-wrap items-center gap-2"><div className="text-[13px] font-bold text-[#17131F]">{item.title}</div>{item.availability === "planned" ? <span className="rounded-full bg-[#EEEAE4] px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#736C62]">Bientôt</span> : null}</div>
                 <div className="mt-1 text-[12px] leading-5 text-[#6E6A76]">{item.description}</div>
-                <div className="mt-2 text-[11px] font-semibold text-[#9A96A1]">{item.provider ?? "Hans"}</div>
+                <div className="mt-2 text-[11px] font-semibold text-[#9A96A1]">{item.availabilityNote ?? item.provider ?? "Hans"}</div>
               </div>
               <button
                 type="button"
@@ -121,7 +126,10 @@ export function NodeLibrary({
 function matchesTab(item: (typeof NODE_LIBRARY)[number]["items"][number], tab: (typeof TABS)[number], favorites: string[], recentTypes: string[]) {
   if (tab === "Favoris") return favorites.includes(item.type);
   if (tab === "Récents") return recentTypes.includes(item.type);
+  if (tab === "Opérationnels") return item.availability !== "planned";
+  if (tab === "Bientôt") return item.availability === "planned";
   if (tab === "Déclencheurs") return item.category === "trigger";
-  if (tab === "Conditions") return item.category === "condition" || item.category === "control";
+  if (tab === "Conditions") return item.category === "condition";
+  if (tab === "Contrôle du flow") return item.category === "control" || item.category === "delay";
   return item.provider === tab || item.tags?.includes(tab.toLocaleLowerCase("fr-FR")) || false;
 }

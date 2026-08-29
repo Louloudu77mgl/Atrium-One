@@ -97,15 +97,15 @@ export default async function OnboardingPage({
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-[#6B617F]">Nom du commerce</span>
-                <input name="business_name" required defaultValue="Maison Lavigne" className="w-full rounded-lg border border-[#E9D5FF] px-3.5 py-2.5 text-sm outline-none transition focus:border-[#4C1D95] focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" />
+                <input name="business_name" required placeholder="Ex. Boulangerie Martin" className="w-full rounded-lg border border-[#E9D5FF] px-3.5 py-2.5 text-sm outline-none transition focus:border-[#4C1D95] focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-[#6B617F]">Catégorie</span>
-                <input name="business_type" required defaultValue="Fleuriste" className="w-full rounded-lg border border-[#E9D5FF] px-3.5 py-2.5 text-sm outline-none transition focus:border-[#4C1D95] focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" />
+                <input name="business_type" required placeholder="Ex. Boulangerie, restaurant, institut…" className="w-full rounded-lg border border-[#E9D5FF] px-3.5 py-2.5 text-sm outline-none transition focus:border-[#4C1D95] focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-[#6B617F]">Ville</span>
-                <input name="city" required defaultValue="Lyon" className="w-full rounded-lg border border-[#E9D5FF] px-3.5 py-2.5 text-sm outline-none transition focus:border-[#4C1D95] focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" />
+                <input name="city" required placeholder="Ex. Lyon" className="w-full rounded-lg border border-[#E9D5FF] px-3.5 py-2.5 text-sm outline-none transition focus:border-[#4C1D95] focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" />
               </label>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold text-[#6B617F]">Téléphone</span>
@@ -113,9 +113,9 @@ export default async function OnboardingPage({
               </label>
               <label className="block md:col-span-2">
                 <span className="mb-1.5 block text-xs font-semibold text-[#6B617F]">Description courte</span>
-                <textarea name="description" rows={4} defaultValue="Fleuriste de quartier spécialisé dans les bouquets de saison et les compositions événementielles." className="w-full resize-y rounded-lg border border-[#E9D5FF] px-3.5 py-2.5 text-sm outline-none transition focus:border-[#4C1D95] focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" />
+                <textarea name="description" rows={4} placeholder="Décrivez en quelques mots ce qui fait la singularité de votre commerce." className="w-full resize-y rounded-lg border border-[#E9D5FF] px-3.5 py-2.5 text-sm outline-none transition focus:border-[#4C1D95] focus:shadow-[0_0_0_3px_rgba(168,85,247,0.15)]" />
               </label>
-              <LogoUploadField businessName="Maison Lavigne" />
+              <LogoUploadField businessName="Votre commerce" />
             </div>
             <div className="mt-5 flex justify-end">
               <button type="submit" className="rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]">

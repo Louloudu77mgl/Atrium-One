@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getGoogleConnectionWithAutoSync } from "@/lib/google-review-auto-sync";
+import { getGoogleConnection } from "@/lib/google-connections";
 import { getMerchant } from "@/lib/merchants";
 import { reviews as mockReviews } from "@/lib/mock-data";
 import { getReviews } from "@/lib/reviews";
@@ -22,14 +22,16 @@ export async function getAppShellData() {
     redirect("/login");
   }
 
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
 
   if (!merchant) {
     redirect("/onboarding");
   }
 
-  const googleConnection = await getGoogleConnectionWithAutoSync(merchant);
-  const reviews = await getReviews();
+  const [googleConnection, reviews] = await Promise.all([
+    getGoogleConnection(merchant),
+    getReviews(merchant)
+  ]);
 
   return {
     reviews,

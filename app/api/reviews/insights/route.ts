@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { mapInsightRow, prepareReviewInsightsForDisplay, shouldRefreshReviewInsights } from "@/lib/review-insights";
-import { analyzeReviewsWithOpenAI, getStoredReviewInsights, saveReviewInsights } from "@/lib/review-insights-server";
+import { mapInsightRow } from "@/lib/review-insights";
+import { getOrRefreshReviewInsights } from "@/lib/review-insights-server";
 import { getMerchant } from "@/lib/merchants";
 import { getReviews } from "@/lib/reviews";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function POST(request: Request) {
+export async function GET() {
   if (!hasSupabaseEnv()) {
     return NextResponse.json({ error: "Configuration Supabase manquante." }, { status: 500 });
   }
@@ -26,36 +26,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Commerce introuvable." }, { status: 404 });
   }
 
-  const reviews = await getReviews();
+  const reviews = await getReviews(merchant);
+  const storedInsights = await getOrRefreshReviewInsights(merchant, reviews);
 
-  if (reviews.length === 0) {
-    return NextResponse.json({ error: "Ajoutez ou importez des avis avant de lancer l’analyse." }, { status: 400 });
-  }
+  return NextResponse.json({
+    analysis: mapInsightRow(storedInsights),
+    updated_at: storedInsights?.updated_at ?? null,
+    next_update: "À l’arrivée ou à la modification d’un avis"
+  });
+}
 
-  const payload = await request.json().catch(() => ({})) as { force?: boolean };
-  const storedInsights = await getStoredReviewInsights(merchant);
-
-  if (!payload.force && storedInsights && !shouldRefreshReviewInsights({ reviews, storedInsights })) {
-    return NextResponse.json({
-      analysis: prepareReviewInsightsForDisplay(mapInsightRow(storedInsights), reviews),
-      updated_at: storedInsights.updated_at,
-      cached: true
-    });
-  }
-
-  const analysis = await analyzeReviewsWithOpenAI(reviews, merchant);
-
-  try {
-    const saved = await saveReviewInsights(merchant, analysis, reviews);
-
-    return NextResponse.json({
-      analysis: prepareReviewInsightsForDisplay(mapInsightRow(saved), reviews),
-      updated_at: saved.updated_at
-    });
-  } catch (error) {
-    return NextResponse.json({
-      analysis,
-      save_error: error instanceof Error ? error.message : "Analyse affichée mais non sauvegardée."
-    });
-  }
+export async function POST() {
+  return GET();
 }

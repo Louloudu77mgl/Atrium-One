@@ -59,10 +59,10 @@ export function getAppNotifications(reviews: Review[], googleConnection?: Google
     notifications.push({
       id: "ready-to-publish",
       title: `${counters.readyToPublish} réponse${counters.readyToPublish > 1 ? "s" : ""} prête${counters.readyToPublish > 1 ? "s" : ""} à publier`,
-      description: googleConnected ? "La publication Google sera activée dans une prochaine étape." : "Connectez Google Business pour préparer la future publication.",
+      description: googleConnected ? "Publiez maintenant vos réponses sur votre fiche Google." : "Connectez votre fiche Google pour publier vos réponses.",
       type: "google",
-      href: "/settings",
-      actionLabel: "Voir paramètres"
+      href: googleConnected ? "/reviews?filter=ready" : "/integrations",
+      actionLabel: googleConnected ? "Publier" : "Connecter"
     });
   }
 

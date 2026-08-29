@@ -1,4 +1,5 @@
 import { recommendations as fallbackRecommendations } from "@/lib/mock-data";
+import { REVIEW_INSIGHTS_STORAGE_TITLE } from "@/lib/review-insights";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { HansRecommendationRow, MerchantRow } from "@/lib/supabase/types";
 
@@ -39,6 +40,7 @@ export async function getHansRecommendations(merchant?: MerchantRow | null): Pro
     .from("hans_recommendations")
     .select("*")
     .eq("merchant_id", merchant.id)
+    .neq("title", REVIEW_INSIGHTS_STORAGE_TITLE)
     .order("created_at", { ascending: true });
 
   if (error) {

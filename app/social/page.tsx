@@ -6,17 +6,17 @@ import { isDemoMode } from "@/lib/demo-mode";
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
 import { getAppNotifications } from "@/lib/notifications";
-import { getFallbackReviewInsights } from "@/lib/review-insights";
-import { getFreshReviewInsights } from "@/lib/review-insights-server";
+import { getFallbackReviewInsights, mapInsightRow } from "@/lib/review-insights";
+import { getOrRefreshReviewInsights } from "@/lib/review-insights-server";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { getSocialPosts } from "@/lib/social-posts";
-import { hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { appShellStyles } from "@/lib/design-system";
 import { SocialPageClient } from "./SocialPageClient";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export default async function SocialPage({
   searchParams
@@ -32,15 +32,21 @@ export default async function SocialPage({
     merchant ? getInstagramConnection(merchant) : Promise.resolve(null),
     hasSupabaseEnv() && !isDemoMode() ? getSocialPosts(merchant) : Promise.resolve([])
   ]);
+  const storedInsights = hasSupabaseEnv() && !isDemoMode() && merchant
+    ? await getOrRefreshReviewInsights(merchant, reviews)
+    : null;
   const instagramConfigured = hasInstagramOAuthConfig();
   const cadence = getSocialAutomationCadence(automationSettings);
-  const analysis = hasSupabaseEnv() && !isDemoMode() && merchant && reviews.length > 0
-    ? await getFreshReviewInsights(reviews, merchant)
-    : getFallbackReviewInsights(reviews);
-  const ideas = getTopSocialRecommendations({
+  const analysis = storedInsights
+    ? mapInsightRow(storedInsights)
+    : !hasSupabaseEnv() || isDemoMode()
+      ? getFallbackReviewInsights(reviews)
+      : null;
+  const ideas = await getTopSocialRecommendations({
     analysis,
     reviews,
-    merchant
+    merchant,
+    posts
   });
   const isInstagramUnavailable = params?.error === "instagram_unavailable";
 
@@ -57,7 +63,6 @@ export default async function SocialPage({
               automationSettings={automationSettings}
               instagramConnection={instagramConnection}
               instagramConfigured={instagramConfigured}
-              schedulingConfigured={hasSupabaseAdminEnv() && Boolean(process.env.CRON_SECRET)}
               isInstagramUnavailable={isInstagramUnavailable}
               instagramError={params?.error ?? null}
               instagramSaved={params?.saved === "instagram"}

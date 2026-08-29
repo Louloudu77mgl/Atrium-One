@@ -1,7 +1,7 @@
 export const appShellStyles = {
   page: "ao-page",
   pageInner: "ao-page-inner md:ml-60",
-  content: "ao-page-content md:px-7 md:py-7",
+  content: "ao-page-content md:py-7",
   width: "ao-page-width ao-stack-6"
 } as const;
 

@@ -103,7 +103,7 @@ export function Header({
             <div className="mb-2 flex items-center justify-between px-1">
               <div>
                 <strong className="text-sm text-[#211432]">Centre de notifications</strong>
-                <p className="mt-0.5 text-[11px] text-[#8B7AA8]">Actions importantes du module Avis Google IA</p>
+                <p className="mt-0.5 text-[11px] text-[#8B7AA8]">Les actions utiles pour votre commerce</p>
               </div>
               <span className="rounded-full bg-[#F5F0FF] px-2 py-0.5 text-[10px] font-bold text-[#7C3AED]">{importantNotifications.length}</span>
             </div>

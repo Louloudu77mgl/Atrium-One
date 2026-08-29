@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
-import { emptyAnalysis, isReviewInsightsRefreshWindow, mapInsightRow, prepareReviewInsightsForDisplay, shouldRefreshReviewInsights } from "@/lib/review-insights";
-import { analyzeReviewsWithOpenAI, saveReviewInsights } from "@/lib/review-insights-server";
+import { emptyAnalysis, getReviewSnapshotSummary, hasReviewInsightsSourceChanged, mapInsightRow } from "@/lib/review-insights";
+import { analyzeReviewsWithOpenAI, getStoredReviewInsights, saveReviewInsights } from "@/lib/review-insights-server";
 import { mapReviewRow } from "@/lib/reviews";
+import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
-import type { MerchantRow, ReviewInsightRow } from "@/lib/supabase/types";
+import type { MerchantRow, ReviewInsightRow, SocialPostRow } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const authorization = request.headers.get("authorization");
+  const force = new URL(request.url).searchParams.get("force") === "1";
 
   if (cronSecret && authorization !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,16 +23,6 @@ export async function GET(request: Request) {
   }
 
   const runAt = new Date();
-
-  if (!isReviewInsightsRefreshWindow(runAt)) {
-    return NextResponse.json({
-      ok: true,
-      skipped: true,
-      reason: "En dehors de la fenêtre quotidienne de 8 h (Europe/Paris).",
-      run_at: runAt.toISOString(),
-      results: []
-    });
-  }
 
   const supabase = createSupabaseAdminClient();
   const { data: merchants, error: merchantsError } = await supabase
@@ -46,49 +38,54 @@ export async function GET(request: Request) {
 
   for (const merchant of merchants as MerchantRow[]) {
     try {
-      const [{ data: reviewRows, error: reviewsError }, { data: insightRow, error: insightError }] = await Promise.all([
+      const [
+        { data: reviewRows, error: reviewsError },
+        { data: postRows, error: postsError }
+      ] = await Promise.all([
         supabase
           .from("reviews")
           .select("*")
           .eq("merchant_id", merchant.id)
           .order("created_at", { ascending: false }),
         supabase
-          .from("review_insights")
+          .from("social_posts")
           .select("*")
           .eq("merchant_id", merchant.id)
-          .maybeSingle()
+          .eq("status", "published")
+          .order("published_at", { ascending: false })
+          .limit(100)
       ]);
 
       if (reviewsError) {
         throw new Error(reviewsError.message);
       }
 
-      if (insightError) {
-        throw new Error(insightError.message);
+      if (postsError) {
+        throw new Error(postsError.message);
       }
 
       const reviews = (reviewRows ?? []).map((review, index) => mapReviewRow(review, index));
+      const storedInsight = await getStoredReviewInsights(merchant, supabase) as ReviewInsightRow | null;
 
-      if (reviews.length === 0) {
-        const saved = await saveReviewInsights(merchant, emptyAnalysis, [], supabase);
-        results.push({
-          merchant_id: merchant.id,
-          status: "updated",
-          message: `Analyse vidée à ${saved.updated_at} (0 idée)`
-        });
+      if (!force && !hasReviewInsightsSourceChanged(storedInsight, reviews)) {
+        results.push({ merchant_id: merchant.id, status: "skipped", message: "Aucun nouvel avis : analyse conservée à l’identique." });
         continue;
       }
 
-      if (!shouldRefreshReviewInsights({ reviews, storedInsights: insightRow as ReviewInsightRow | null, now: runAt })) {
-        results.push({ merchant_id: merchant.id, status: "skipped" });
-        continue;
-      }
-
-      const analysis = prepareReviewInsightsForDisplay(await analyzeReviewsWithOpenAI(reviews, merchant), reviews);
-      if (!analysis) {
-        throw new Error("Analyse vide.");
-      }
-      const saved = await saveReviewInsights(merchant, analysis, reviews, supabase);
+      const analysis = reviews.length > 0
+        ? await analyzeReviewsWithOpenAI(reviews, merchant)
+        : emptyAnalysis;
+      const socialPostIdeas = await getTopSocialRecommendations({
+        analysis,
+        reviews,
+        merchant,
+        posts: (postRows ?? []) as SocialPostRow[]
+      });
+      const saved = await saveReviewInsights(merchant, {
+        ...analysis,
+        socialPostIdeas,
+        reviewSnapshot: getReviewSnapshotSummary(reviews)
+      }, reviews, supabase);
 
       results.push({
         merchant_id: merchant.id,
@@ -104,9 +101,11 @@ export async function GET(request: Request) {
     }
   }
 
+  const hasErrors = results.some((result) => result.status === "error");
+
   return NextResponse.json({
-    ok: true,
+    ok: !hasErrors,
     run_at: runAt.toISOString(),
     results
-  });
+  }, { status: hasErrors ? 500 : 200 });
 }

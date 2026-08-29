@@ -64,6 +64,7 @@ export default async function RcuFormPage({
 
     try {
       const requestHeaders = await headers();
+      const consentAll = formData.get("consent_all") === "on";
       const result = await submitRcuLead({
         form: activeForm,
         payload: {
@@ -72,10 +73,10 @@ export default async function RcuFormPage({
           phone: String(formData.get("phone") ?? ""),
           email: String(formData.get("email") ?? "") || undefined,
           favorite_products: String(formData.get("favorite_products") ?? "") || undefined,
-          consent_sms: formData.get("consent_sms") === "on",
-          consent_email: formData.get("consent_email") === "on",
+          consent_sms: consentAll,
+          consent_email: consentAll,
           birthday: String(formData.get("birthday") ?? "") || undefined,
-          privacy_consent: formData.get("privacy_consent") === "on",
+          privacy_consent: consentAll,
           review_confirmed: formData.get("review_confirmed") === "on",
           visit_code: String(formData.get("visit_code") ?? ""),
           validation_key: getRcuValidationKey(requestHeaders)
