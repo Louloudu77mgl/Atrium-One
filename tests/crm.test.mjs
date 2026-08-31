@@ -24,7 +24,6 @@ const crmHome = read("../app/crm/page.tsx");
 const leadWorkspace = read("../components/crm/LeadDetailWorkspace.tsx");
 const activityRoute = read("../app/api/crm/activity/[id]/route.ts");
 const onboardingTestPage = read("../app/crm/onboarding-test/page.tsx");
-const onboardingTestWorkspace = read("../components/crm/TestOnboardingWorkspace.tsx");
 const crmSidebar = read("../components/crm/CrmSidebar.tsx");
 
 test("sécurité — l’admin exact est isolé dans /crm et les autres utilisateurs sont refusés", () => {
@@ -219,23 +218,23 @@ test("accueil CRM — les KPI sont calculés depuis les données sources", () =>
 
 test("onboarding test — le guide couvre Google Business, Instagram Meta et Gmail", () => {
   assert.match(crmSidebar, /\/crm\/onboarding-test/);
-  assert.match(onboardingTestWorkspace, /Google Business Profile/);
-  assert.match(onboardingTestWorkspace, /Meta for Developers/);
-  assert.match(onboardingTestWorkspace, /gmail\.send/);
-  assert.match(onboardingTestWorkspace, /30 jours/);
-  assert.match(onboardingTestWorkspace, /refresh tokens peuvent expirer après 7 jours/);
+  assert.match(onboardingTestPage, /Google Business Profile/);
+  assert.match(onboardingTestPage, /Meta for Developers/);
+  assert.match(onboardingTestPage, /Gmail/);
+  assert.equal((onboardingTestPage.match(/number: "0[123]"/g) ?? []).length, 3);
 });
 
-test("onboarding test — aucun secret client n’est demandé et les callbacks production sont explicites", () => {
-  assert.match(onboardingTestWorkspace, /aucun mot de passe n’est collecté/i);
-  assert.match(onboardingTestWorkspace, /Ne jamais demander ni stocker de mot de passe, code 2FA/);
-  for (const callback of ["google", "gmail", "instagram"]) assert.match(onboardingTestWorkspace, new RegExp(`https:\\/\\/app\\.atrium-one\\.fr\\/api\\/${callback}\\/callback`));
+test("onboarding test — les trois CTA ouvrent directement les listes de testeurs", () => {
+  assert.match(onboardingTestPage, /https:\/\/console\.cloud\.google\.com\/auth\/audience\?project=650116804104/);
+  assert.match(onboardingTestPage, /https:\/\/developers\.facebook\.com\/apps\/1457310063112802\/roles\/roles\//);
+  assert.match(onboardingTestPage, /Ajouter le testeur Google Business/);
+  assert.match(onboardingTestPage, /Ajouter le testeur Gmail/);
+  assert.match(onboardingTestPage, /Ajouter le testeur Instagram/);
 });
 
-test("onboarding test — l’état réel est lu sans sélectionner de jetons OAuth", () => {
-  for (const table of ["business_access", "business_module_access", "google_connections", "instagram_connections", "gmail_connections"]) assert.match(onboardingTestPage, new RegExp(`from\\("${table}"\\)`));
-  assert.doesNotMatch(onboardingTestPage, /access_token|refresh_token|client_secret/);
-  assert.match(onboardingTestWorkspace, /localStorage\.setItem/);
+test("onboarding test — la page est fixe, simple et non personnalisée par client", () => {
+  assert.doesNotMatch(onboardingTestPage, /createServerSupabaseClient|crm_leads|searchParams|localStorage|progress/i);
+  assert.match(onboardingTestPage, /Aucun mot de passe ni code 2FA/);
 });
 
 test("association compte — email exact automatique, signaux faibles manuels", () => {
