@@ -247,6 +247,16 @@ test("timeline — une entrée peut être supprimée sans supprimer sa tâche ou
   assert.match(leadWorkspace, /Supprimer cette entrée de timeline/);
 });
 
+test("fiche prospect — le CTA Appel effectué consigne immédiatement l’appel dans la timeline", () => {
+  assert.match(leadWorkspace, /✓ Appel effectué/);
+  assert.match(leadWorkspace, /logCompletedCall/);
+  assert.match(leadWorkspace, /type: "Appel effectué"/);
+  assert.match(leadWorkspace, /event_date: now\.date/);
+  assert.match(leadWorkspace, /event_time: now\.time/);
+  assert.match(leadWorkspace, /await refreshActivity\(\)/);
+  assert.match(leadWorkspace, /disabled=\{loggingCall\}/);
+});
+
 test("accueil CRM — les KPI sont calculés depuis les données sources", () => {
   for (const table of ["crm_leads", "crm_tasks", "crm_events", "crm_opportunities"]) assert.match(crmHome, new RegExp(`from\\("${table}"\\)`));
   assert.match(crmHome, /Pipeline MRR/);

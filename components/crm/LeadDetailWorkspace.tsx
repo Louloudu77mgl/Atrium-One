@@ -14,6 +14,12 @@ type Tab = "summary" | "notes" | "tasks" | "events" | "opportunities" | "access"
 const formatDateTime = (value?: string | null) => value ? new Date(value).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" }) : "Non disponible";
 const tabs: Array<[Tab, string]> = [["summary", "Résumé"], ["notes", "Notes"], ["tasks", "Tâches"], ["events", "Événements"], ["opportunities", "Opportunités"], ["access", "Accès AtriumOne"]];
 
+function currentParisDateTime() {
+  const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return { date: `${value.year}-${value.month}-${value.day}`, time: `${value.hour}:${value.minute}` };
+}
+
 export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: CrmLead; notes: Note[]; tasks: CrmTask[]; events: CrmEvent[]; opportunities: CrmOpportunity[]; activity: Activity[]; access: BusinessAccess | null; modules: Array<{ module_key: string; enabled: boolean }>; account: Account; candidates: Candidate[] }; returnTo?: string }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("summary");
@@ -31,6 +37,7 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
   const [opportunityMrr, setOpportunityMrr] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [refreshingHours, setRefreshingHours] = useState(false);
+  const [loggingCall, setLoggingCall] = useState(false);
   const [accountEnabled, setAccountEnabled] = useState(initial.access?.account_enabled ?? false);
   const [onboardingStatus, setOnboardingStatus] = useState(initial.access?.onboarding_status ?? "pending");
   const [modules, setModules] = useState<Record<string, boolean>>(Object.fromEntries(CRM_MODULES.map((key) => [key, initial.modules.find((row) => row.module_key === key)?.enabled ?? false])));
@@ -53,6 +60,24 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
   }, [lead.google_place_id, lead.google_opening_hours]);
 
   async function refreshActivity() { const response = await fetch(`/api/crm/leads/${lead.id}/activity`, { cache: "no-store" }); if (response.ok) setActivity(await response.json()); }
+  async function logCompletedCall() {
+    if (loggingCall) return;
+    setLoggingCall(true);
+    const now = currentParisDateTime();
+    try {
+      const response = await fetch(`/api/crm/leads/${lead.id}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "Appel effectué", event_date: now.date, event_time: now.time }) });
+      const data = await response.json();
+      if (response.ok) {
+        setEvents((current) => [data, ...current]);
+        await refreshActivity();
+        setMessage(`Appel effectué enregistré à ${now.time}.`);
+      } else setMessage(data.error?.message ?? "L’appel n’a pas pu être enregistré.");
+    } catch {
+      setMessage("L’appel n’a pas pu être enregistré.");
+    } finally {
+      setLoggingCall(false);
+    }
+  }
   async function deleteActivity(id: string) { if (!confirm("Supprimer cette entrée de timeline ?\n\nLa tâche ou le rendez-vous associé restera conservé.")) return; const response = await fetch(`/api/crm/activity/${id}`, { method: "DELETE" }); if (response.ok) setActivity((current) => current.filter((item) => item.id !== id)); else setMessage("Cette entrée de timeline n’a pas pu être supprimée."); }
   async function patchLead(update: Record<string, unknown>) { const response = await fetch(`/api/crm/leads/${lead.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(update) }); const data = await response.json(); if (!response.ok) return setMessage(data.error?.message ?? "Modification impossible."); setLead((current) => ({ ...current, ...data })); setMessage("Modifications enregistrées."); }
   async function saveIdentity(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); await patchLead(Object.fromEntries(new FormData(event.currentTarget).entries())); setEditingIdentity(false); }
@@ -92,7 +117,7 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
   }
 
   return <div>
-    <header className="border-b border-[#E8E4DB] bg-white px-5 py-5 lg:px-8"><div className="mb-3"><Link href={returnTo ?? "/crm/leads"} className="text-xs font-black text-[#6B617F]">← {returnTo ? "Retour à la journée" : "Base de données"}</Link></div><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><h1 className="text-2xl font-black tracking-[-.03em]">{lead.name}</h1><span className="rounded-full bg-[#F3E8FF] px-2.5 py-1 text-[10px] font-black text-[#4C1D95]">{lead.lead_source}</span></div><p className="mt-1 text-sm font-semibold text-[#6B617F]">{lead.business_type ?? "Métier non renseigné"} · {lead.city ?? "Ville inconnue"}</p></div><div className="flex flex-wrap gap-2"><Link href="/crm/onboarding-test" className="ao-btn-secondary px-3 py-2.5 text-xs font-black text-[#6D28D9]">Onboarding test</Link><select value={lead.commercial_status} onChange={(event) => void patchLead({ commercial_status: event.target.value })} className="ao-select h-10 px-3 text-xs font-black">{COMMERCIAL_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><button onClick={() => void patchLead({ archived_at: new Date().toISOString() }).then(() => router.push("/crm/leads"))} className="ao-btn-secondary px-3 text-xs font-black">Archiver</button><button onClick={() => void deleteLead()} className="ao-btn-secondary px-3 text-xs font-black text-red-600">Supprimer</button><button onClick={() => void deleteLead(true)} className="rounded-lg px-2 text-[10px] font-black text-red-700">Définitif</button></div></div>{message ? <div className="mt-3 rounded-lg bg-[#F3E8FF] px-3 py-2 text-xs font-bold text-[#4C1D95]">{message}</div> : null}</header>
+    <header className="border-b border-[#E8E4DB] bg-white px-5 py-5 lg:px-8"><div className="mb-3"><Link href={returnTo ?? "/crm/leads"} className="text-xs font-black text-[#6B617F]">← {returnTo ? "Retour à la journée" : "Base de données"}</Link></div><div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-2"><h1 className="text-2xl font-black tracking-[-.03em]">{lead.name}</h1><span className="rounded-full bg-[#F3E8FF] px-2.5 py-1 text-[10px] font-black text-[#4C1D95]">{lead.lead_source}</span></div><p className="mt-1 text-sm font-semibold text-[#6B617F]">{lead.business_type ?? "Métier non renseigné"} · {lead.city ?? "Ville inconnue"}</p></div><div className="flex flex-wrap gap-2">{tab === "summary" ? <button disabled={loggingCall} onClick={() => void logCompletedCall()} className="h-10 rounded-lg bg-emerald-600 px-4 text-xs font-black text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60">{loggingCall ? "Enregistrement…" : "✓ Appel effectué"}</button> : null}<Link href="/crm/onboarding-test" className="ao-btn-secondary px-3 py-2.5 text-xs font-black text-[#6D28D9]">Onboarding test</Link><select value={lead.commercial_status} onChange={(event) => void patchLead({ commercial_status: event.target.value })} className="ao-select h-10 px-3 text-xs font-black">{COMMERCIAL_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><button onClick={() => void patchLead({ archived_at: new Date().toISOString() }).then(() => router.push("/crm/leads"))} className="ao-btn-secondary px-3 text-xs font-black">Archiver</button><button onClick={() => void deleteLead()} className="ao-btn-secondary px-3 text-xs font-black text-red-600">Supprimer</button><button onClick={() => void deleteLead(true)} className="rounded-lg px-2 text-[10px] font-black text-red-700">Définitif</button></div></div>{message ? <div className="mt-3 rounded-lg bg-[#F3E8FF] px-3 py-2 text-xs font-bold text-[#4C1D95]">{message}</div> : null}</header>
 
     <nav className="sticky top-0 z-20 flex gap-1 overflow-x-auto border-b border-[#E8E4DB] bg-[#FAF9F7]/95 px-5 py-2 backdrop-blur lg:px-8">{tabs.map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-black ${tab === key ? "bg-[#2E1065] text-white" : "text-[#6B617F] hover:bg-white"}`}>{label}</button>)}</nav>
 
