@@ -37,6 +37,7 @@ create table if not exists public.crm_leads (
   latitude double precision,
   longitude double precision,
   google_business_status text,
+  google_opening_hours jsonb,
   lead_source text not null default 'Manuel' check (lead_source in ('Google Prospection', 'Inscription site', 'Manuel', 'Recommandation', 'Import', 'Autre')),
   commercial_status text not null default 'Nouveau' check (commercial_status in ('Nouveau', 'À appeler', 'Appelé', 'Contacté', 'À relancer', 'RDV pris', 'Démo réalisée', 'Test AtriumOne', 'Proposition envoyée', 'En négociation', 'Signé', 'Perdu', 'À revoir plus tard')),
   signed_at date,

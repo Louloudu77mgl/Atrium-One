@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
           latitude: prospect.latitude,
           longitude: prospect.longitude,
           google_business_status: prospect.businessStatus,
+          google_opening_hours: prospect.openingHours ?? {},
           lead_source: "Google Prospection"
         }).eq("id", leadId);
         if (error) throw error;
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
           phone: prospect.phone, email: enrichment.email, email_source: enrichment.source, website: prospect.website,
           google_place_id: prospect.placeId || null, google_maps_url: prospect.googleMapsUrl, google_rating: prospect.rating,
           google_reviews_count: prospect.reviewsCount, google_profile_created_at: null, latitude: prospect.latitude, longitude: prospect.longitude,
-          google_business_status: prospect.businessStatus, lead_source: "Google Prospection", commercial_status: "Nouveau"
+          google_business_status: prospect.businessStatus, google_opening_hours: prospect.openingHours ?? {}, lead_source: "Google Prospection", commercial_status: "Nouveau"
         }).select("id").single();
         if (error) {
           if (error.code === "23505") {
@@ -82,6 +83,13 @@ export async function POST(request: NextRequest) {
         known.push({ id: lead.id, google_place_id: prospect.placeId, website: prospect.website, phone: prospect.phone, name: prospect.name, address: prospect.address, deleted_at: null });
         imported.push({ placeId: prospect.placeId, leadId: lead.id, email: enrichment.email });
       }
+    }
+
+    for (const duplicate of duplicates) {
+      const prospect = uniqueSelection.find((item) => item.placeId === duplicate.placeId);
+      if (!prospect?.openingHours) continue;
+      const { error } = await supabase.from("crm_leads").update({ google_opening_hours: prospect.openingHours }).eq("id", duplicate.leadId);
+      if (error) throw error;
     }
 
     const relationRows = [...imported, ...restored, ...duplicates].map((item) => ({ search_id: searchId, lead_id: item.leadId }));

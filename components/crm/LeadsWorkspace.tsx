@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { GOOGLE_WEEKDAYS, isOpenAt } from "@/lib/crm/opening-hours";
 import { COMMERCIAL_STATUSES, type BusinessAccess, type CrmEvent, type CrmLead, type CrmTask } from "@/lib/crm/types";
 
 type LeadRow = CrmLead & { next_task: CrmTask | null; next_event: CrmEvent | null; account_access: BusinessAccess | null; last_interaction: string | null };
@@ -13,7 +14,7 @@ export function LeadsWorkspace({ initialLeads }: { initialLeads: LeadRow[] }) {
   const router = useRouter();
   const [leads, setLeads] = useState(initialLeads);
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState({ city: "", businessType: "", status: "", minRating: "", minReviews: "", phone: "all" as Presence, email: "all" as Presence, website: "all" as Presence, account: "all" as Presence, enabled: "all" as Presence, appointment: "all" as Presence, task: "all" as Presence, addedAfter: "" });
+  const [filters, setFilters] = useState({ city: "", businessType: "", status: "", minRating: "", minReviews: "", openDay: "1", openTime: "", phone: "all" as Presence, email: "all" as Presence, website: "all" as Presence, account: "all" as Presence, enabled: "all" as Presence, appointment: "all" as Presence, task: "all" as Presence, addedAfter: "" });
   const [sort, setSort] = useState("created_desc");
   const [showFilters, setShowFilters] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -34,6 +35,7 @@ export function LeadsWorkspace({ initialLeads }: { initialLeads: LeadRow[] }) {
         && (!filters.minRating || (lead.google_rating ?? 0) >= Number(filters.minRating)) && (!filters.minReviews || (lead.google_reviews_count ?? 0) >= Number(filters.minReviews))
         && has(lead.phone, filters.phone) && has(lead.email, filters.email) && has(lead.website, filters.website) && has(lead.business_id, filters.account)
         && has(lead.account_access?.account_enabled, filters.enabled) && has(lead.next_event, filters.appointment) && has(lead.next_task, filters.task)
+        && (!filters.openTime || isOpenAt(lead.google_opening_hours, Number(filters.openDay), filters.openTime))
         && (!filters.addedAfter || lead.created_at.slice(0, 10) >= filters.addedAfter);
     });
     return rows.sort((a, b) => {
@@ -87,8 +89,9 @@ export function LeadsWorkspace({ initialLeads }: { initialLeads: LeadRow[] }) {
     {showFilters ? <div className="grid gap-2 rounded-xl border border-[#E8E4DB] bg-white p-3 sm:grid-cols-3 lg:grid-cols-6">
       <FilterSelect label="Ville" value={filters.city} onChange={(value) => setFilters({ ...filters, city: value })} options={cities} /><FilterSelect label="Métier" value={filters.businessType} onChange={(value) => setFilters({ ...filters, businessType: value })} options={types} /><FilterSelect label="Statut" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })} options={[...COMMERCIAL_STATUSES]} />
       <label className="ao-label">Note min<input type="number" min="0" max="5" step="0.1" value={filters.minRating} onChange={(e) => setFilters({ ...filters, minRating: e.target.value })} className="ao-input h-9 px-2" /></label><label className="ao-label">Avis min<input type="number" min="0" value={filters.minReviews} onChange={(e) => setFilters({ ...filters, minReviews: e.target.value })} className="ao-input h-9 px-2" /></label><label className="ao-label">Date d’ajout<input type="date" value={filters.addedAfter} onChange={(e) => setFilters({ ...filters, addedAfter: e.target.value })} className="ao-input h-9 px-2" /></label>
+      <label className="ao-label">Ouvert le<select value={filters.openDay} onChange={(e) => setFilters({ ...filters, openDay: e.target.value })} className="ao-select h-9 px-2">{GOOGLE_WEEKDAYS.map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}</select></label><label className="ao-label">Ouvert à<input type="time" value={filters.openTime} onChange={(e) => setFilters({ ...filters, openTime: e.target.value })} className="ao-input h-9 px-2" /><span className="mt-1 block text-[9px] font-semibold normal-case text-[#8B7AA8]">Vide = aucun filtre</span></label>
       {([['phone','Téléphone'],['email','Email'],['website','Site'],['account','Compte créé'],['enabled','Compte activé'],['appointment','RDV prévu'],['task','Prochaine tâche']] as const).map(([key,label]) => <PresenceFilter key={key} label={label} value={filters[key]} onChange={(value) => setFilters({ ...filters, [key]: value })} />)}
-      <button onClick={() => setFilters({ city: "", businessType: "", status: "", minRating: "", minReviews: "", phone: "all", email: "all", website: "all", account: "all", enabled: "all", appointment: "all", task: "all", addedAfter: "" })} className="self-end rounded-lg px-2 py-2 text-xs font-black text-[#4C1D95]">Réinitialiser</button>
+      <button onClick={() => setFilters({ city: "", businessType: "", status: "", minRating: "", minReviews: "", openDay: "1", openTime: "", phone: "all", email: "all", website: "all", account: "all", enabled: "all", appointment: "all", task: "all", addedAfter: "" })} className="self-end rounded-lg px-2 py-2 text-xs font-black text-[#4C1D95]">Réinitialiser</button>
     </div> : null}
 
     {selected.size ? <div className="sticky top-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-[#C4B5FD] bg-[#2E1065] px-4 py-3 text-white shadow-xl"><span className="mr-auto text-sm font-black">{selected.size} sélectionné{selected.size > 1 ? "s" : ""}</span><button onClick={() => setShowBulkTask(true)} className="rounded-lg bg-white px-3 py-2 text-xs font-black text-[#4C1D95]">Ajouter une tâche</button><button disabled={busy} onClick={() => void runBulk("archive")} className="rounded-lg border border-white/30 px-3 py-2 text-xs font-black">Archiver</button><button disabled={busy} onClick={() => void runBulk("delete")} className="rounded-lg bg-red-500 px-3 py-2 text-xs font-black">Supprimer</button></div> : null}

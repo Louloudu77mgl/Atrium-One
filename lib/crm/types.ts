@@ -28,6 +28,19 @@ export const CRM_MODULES = ["reviews", "instagram", "hans", "automations", "emai
 export type CommercialStatus = (typeof COMMERCIAL_STATUSES)[number];
 export type CrmModule = (typeof CRM_MODULES)[number];
 
+export type GoogleOpeningHoursPoint = {
+  day?: number;
+  hour?: number;
+  minute?: number;
+  date?: { year?: number; month?: number; day?: number };
+  truncated?: boolean;
+};
+
+export type GoogleOpeningHours = {
+  periods?: Array<{ open?: GoogleOpeningHoursPoint; close?: GoogleOpeningHoursPoint }>;
+  weekdayDescriptions?: string[];
+};
+
 export type CrmLead = {
   id: string;
   business_id: string | null;
@@ -49,6 +62,7 @@ export type CrmLead = {
   latitude: number | null;
   longitude: number | null;
   google_business_status: string | null;
+  google_opening_hours: GoogleOpeningHours | null;
   lead_source: "Google Prospection" | "Inscription site" | "Manuel" | "Recommandation" | "Import" | "Autre";
   commercial_status: CommercialStatus;
   signed_at: string | null;
@@ -156,6 +170,7 @@ export type PlacesProspect = {
   latitude: number | null;
   longitude: number | null;
   businessStatus: string | null;
+  openingHours: GoogleOpeningHours | null;
   alreadyExists: boolean;
   existingLeadId: string | null;
 };

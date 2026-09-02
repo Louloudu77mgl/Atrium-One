@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
-    "test:crm": "node --experimental-strip-types --test tests/crm.test.mjs"
+    "test:crm": "node --experimental-strip-types --test tests/crm.test.mjs",
+    "backfill:crm-opening-hours": "node scripts/backfill-crm-opening-hours.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

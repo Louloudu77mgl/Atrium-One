@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { calculateArr, isCrmTimelineActivity } from "@/lib/crm/logic";
 import { COMMERCIAL_STATUSES, CRM_CALL_RESULTS, CRM_EVENT_TYPES, CRM_MODULES, CRM_OPPORTUNITY_STATUSES, MODULE_LABELS, type BusinessAccess, type CrmEvent, type CrmLead, type CrmOpportunity, type CrmTask } from "@/lib/crm/types";
 
@@ -30,10 +30,27 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
   const [eventType, setEventType] = useState<(typeof CRM_EVENT_TYPES)[number]>("Appel effectué");
   const [opportunityMrr, setOpportunityMrr] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
+  const [refreshingHours, setRefreshingHours] = useState(false);
   const [accountEnabled, setAccountEnabled] = useState(initial.access?.account_enabled ?? false);
   const [onboardingStatus, setOnboardingStatus] = useState(initial.access?.onboarding_status ?? "pending");
   const [modules, setModules] = useState<Record<string, boolean>>(Object.fromEntries(CRM_MODULES.map((key) => [key, initial.modules.find((row) => row.module_key === key)?.enabled ?? false])));
   const nextEvent = useMemo(() => events.filter((item) => item.event_time && `${item.event_date}T${item.event_time}` >= new Date().toISOString().slice(0, 19)).sort((a,b) => `${a.event_date}${a.event_time}`.localeCompare(`${b.event_date}${b.event_time}`))[0] ?? null, [events]);
+
+  async function refreshOpeningHours() {
+    if (!lead.google_place_id || refreshingHours) return;
+    setRefreshingHours(true);
+    const response = await fetch(`/api/crm/leads/${lead.id}/opening-hours`, { method: "POST" });
+    const data = await response.json();
+    if (response.ok) setLead((current) => ({ ...current, google_opening_hours: data.openingHours }));
+    else setMessage(data.error?.message ?? "Les horaires Google n’ont pas pu être récupérés.");
+    setRefreshingHours(false);
+  }
+
+  useEffect(() => {
+    if (lead.google_place_id && lead.google_opening_hours == null) void refreshOpeningHours();
+    // Un seul enrichissement automatique lors de l'ouverture de la fiche.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.google_place_id, lead.google_opening_hours]);
 
   async function refreshActivity() { const response = await fetch(`/api/crm/leads/${lead.id}/activity`, { cache: "no-store" }); if (response.ok) setActivity(await response.json()); }
   async function deleteActivity(id: string) { if (!confirm("Supprimer cette entrée de timeline ?\n\nLa tâche ou le rendez-vous associé restera conservé.")) return; const response = await fetch(`/api/crm/activity/${id}`, { method: "DELETE" }); if (response.ok) setActivity((current) => current.filter((item) => item.id !== id)); else setMessage("Cette entrée de timeline n’a pas pu être supprimée."); }
@@ -82,6 +99,7 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
     <main className="p-5 lg:p-8">
       {tab === "summary" ? <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-4"><Section title="Identité" action={<button onClick={() => setEditingIdentity(!editingIdentity)} className="text-xs font-black text-[#4C1D95]">{editingIdentity ? "Annuler" : "Modifier"}</button>}>{editingIdentity ? <form onSubmit={saveIdentity} className="grid gap-3 sm:grid-cols-2">{[["name","Nom"],["business_type","Métier"],["address","Adresse"],["city","Ville"],["postal_code","Code postal"],["phone","Téléphone"],["email","Email"],["website","Site"]].map(([key,label]) => <label key={key} className={`ao-label ${key === "address" ? "sm:col-span-2" : ""}`}>{label}<input name={key} defaultValue={String(lead[key as keyof CrmLead] ?? "")} className="ao-input h-9 px-2.5" /></label>)}<button className="ao-btn-primary h-9 px-3 text-xs font-black sm:col-span-2">Enregistrer</button></form> : <div className="grid gap-x-5 gap-y-3 sm:grid-cols-2"><Fact label="Métier" value={lead.business_type} /><Fact label="Adresse" value={[lead.address, lead.postal_code, lead.city].filter(Boolean).join(", ")} /><Fact label="Téléphone" value={lead.phone} href={lead.phone ? `tel:${lead.phone}` : undefined} /><Fact label="Email" value={lead.email} href={lead.email ? `mailto:${lead.email}` : undefined} /><Fact label="Site" value={lead.website} href={lead.website ?? undefined} /><Fact label="Google Maps" value={lead.google_maps_url ? "Ouvrir la fiche" : null} href={lead.google_maps_url ?? undefined} /><Fact label="Note Google" value={lead.google_rating ? `${lead.google_rating} / 5` : null} /><Fact label="Nombre d’avis" value={lead.google_reviews_count?.toString()} /><Fact label="Ajouté le" value={formatDateTime(lead.created_at)} /></div>}</Section>
+          <Section title="Horaires d’ouverture" action={lead.google_place_id ? <button disabled={refreshingHours} onClick={() => void refreshOpeningHours()} className="text-xs font-black text-[#4C1D95] disabled:opacity-50">{refreshingHours ? "Actualisation…" : "Actualiser Google"}</button> : undefined}><OpeningHours hours={lead.google_opening_hours} loading={refreshingHours} /></Section>
           {nextEvent ? <div className="rounded-xl border border-fuchsia-300 bg-gradient-to-r from-violet-600 to-fuchsia-500 p-4 text-white shadow-lg"><div className="text-[10px] font-black uppercase tracking-wider text-white/70">Prochain événement</div><div className="mt-1 text-base font-black">{nextEvent.title}</div><div className="mt-1 text-xs font-bold text-white/80">{new Date(`${nextEvent.event_date}T${nextEvent.event_time}`).toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })}{nextEvent.duration_minutes ? ` · ${nextEvent.duration_minutes} min` : ""}</div></div> : null}
         </div>
         <Section title="Timeline commerciale"><Timeline activity={activity} onDelete={deleteActivity} /></Section>
@@ -103,6 +121,12 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
 
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) { return <section className="rounded-xl border border-[#E8E4DB] bg-white p-4 shadow-sm"><div className="mb-3 flex items-center justify-between gap-3"><h2 className="text-sm font-black">{title}</h2>{action}</div>{children}</section>; }
 function Fact({ label, value, href }: { label: string; value?: string | null; href?: string }) { return <div><div className="text-[10px] font-black uppercase tracking-wide text-[#8B7AA8]">{label}</div>{href && value ? <a href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer" className="break-words text-sm font-bold text-[#4C1D95]">{value}</a> : <div className="break-words text-sm font-bold">{value || "—"}</div>}</div>; }
+function OpeningHours({ hours, loading }: { hours: CrmLead["google_opening_hours"]; loading: boolean }) {
+  if (loading && hours == null) return <div className="text-xs font-semibold text-[#8B7AA8]">Récupération des horaires Google…</div>;
+  const descriptions = hours?.weekdayDescriptions ?? [];
+  if (!descriptions.length) return <div className="rounded-lg border border-dashed border-[#D9D1C3] p-4 text-xs font-semibold text-[#8B7AA8]">{hours ? "Horaires non renseignés sur Google." : "Horaires pas encore récupérés."}</div>;
+  return <div className="divide-y divide-[#EEEAE3] rounded-lg border border-[#E8E4DB]">{descriptions.map((description) => { const separator = description.indexOf(":"); const day = separator >= 0 ? description.slice(0, separator) : description; const schedule = separator >= 0 ? description.slice(separator + 1).trim() : ""; return <div key={description} className="grid grid-cols-[100px_1fr] gap-3 px-3 py-2 text-xs"><span className="font-black text-[#2E1065]">{day}</span><span className="font-semibold text-[#6B617F]">{schedule || "Non renseigné"}</span></div>; })}</div>;
+}
 function Empty({ text }: { text: string }) { return <div className="rounded-lg border border-dashed border-[#D9D1C3] p-4 text-center text-xs font-semibold text-[#8B7AA8]">{text}</div>; }
 function Timeline({ activity, onDelete }: { activity: Activity[]; onDelete: (id: string) => Promise<void> }) { const visible = activity.filter(isCrmTimelineActivity); return <div className="relative space-y-0 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-[#E8E4DB]">{visible.map((item) => { const prominent = ['r1_completed','r2_completed','r3_completed','followup_completed','appointment_created'].includes(item.type); return <div key={item.id} className={`group relative flex gap-3 rounded-lg py-2 ${prominent ? "my-1 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-2" : ""}`}><span className={`mt-1.5 h-[15px] w-[15px] shrink-0 rounded-full border-[4px] border-white ring-1 ${prominent ? "bg-fuchsia-500 ring-fuchsia-300" : "bg-[#A855F7] ring-[#D8B4FE]"}`} /><div className="min-w-0 flex-1"><div className={`text-xs font-black ${prominent ? "text-[#6D28D9]" : ""}`}>{activityLabel(item)}</div><time className="mt-0.5 block text-[10px] font-semibold text-[#8B7AA8]">{formatDateTime(item.created_at)}</time></div><button type="button" onClick={() => void onDelete(item.id)} className="self-start rounded-md px-2 py-1 text-[10px] font-black text-red-500 opacity-60 transition hover:bg-red-50 hover:opacity-100" aria-label="Supprimer l’entrée de timeline">Supprimer</button></div>; })}{!visible.length ? <Empty text="Les appels, emails consignés et rendez-vous planifiés apparaîtront ici." /> : null}</div>; }
 function activityLabel(activity: Activity) { const title = String(activity.metadata.title ?? "").trim(); const schedule = activity.metadata.event_date ? ` · ${new Date(`${String(activity.metadata.event_date)}T12:00:00`).toLocaleDateString("fr-FR")}` : ""; const labels: Record<string,string> = { task_completed: `${/^Email\s+-/i.test(title) ? "Email consigné" : "Appel consigné"}${title ? ` · ${title}` : ""}`, call_completed: `Appel effectué${activity.metadata.result ? ` · ${String(activity.metadata.result)}` : ""}`, r1_completed: `R1 planifié${title ? ` · ${title}` : ""}${schedule}`, r2_completed: `R2 planifié${title ? ` · ${title}` : ""}${schedule}`, r3_completed: `R3 planifié${title ? ` · ${title}` : ""}${schedule}`, followup_completed: `Point de suivi planifié${title ? ` · ${title}` : ""}${schedule}`, appointment_created: `Rendez-vous planifié${title ? ` · ${title}` : ""}${schedule}` }; return labels[activity.type] ?? "Interaction commerciale"; }

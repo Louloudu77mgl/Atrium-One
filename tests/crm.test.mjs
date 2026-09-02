@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { associationStrength, buildBulkTaskRows, buildEventTitle, buildTaskTitle, calculateArr, dedupeProspects, distributeProspectsAcrossDays, exclusiveLeadIdsForSearch, findDuplicate, hasEffectiveModuleAccess, isCrmTimelineActivity, sortCalendarTasks } from "../lib/crm/logic.ts";
+import { associationStrength, buildBulkTaskRows, buildEventTitle, buildTaskTitle, calculateArr, dedupeProspects, distributeProspectsAcrossDays, distributeProspectsAcrossDaysMatching, exclusiveLeadIdsForSearch, findDuplicate, hasEffectiveModuleAccess, isCrmTimelineActivity, sortCalendarTasks } from "../lib/crm/logic.ts";
 import { collectGooglePlacesPages } from "../lib/crm/places.ts";
+import { isOpenAt, isOpenAtDate } from "../lib/crm/opening-hours.ts";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const sqlV1 = read("../supabase/crm-cockpit.sql");
@@ -25,6 +26,8 @@ const leadWorkspace = read("../components/crm/LeadDetailWorkspace.tsx");
 const activityRoute = read("../app/api/crm/activity/[id]/route.ts");
 const onboardingTestPage = read("../app/crm/onboarding-test/page.tsx");
 const crmSidebar = read("../components/crm/CrmSidebar.tsx");
+const openingHoursMigration = read("../supabase/crm-opening-hours.sql");
+const openingHoursRoute = read("../app/api/crm/leads/[id]/opening-hours/route.ts");
 
 test("sécurité — l’admin exact est isolé dans /crm et les autres utilisateurs sont refusés", () => {
   assert.match(sqlV1, /louisdacre@gmail\.com/);
@@ -49,6 +52,30 @@ test("TEST 1 — la pagination automatique dépasse 60 résultats lorsque l’AP
   assert.equal(result.places.length, 80);
   assert.equal(result.pagesFetched, 4);
   assert.match(searchRoute, /GOOGLE_PLACES_MAX_RESULTS/);
+});
+
+test("horaires Google — ouverture simple, coupure du midi, nuit et 24 h/24", () => {
+  const split = { periods: [
+    { open: { day: 1, hour: 9, minute: 0 }, close: { day: 1, hour: 12, minute: 0 } },
+    { open: { day: 1, hour: 14, minute: 0 }, close: { day: 1, hour: 18, minute: 0 } }
+  ] };
+  assert.equal(isOpenAt(split, 1, "09:00"), true);
+  assert.equal(isOpenAt(split, 1, "13:00"), false);
+  assert.equal(isOpenAt(split, 1, "18:00"), false);
+  const overnight = { periods: [{ open: { day: 6, hour: 22, minute: 0 }, close: { day: 0, hour: 2, minute: 0 } }] };
+  assert.equal(isOpenAt(overnight, 0, "01:00"), true);
+  assert.equal(isOpenAt(overnight, 0, "03:00"), false);
+  assert.equal(isOpenAt({ periods: [{ open: { day: 0, hour: 0, minute: 0 } }] }, 3, "09:00"), true);
+  assert.equal(isOpenAtDate(split, "2026-09-07", "09:00"), true);
+});
+
+test("horaires Google — la prospection stocke regularOpeningHours et la fiche peut l’actualiser", () => {
+  assert.match(searchRoute, /places\.regularOpeningHours/);
+  assert.match(searchRoute, /openingHours: place\.regularOpeningHours/);
+  assert.match(importRoute, /google_opening_hours: prospect\.openingHours/);
+  assert.match(openingHoursMigration, /add column if not exists google_opening_hours jsonb/);
+  assert.match(openingHoursRoute, /X-Goog-FieldMask": "regularOpeningHours"/);
+  assert.match(leadWorkspace, /Horaires d’ouverture/);
 });
 
 test("TEST 2 — un Place ID dans trois recherches produit un lead et trois relations", () => {
@@ -182,8 +209,20 @@ test("planificateur cold call — 60 prospects sont répartis sur chacun de deux
 });
 
 test("planificateur cold call — les filtres sont appliqués côté serveur", () => {
-  for (const field of ["city", "businessType", "status", "source", "minRating", "minReviews", "email", "website"]) assert.match(calendarPlanRoute, new RegExp(`filters\\.${field}`));
+  for (const field of ["city", "businessType", "status", "source", "minRating", "minReviews", "email", "website", "openingTime"]) assert.match(calendarPlanRoute, new RegExp(`filters\\.${field}`));
   assert.match(calendarPage, /plannerOptions/);
+});
+
+test("planificateur cold call — chaque jour reçoit uniquement des commerces ouverts à l’heure choisie", () => {
+  const leads = [
+    { id: "lundi", name: "Ouvert lundi", days: [1] },
+    { id: "jeudi", name: "Ouvert jeudi", days: [4] },
+    { id: "deux", name: "Ouvert les deux", days: [1, 4] }
+  ];
+  const allocation = distributeProspectsAcrossDaysMatching(leads, ["2026-09-03", "2026-09-07"], 1, (lead, date) => lead.days.includes(new Date(`${date}T12:00:00Z`).getUTCDay()));
+  assert.deepEqual(allocation.rows.map((row) => [row.lead_id, row.due_date]), [["jeudi", "2026-09-03"], ["lundi", "2026-09-07"]]);
+  assert.match(calendarPlanRoute, /isOpenAtDate/);
+  assert.match(calendar, /Contrôlé pour chaque jour choisi/);
 });
 
 test("suppression lead — les tâches liées sont nettoyées et masquées du calendrier", () => {

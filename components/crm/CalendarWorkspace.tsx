@@ -43,7 +43,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
   const [plannerDates, setPlannerDates] = useState<string[]>([]);
   const [plannerDate, setPlannerDate] = useState("");
   const [prospectsPerDay, setProspectsPerDay] = useState(60);
-  const [plannerFilters, setPlannerFilters] = useState({ city: "", businessType: "", status: "", source: "", minRating: "", minReviews: "", email: "all" as Presence, website: "all" as Presence });
+  const [plannerFilters, setPlannerFilters] = useState({ city: "", businessType: "", status: "", source: "", minRating: "", minReviews: "", email: "all" as Presence, website: "all" as Presence, openingTime: "" });
   const [planning, setPlanning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const monthYear = anchor.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
@@ -161,7 +161,7 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
       const detail = data.dates.map((date: string) => `${new Date(`${date}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} : ${data.counts[date]}`).join(" · ");
       setShowPlanner(false);
       openDay(data.dates[0]);
-      setNotice(`${data.created} appels planifiés. ${detail}${data.shortage ? ` · ${data.shortage} prospect${data.shortage > 1 ? "s" : ""} manquant${data.shortage > 1 ? "s" : ""}` : ""}`);
+      setNotice(`${data.created} appels planifiés. ${detail}${data.openingTime ? ` · uniquement les commerces ouverts à ${data.openingTime}` : ""}${data.unknownOpeningHours ? ` · ${data.unknownOpeningHours} horaire${data.unknownOpeningHours > 1 ? "s" : ""} Google inconnu${data.unknownOpeningHours > 1 ? "s" : ""} exclu${data.unknownOpeningHours > 1 ? "s" : ""}` : ""}${data.shortage ? ` · ${data.shortage} prospect${data.shortage > 1 ? "s" : ""} manquant${data.shortage > 1 ? "s" : ""}` : ""}`);
     } else {
       setNotice(data.error?.message ?? "La répartition n’a pas pu être créée.");
     }
@@ -237,7 +237,8 @@ export function CalendarWorkspace({ initialTasks, initialEvents, initialDay, ini
         <label className="ao-label">Nombre d’avis min.<input type="number" min="0" value={plannerFilters.minReviews} onChange={(event) => setPlannerFilters({ ...plannerFilters, minReviews: event.target.value })} className="ao-input mt-1 h-9 px-2" /></label>
         <PresenceSelect label="A un email" value={plannerFilters.email} onChange={(email) => setPlannerFilters({ ...plannerFilters, email })} />
         <PresenceSelect label="A un site" value={plannerFilters.website} onChange={(website) => setPlannerFilters({ ...plannerFilters, website })} />
-        <button onClick={() => setPlannerFilters({ city: "", businessType: "", status: "", source: "", minRating: "", minReviews: "", email: "all", website: "all" })} className="self-end justify-self-start px-2 py-2 text-[10px] font-black text-[#7C3AED]">Réinitialiser les filtres</button>
+        <label className="ao-label">Ouvert à<input type="time" value={plannerFilters.openingTime} onChange={(event) => setPlannerFilters({ ...plannerFilters, openingTime: event.target.value })} className="ao-input mt-1 h-9 px-2" /><span className="mt-1 block text-[9px] font-semibold normal-case text-[#8B7AA8]">Contrôlé pour chaque jour choisi</span></label>
+        <button onClick={() => setPlannerFilters({ city: "", businessType: "", status: "", source: "", minRating: "", minReviews: "", email: "all", website: "all", openingTime: "" })} className="self-end justify-self-start px-2 py-2 text-[10px] font-black text-[#7C3AED]">Réinitialiser les filtres</button>
       </div>
       <div className="mt-3 flex min-h-8 flex-wrap gap-2">{plannerDates.map((date) => <button key={date} onClick={() => setPlannerDates((current) => current.filter((item) => item !== date))} className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-xs font-black capitalize text-[#4C1D95]">{new Date(`${date}T12:00:00`).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} ×</button>)}{!plannerDates.length ? <span className="text-xs font-semibold text-[#8B7AA8]">Ajoutez par exemple le 3 et le 7 septembre.</span> : <span className="self-center text-xs font-black text-emerald-700">{plannerDates.length} jour{plannerDates.length > 1 ? "s" : ""} · {plannerDates.length * prospectsPerDay} prospects prévus</span>}</div>
     </section> : null}

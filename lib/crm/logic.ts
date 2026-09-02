@@ -65,10 +65,19 @@ export function buildBulkTaskRows(leads: Array<{ id: string; name: string }>, in
 }
 
 export function distributeProspectsAcrossDays(leads: Array<{ id: string; name: string }>, dates: string[], prospectsPerDay: number, createdBy?: string | null) {
+  return distributeProspectsAcrossDaysMatching(leads, dates, prospectsPerDay, () => true, createdBy);
+}
+
+export function distributeProspectsAcrossDaysMatching<T extends { id: string; name: string }>(leads: T[], dates: string[], prospectsPerDay: number, matchesDay: (lead: T, date: string) => boolean, createdBy?: string | null) {
   const rows: ReturnType<typeof buildBulkTaskRows> = [];
   const counts: Record<string, number> = {};
-  dates.forEach((date, dayIndex) => {
-    const dayLeads = leads.slice(dayIndex * prospectsPerDay, (dayIndex + 1) * prospectsPerDay);
+  const remaining = [...leads];
+  dates.forEach((date) => {
+    const dayLeads: T[] = [];
+    for (let index = 0; index < remaining.length && dayLeads.length < prospectsPerDay;) {
+      if (matchesDay(remaining[index], date)) dayLeads.push(...remaining.splice(index, 1));
+      else index += 1;
+    }
     counts[date] = dayLeads.length;
     rows.push(...buildBulkTaskRows(dayLeads, { type: "Appel", dueDate: date, description: "Session de cold call planifiée", createdBy }));
   });

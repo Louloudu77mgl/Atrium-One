@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { collectGooglePlacesPages, GOOGLE_PLACES_MAX_PAGES, GOOGLE_PLACES_MAX_RESULTS, GOOGLE_PLACES_PAGE_SIZE } from "@/lib/crm/places";
 import { dedupeProspects } from "@/lib/crm/logic";
 import { CrmApiError, crmErrorResponse, findDuplicate, getCrmContext } from "@/lib/crm/server";
-import type { CrmLead, PlacesProspect } from "@/lib/crm/types";
+import type { CrmLead, GoogleOpeningHours, PlacesProspect } from "@/lib/crm/types";
 
 export const maxDuration = 60;
 
@@ -11,6 +11,7 @@ type GooglePlace = {
   addressComponents?: Array<{ longText?: string; shortText?: string; types?: string[] }>;
   nationalPhoneNumber?: string; internationalPhoneNumber?: string; websiteUri?: string; rating?: number; userRatingCount?: number;
   googleMapsUri?: string; location?: { latitude?: number; longitude?: number }; businessStatus?: string;
+  regularOpeningHours?: GoogleOpeningHours;
 };
 
 type GoogleResponse = { places?: GooglePlace[]; nextPageToken?: string; error?: { message?: string; status?: string } };
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": "places.id,places.displayName,places.primaryTypeDisplayName,places.formattedAddress,places.addressComponents,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,places.googleMapsUri,places.location,places.businessStatus,nextPageToken"
+          "X-Goog-FieldMask": "places.id,places.displayName,places.primaryTypeDisplayName,places.formattedAddress,places.addressComponents,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.rating,places.userRatingCount,places.googleMapsUri,places.location,places.businessStatus,places.regularOpeningHours,nextPageToken"
         },
         body: JSON.stringify({ textQuery: query, languageCode: "fr", regionCode: "FR", pageSize: GOOGLE_PLACES_PAGE_SIZE, ...(pageToken ? { pageToken } : {}) }),
         signal: AbortSignal.timeout(12000)
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       email: null, emailSource: "unavailable", website: place.websiteUri ?? null, rating: place.rating ?? null,
       reviewsCount: place.userRatingCount ?? null, googleMapsUrl: place.googleMapsUri ?? null,
       latitude: place.location?.latitude ?? null, longitude: place.location?.longitude ?? null,
-      businessStatus: place.businessStatus ?? null, alreadyExists: false, existingLeadId: null
+      businessStatus: place.businessStatus ?? null, openingHours: place.regularOpeningHours ?? {}, alreadyExists: false, existingLeadId: null
     }));
     const uniqueGoogleProspects = dedupeProspects(rawProspects);
 
