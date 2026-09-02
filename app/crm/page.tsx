@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { sortCalendarTasks } from "@/lib/crm/logic";
+import { calculateConversionRate, sortCalendarTasks } from "@/lib/crm/logic";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type LeadRow = { id: string; name: string; city: string | null; commercial_status: string; created_at: string };
@@ -15,6 +15,7 @@ function dateKeyInParis(date = new Date()) {
 }
 
 const money = (value: number) => `${value.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} €`;
+const percent = (value: number) => `${value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;
 
 export default async function CrmHomePage() {
   const supabase = await createServerSupabaseClient() as any;
@@ -41,6 +42,9 @@ export default async function CrmHomePage() {
   const signedArr = won.reduce((sum, item) => sum + Number(item.arr || 0), 0);
   const upcomingEvents = events.filter((item) => item.type !== "Appel effectué" && item.event_date >= today).sort((a, b) => `${a.event_date}${a.event_time ?? "99:99"}`.localeCompare(`${b.event_date}${b.event_time ?? "99:99"}`));
   const eventCount = (type: string) => events.filter((item) => item.type === type).length;
+  const completedCalls = eventCount("Appel effectué");
+  const firstAppointments = eventCount("R1");
+  const callToAppointmentRate = calculateConversionRate(firstAppointments, completedCalls);
   const hasError = [leadsResult, tasksResult, eventsResult, opportunitiesResult].some((result) => result.error);
 
   return <div>
@@ -51,9 +55,10 @@ export default async function CrmHomePage() {
     </header>
 
     <main className="space-y-5 p-5 lg:p-8">
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard label="Prospects actifs" value={leads.length.toLocaleString("fr-FR")} detail={`${leads.filter((lead) => ["Client", "Signé"].includes(lead.commercial_status)).length} clients`} href="/crm/leads" />
         <KpiCard label="Nouveaux · 30 jours" value={leads.filter((lead) => lead.created_at >= thirtyDaysAgo).length.toLocaleString("fr-FR")} detail="Prospects ajoutés" tone="green" />
+        <KpiCard label="Appels → RDV (R1)" value={percent(callToAppointmentRate)} detail={`${completedCalls} appels · ${firstAppointments} rendez-vous pris`} tone="green" />
         <KpiCard label="Opportunités ouvertes" value={openOpportunities.length.toLocaleString("fr-FR")} detail={`${won.length} gagnées · ${lost.length} perdues`} />
         <KpiCard label="Taux de closing" value={`${closed ? Math.round((won.length / closed) * 100) : 0} %`} detail={`${closed} affaires closes`} tone="violet" />
       </section>

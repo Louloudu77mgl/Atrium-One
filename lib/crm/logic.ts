@@ -60,6 +60,11 @@ export function calculateArr(mrr: number) {
   return Math.round(mrr * 1200) / 100;
 }
 
+export function calculateConversionRate(converted: number, total: number) {
+  if (!Number.isFinite(converted) || !Number.isFinite(total) || total <= 0) return 0;
+  return Math.round((Math.max(0, converted) / total) * 1000) / 10;
+}
+
 export function buildBulkTaskRows(leads: Array<{ id: string; name: string }>, input: { type: "Appel" | "Email"; dueDate: string; dueTime?: string | null; description?: string | null; createdBy?: string | null }) {
   return leads.map((lead) => ({ lead_id: lead.id, title: buildTaskTitle(input.type, lead.name), type: input.type, due_date: input.dueDate, due_time: input.dueTime || null, description: input.description || null, created_by: input.createdBy || null }));
 }

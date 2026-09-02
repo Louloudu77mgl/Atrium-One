@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { associationStrength, buildBulkTaskRows, buildEventTitle, buildTaskTitle, calculateArr, dedupeProspects, distributeProspectsAcrossDays, distributeProspectsAcrossDaysMatching, exclusiveLeadIdsForSearch, findDuplicate, hasEffectiveModuleAccess, isCrmTimelineActivity, sortCalendarTasks } from "../lib/crm/logic.ts";
+import { associationStrength, buildBulkTaskRows, buildEventTitle, buildTaskTitle, calculateArr, calculateConversionRate, dedupeProspects, distributeProspectsAcrossDays, distributeProspectsAcrossDaysMatching, exclusiveLeadIdsForSearch, findDuplicate, hasEffectiveModuleAccess, isCrmTimelineActivity, sortCalendarTasks } from "../lib/crm/logic.ts";
 import { collectGooglePlacesPages } from "../lib/crm/places.ts";
 import { isOpenAt, isOpenAtDate } from "../lib/crm/opening-hours.ts";
 
@@ -253,6 +253,15 @@ test("accueil CRM — les KPI sont calculés depuis les données sources", () =>
   assert.match(crmHome, /MRR signé/);
   assert.match(crmHome, /Taux de closing/);
   assert.doesNotMatch(crmHome, /redirect\("\/crm\/prospection"\)/);
+});
+
+test("accueil CRM — le ratio appels vers rendez-vous R1 est exact et lisible", () => {
+  assert.equal(calculateConversionRate(4, 20), 20);
+  assert.equal(calculateConversionRate(3, 200), 1.5);
+  assert.equal(calculateConversionRate(0, 0), 0);
+  assert.match(crmHome, /Appels → RDV \(R1\)/);
+  assert.match(crmHome, /completedCalls.*firstAppointments/s);
+  assert.match(crmHome, /rendez-vous pris/);
 });
 
 test("onboarding test — le guide couvre Google Business, Instagram Meta et Gmail", () => {
