@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import { preserveRecommendationOrigin } from "@/lib/social-recommendation-shared";
 import { NextResponse } from "next/server";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { getInstagramFailureCode } from "@/lib/instagram-errors";
@@ -146,6 +147,10 @@ export async function PATCH(
     updated_at: now,
     last_saved_at: now
   } as Partial<SocialPostRow> & { updated_at: string; last_saved_at: string };
+
+  if (payload.builder_state !== undefined) {
+    nextUpdate.builder_state = preserveRecommendationOrigin(payload.builder_state, existingPost.builder_state);
+  }
 
   if (payload.status === undefined && payload.scheduled_at === undefined) {
     nextUpdate.status = "editing";

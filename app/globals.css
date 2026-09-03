@@ -18,6 +18,7 @@
   --color-text-soft: #8a7f73;
   --color-success: #5b9b6f;
   --color-success-soft: #eef8f0;
+  --color-success-text: #28643a;
   --color-warning: #b7791f;
   --color-warning-soft: #fdf3dd;
   --color-danger: #c95f5f;
@@ -320,6 +321,11 @@ select {
 .ao-badge-danger {
   background: var(--color-danger-soft);
   color: var(--color-danger);
+}
+
+.ao-badge-success {
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
 }
 
 .ao-pill {

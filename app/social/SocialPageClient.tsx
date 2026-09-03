@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreatePostButton } from "@/components/CreatePostButton";
+import { RecommendationSourceBadge } from "@/components/RecommendationSourceBadge";
 import { useFailureSupport } from "@/components/FailureSupportProvider";
 import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import { buildCreatePostHref } from "@/lib/social-recommendations";
+import { buildCreatePostHref, getRecommendationOrigin, isRecommendationPublished, recommendationWeek } from "@/lib/social-recommendation-shared";
 import { canPublishSocialDesignToInstagram, getInstagramPostFailureMessage, getPostStatusLabel, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
@@ -77,6 +78,20 @@ export function SocialPageClient({
   const { toast, showToast } = useToast();
   const { reportImportantFailure } = useFailureSupport();
 
+  useEffect(() => { setPosts(initialPosts); }, [initialPosts]);
+
+  useEffect(() => {
+    const renderedWeek = recommendationWeek();
+    const refresh = () => {
+      if (document.visibilityState === "visible" && !busyId && !instagramModalOpen) router.refresh();
+    };
+    window.addEventListener("focus", refresh);
+    const timer = window.setInterval(() => {
+      if (posts.some((post) => post.status === "scheduled" || post.status === "publishing") || recommendationWeek() !== renderedWeek) refresh();
+    }, 60_000);
+    return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
+  }, [router, busyId, instagramModalOpen, posts]);
+
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(Date.now()), 15_000);
     return () => window.clearInterval(timer);
@@ -138,11 +153,13 @@ export function SocialPageClient({
     [orderedPosts, postCategory]
   );
   const draftToResume = orderedPosts.find((post) => post.status !== "published");
-  const recommendationCount = ideas.length;
+  const availableIdeas = useMemo(() => ideas.filter((idea) => !isRecommendationPublished(idea, posts)), [ideas, posts]);
+  const recommendationCount = availableIdeas.length;
   const maxRecommendationStart = Math.max(0, Math.floor((recommendationCount - 1) / 2) * 2);
+  const visibleStart = Math.min(recommendationStart, maxRecommendationStart);
   const displayedIdeas = useMemo(
-    () => ideas.slice(recommendationStart, recommendationStart + 2),
-    [ideas, recommendationStart]
+    () => availableIdeas.slice(visibleStart, visibleStart + 2),
+    [availableIdeas, visibleStart]
   );
 
   async function deletePost(postId: string) {
@@ -186,6 +203,7 @@ export function SocialPageClient({
         showToast("Publication en cours sur Instagram…", "success");
       } else {
         showToast("Post publié sur Instagram", "success");
+        router.refresh();
       }
     } catch (error) {
       showToast(getUserErrorMessage(error, "Publication impossible."), "error");
@@ -489,8 +507,8 @@ export function SocialPageClient({
           <div className="section-head mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="eyebrow mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Ce que Hans recommande</p>
-              <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">5 à 10 idées utiles, jamais les mêmes</h2>
-              <p className="mt-1 max-w-[620px] text-[13px] leading-5 text-[#777287]">Hans privilégie les Insights IA, écarte les sujets déjà publiés et complète avec les temps forts proches de votre ville.</p>
+              <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Vos prochaines idées de posts</h2>
+              <p className="mt-1 max-w-[620px] text-[13px] leading-5 text-[#777287]">Une fois publié, un thème laisse sa place à une autre idée de vos Insights IA. Hans consulte aussi chaque semaine les événements de votre ville et le calendrier.</p>
             </div>
             <Link href="/reviews/insights" className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
               Voir l&apos;analyse du jour
@@ -502,12 +520,12 @@ export function SocialPageClient({
             <span className="count-chip text-[12.5px] text-[#6E6B80]"><b className="text-[#1E1B2E]">{recommendationCount}</b> recommandations disponibles</span>
             {recommendationCount > 0 ? (
               <span className="text-[12px] font-semibold text-[#8B87A0]">
-                {recommendationStart + 1}–{Math.min(recommendationStart + 2, recommendationCount)} sur {recommendationCount}
+                {visibleStart + 1}–{Math.min(visibleStart + 2, recommendationCount)} sur {recommendationCount}
               </span>
             ) : null}
           </div>
 
-          {ideas.length === 0 ? (
+          {recommendationCount === 0 ? (
             <div className="rounded-[20px] border border-[#ECE9F4] bg-white p-6 text-sm text-[#6E6B80] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)]">
               Aucune recommandation disponible pour le moment. Analysez davantage d’avis pour générer de nouvelles idées de posts.
             </div>
@@ -516,18 +534,18 @@ export function SocialPageClient({
               <button
                 type="button"
                 aria-label="Voir les recommandations précédentes"
-                disabled={recommendationStart === 0}
-                onClick={() => setRecommendationStart((current) => Math.max(0, current - 2))}
+                disabled={visibleStart === 0}
+                onClick={() => setRecommendationStart(Math.max(0, visibleStart - 2))}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#E3DAF1] bg-white text-[#5B2A9E] shadow-[0_4px_14px_rgba(75,46,131,0.08)] transition hover:border-[#7C4DCB] disabled:cursor-not-allowed disabled:opacity-35"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
               </button>
               <div className="grid min-w-0 flex-1 gap-4 md:grid-cols-2">
               {displayedIdeas.map((idea, index) => {
-                const ideaIndex = recommendationStart + index;
-                const revealKey = `idea-${ideaIndex}`;
+                const ideaIndex = visibleStart + index;
+                const revealKey = getRecommendationOrigin(idea).themeKey;
                 const sourceLabel = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Activité du commerce";
-                const sourceExample = findSourceExample(reviews, sourceLabel);
+                const sourceExample = !idea.localEvent && !idea.seasonalMoment ? findSourceExample(reviews, sourceLabel) : null;
                 const sourceKind = idea.sourcePainPoint || idea.sourceStrength ? "Insights IA" : idea.localEvent ? "Veille locale" : idea.seasonalMoment ? "Calendrier" : "Hans";
                 return (
                   <div key={`${idea.title}-${ideaIndex}`} className="reco-card flex min-w-0 flex-col gap-[10px] rounded-[20px] border border-[#ECE9F4] bg-white px-[18px] pb-4 pt-[18px] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)] transition hover:-translate-y-[2px] hover:shadow-[0_10px_28px_rgba(46,26,84,0.1)]">
@@ -536,6 +554,8 @@ export function SocialPageClient({
                       <span className="reco-by text-[11.5px] font-semibold text-[#9895A8]">{sourceKind}</span>
                     </div>
                     <h3 className="reco-title text-[14px] font-bold leading-[1.35] text-[#1E1B2E]">{idea.title}</h3>
+                    <div><RecommendationSourceBadge idea={idea} /></div>
+                    {idea.eventDate ? <p className={typographyStyles.caption}>Le {new Date(`${idea.eventDate}T12:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}{idea.sourceUrl ? <> · <a href={idea.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline">Source de l’événement</a></> : null}</p> : null}
                     <p className="reco-text flex-1 text-[12.6px] leading-[1.5] text-[#6E6B80]">{idea.angle}</p>
                     <button type="button" onClick={() => setExpandedSources((current) => ({ ...current, [revealKey]: !current[revealKey] }))} className="source-chip w-full rounded-[10px] border border-dashed border-[#DEDBE8] px-[10px] py-2 text-left">
                       <span className="label mb-[2px] flex items-center gap-[5px] text-[11px] font-bold text-[#5B2A9E]">
@@ -561,8 +581,8 @@ export function SocialPageClient({
               <button
                 type="button"
                 aria-label="Voir les recommandations suivantes"
-                disabled={recommendationStart >= maxRecommendationStart}
-                onClick={() => setRecommendationStart((current) => Math.min(maxRecommendationStart, current + 2))}
+                disabled={visibleStart >= maxRecommendationStart}
+                onClick={() => setRecommendationStart(Math.min(maxRecommendationStart, visibleStart + 2))}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#E3DAF1] bg-white text-[#5B2A9E] shadow-[0_4px_14px_rgba(75,46,131,0.08)] transition hover:border-[#7C4DCB] disabled:cursor-not-allowed disabled:opacity-35"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>

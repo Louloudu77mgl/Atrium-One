@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { preserveRecommendationOrigin } from "@/lib/social-recommendation-shared";
 import { getMerchant } from "@/lib/merchants";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
@@ -51,6 +52,8 @@ export async function POST(request: Request) {
     });
 
     if (payload.postId) {
+      const { data: existingPost, error: postError } = await supabase.from("social_posts").select("builder_state").eq("id", payload.postId).eq("merchant_id", merchant.id).single();
+      if (postError || !existingPost) throw new Error("Post introuvable.");
       const brand = await getBrandSettings(merchant);
       const designDocument = createGeneratedDesignDocument({
         title: payload.title ?? merchant.business_name,
@@ -68,7 +71,7 @@ export async function POST(request: Request) {
           image_url: visual.imageUrl,
           visual_url: readyVisualUrl,
           visual_text: visualHook,
-          builder_state: designDocument,
+          builder_state: preserveRecommendationOrigin(designDocument, existingPost.builder_state),
           visual_html: renderBuilderStateToHtml(builderState),
           updated_at: new Date().toISOString()
         })

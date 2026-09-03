@@ -16,7 +16,6 @@ import {
   type ReviewInsightsAnalysis,
   validateReviewInsights
 } from "@/lib/review-insights";
-import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, Json, MerchantRow, ReviewInsightRow, SocialPostIdeaRow } from "@/lib/supabase/types";
 
@@ -135,31 +134,12 @@ export async function getOrRefreshReviewInsights(
     return stored;
   }
 
-  const { data: postRows, error: postsError } = await supabase
-    .from("social_posts")
-    .select("*")
-    .eq("merchant_id", merchant.id)
-    .eq("status", "published")
-    .order("published_at", { ascending: false })
-    .limit(100);
-
-  if (postsError) {
-    throw new Error(postsError.message);
-  }
-
   const analysis = reviews.length > 0
     ? await analyzeReviewsWithOpenAI(reviews, merchant)
     : emptyAnalysis;
-  const socialPostIdeas = await getTopSocialRecommendations({
-    analysis,
-    reviews,
-    merchant,
-    posts: postRows ?? []
-  });
 
   return saveReviewInsights(merchant, {
     ...analysis,
-    socialPostIdeas,
     reviewSnapshot: getReviewSnapshotSummary(reviews)
   }, reviews, supabase);
 }
@@ -227,7 +207,10 @@ export async function analyzeReviewsWithOpenAI(reviews: Review[], merchant: Merc
           painPoints: [{ title: "Attente trop longue", frequency: "élevée", summary: "Les clients mentionnent régulièrement des délais d’attente trop importants.", examples: ["Avis"], recommendation: "Réduire l’attente ou mieux communiquer sur les heures d’affluence." }],
           strengths: [{ title: "Accueil chaleureux", summary: "Les clients apprécient régulièrement la qualité de l’accueil.", examples: ["Avis"], communicationAngle: "Communiquer davantage sur l’équipe." }],
           priorityActions: [{ title: "Rassurer sur les temps d’attente", channel: "sms", impact: "élevé", difficulty: "facile", description: "Prévenir les clients avant les périodes chargées.", strategyPoints: ["Cibler les clients concernés par les créneaux les plus chargés.", "Envoyer un message court avant le pic d’affluence.", "Mesurer si les nouveaux avis mentionnent moins l’attente."] }],
-          socialPostIdeas: [{ platform: "instagram", title: "Titre", angle: "Angle", sourcePainPoint: "Douleur ou point fort source" }]
+          socialPostIdeas: [
+            { platform: "instagram", title: "Un conseil pour éviter l'attente", angle: "Conseil pratique, sans prétendre qu'un problème est déjà corrigé", sourcePainPoint: "Attente trop longue" },
+            { platform: "instagram", title: "Un accueil qui fait la différence", angle: "Valoriser l'accueil sans répondre directement à un avis", sourceStrength: "Accueil chaleureux" }
+          ]
         },
         reviewCount: reviews.length,
         reviews: completeReviewSet

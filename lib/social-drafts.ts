@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { withRecommendationOrigin } from "@/lib/social-recommendation-shared";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
@@ -12,6 +13,8 @@ export type DraftIdeaInput = {
   title?: string;
   angle?: string;
   source?: string;
+  sourcePainPoint?: string;
+  sourceStrength?: string;
   category?: string;
   seasonalMoment?: string;
   localEvent?: string;
@@ -278,7 +281,7 @@ export async function createSocialDraftFromIdea({
       template_id: null,
       visual_text: draft.visualHook,
       visual_html: visualHtml,
-      builder_state: designDocument,
+      builder_state: withRecommendationOrigin(designDocument, idea),
       error_message: errorMessage,
       primary_color: brand?.primary_color ?? "#4C1D95",
       secondary_color: brand?.secondary_color ?? "#F3E8FF",

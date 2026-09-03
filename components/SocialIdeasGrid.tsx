@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { CreatePostButton } from "@/components/CreatePostButton";
+import { RecommendationSourceBadge } from "@/components/RecommendationSourceBadge";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
-import { buildCreatePostHref } from "@/lib/social-recommendations";
+import { buildCreatePostHref } from "@/lib/social-recommendation-shared";
 
 export function SocialIdeasGrid({
   ideas,
@@ -55,7 +56,7 @@ export function SocialIdeasGrid({
       </div>
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {visibleIdeas.map((idea, index) => {
-          const source = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.seasonalMoment ?? "Insight client";
+          const source = idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Insight client";
           const href = buildCreatePostHref(idea);
 
           return (
@@ -68,6 +69,7 @@ export function SocialIdeasGrid({
                 <span className="rounded-full bg-[#FBFAFF] px-3 py-1 text-xs font-bold text-[#8B7AA8]">{idea.seasonalMoment ? "Saisonnier" : "Hans"}</span>
               </div>
               <h3 className="text-base font-black text-[#211432]">{idea.title}</h3>
+              <div className="mt-2"><RecommendationSourceBadge idea={idea} /></div>
               <p className="mt-2 text-sm leading-6 text-[#6B617F]">{idea.angle}</p>
               <div className="mt-4 rounded-2xl bg-[#FBFAFF] p-3 text-xs leading-5 text-[#6B617F]">
                 <strong className="text-[#4C1D95]">Source : </strong>{source}

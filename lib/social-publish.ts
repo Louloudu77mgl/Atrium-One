@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import {
   classifyInstagramMetaError,
   createInstagramIntegrationError,
@@ -178,6 +179,14 @@ export async function publishPostToInstagram({
     .update({ last_sync_at: now, last_error: null })
     .eq("merchant_id", merchant.id);
 
+  try {
+    revalidatePath("/social");
+    revalidatePath("/social/create");
+    revalidatePath("/dashboard");
+    revalidatePath("/reviews/insights");
+  } catch {
+    console.warn("[instagram/publish] recommendation_revalidation_failed");
+  }
   return updatedPost;
 }
 

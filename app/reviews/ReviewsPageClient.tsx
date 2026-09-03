@@ -16,7 +16,6 @@ import { getHansScore } from "@/lib/hans-score";
 import { type Review } from "@/lib/mock-data";
 import { getAppNotifications } from "@/lib/notifications";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
-import { getAutomationSummary } from "@/lib/review-automation";
 import { getDynamicHansRecommendations } from "@/lib/hans-dynamic-recommendations";
 import { isUrgentReview } from "@/lib/review-status";
 import type { GoogleConnectionRow, MerchantAutomationSettingsRow, MerchantRow } from "@/lib/supabase/types";
@@ -154,7 +153,6 @@ export function ReviewsPageClient({
   const notifications = getAppNotifications(localReviews, googleConnection);
   const hansScore = getHansScore(localReviews);
   const baseRecommendations = getDynamicHansRecommendations(localReviews, googleConnected);
-  const automationSummary = getAutomationSummary(automationSettings);
 
   const sortedReviews = useMemo(
     () =>
@@ -736,7 +734,6 @@ export function ReviewsPageClient({
                     <p className={`${typographyStyles.kicker} mb-2`}>Avis Google</p>
                     <h1 className={typographyStyles.h1}>Votre réputation est surveillée automatiquement par Hans.</h1>
                     <p className={`${typographyStyles.body} mt-2`}>{heroSubtitle}</p>
-                    <span className={`${badgeStyles.hans} mt-4`}>{automationSummary}</span>
                   </div>
                   <div className="flex flex-wrap gap-[10px]">
                     <Link href="/integrations" className={`${buttonStyles.primary} gap-2`}>

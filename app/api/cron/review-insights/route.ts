@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { emptyAnalysis, getReviewSnapshotSummary, hasReviewInsightsSourceChanged, mapInsightRow } from "@/lib/review-insights";
 import { analyzeReviewsWithOpenAI, getStoredReviewInsights, saveReviewInsights } from "@/lib/review-insights-server";
 import { mapReviewRow } from "@/lib/reviews";
-import { getTopSocialRecommendations } from "@/lib/social-recommendations";
+import { getUpcomingLocalSocialIdeas } from "@/lib/social-local-events";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
-import type { MerchantRow, ReviewInsightRow, SocialPostRow } from "@/lib/supabase/types";
+import type { MerchantRow, ReviewInsightRow } from "@/lib/supabase/types";
 import { hasBusinessFeatureAccessAdmin } from "@/lib/crm/access";
 
 export const dynamic = "force-dynamic";
@@ -40,30 +40,15 @@ export async function GET(request: Request) {
   for (const merchant of merchants as MerchantRow[]) {
     try {
       if (!await hasBusinessFeatureAccessAdmin(merchant.id, "insights")) { results.push({ merchant_id: merchant.id, status: "skipped", message: "Compte ou module Insights désactivé." }); continue; }
-      const [
-        { data: reviewRows, error: reviewsError },
-        { data: postRows, error: postsError }
-      ] = await Promise.all([
-        supabase
+      await getUpcomingLocalSocialIdeas(merchant, runAt);
+      const { data: reviewRows, error: reviewsError } = await supabase
           .from("reviews")
           .select("*")
           .eq("merchant_id", merchant.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("social_posts")
-          .select("*")
-          .eq("merchant_id", merchant.id)
-          .eq("status", "published")
-          .order("published_at", { ascending: false })
-          .limit(100)
-      ]);
+          .order("created_at", { ascending: false });
 
       if (reviewsError) {
         throw new Error(reviewsError.message);
-      }
-
-      if (postsError) {
-        throw new Error(postsError.message);
       }
 
       const reviews = (reviewRows ?? []).map((review, index) => mapReviewRow(review, index));
@@ -77,15 +62,8 @@ export async function GET(request: Request) {
       const analysis = reviews.length > 0
         ? await analyzeReviewsWithOpenAI(reviews, merchant)
         : emptyAnalysis;
-      const socialPostIdeas = await getTopSocialRecommendations({
-        analysis,
-        reviews,
-        merchant,
-        posts: (postRows ?? []) as SocialPostRow[]
-      });
       const saved = await saveReviewInsights(merchant, {
         ...analysis,
-        socialPostIdeas,
         reviewSnapshot: getReviewSnapshotSummary(reviews)
       }, reviews, supabase);
 

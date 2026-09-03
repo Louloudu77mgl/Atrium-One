@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "test:crm": "node --experimental-strip-types --test tests/crm.test.mjs",
+    "test:social": "node --experimental-strip-types --test tests/social-recommendations.test.mjs",
     "backfill:crm-opening-hours": "node scripts/backfill-crm-opening-hours.mjs"
   },
   "dependencies": {

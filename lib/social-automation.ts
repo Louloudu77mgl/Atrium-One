@@ -4,6 +4,8 @@ import { mapInsightRow } from "@/lib/review-insights";
 import { getStoredReviewInsights } from "@/lib/review-insights-server";
 import { getReviews } from "@/lib/reviews";
 import { getTopSocialRecommendations } from "@/lib/social-recommendations";
+import { getSocialPosts } from "@/lib/social-posts";
+import { getRecommendationOrigin, readRecommendationOrigin, withRecommendationOrigin } from "@/lib/social-recommendation-shared";
 import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
@@ -60,16 +62,7 @@ export async function ensureAutomatedSocialDrafts({
 
   const storedInsights = await getStoredReviewInsights(merchant);
   const analysis = mapInsightRow(storedInsights);
-  const { data: recentPosts, error: recentPostsError } = await supabase
-    .from("social_posts")
-    .select("*")
-    .eq("merchant_id", merchant.id)
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  if (recentPostsError) {
-    throw new Error(recentPostsError.message);
-  }
+  const recentPosts = await getSocialPosts(merchant, supabase);
 
   const reviews = await getReviews(merchant);
   const ideas = await getTopSocialRecommendations({
@@ -89,12 +82,12 @@ export async function ensureAutomatedSocialDrafts({
   const availableDates = plannedDates.filter((date) => !takenDates.has(date.toISOString())).slice(0, missingCount);
   const createdPosts: SocialPostRow[] = [];
 
+  const reservedThemes = new Set(keptPosts.map((post) => readRecommendationOrigin(post.builder_state)?.themeKey).filter(Boolean));
+  const availableIdeas = ideas.filter((idea) => !reservedThemes.has(getRecommendationOrigin(idea).themeKey));
   for (let index = 0; index < availableDates.length; index += 1) {
-    const idea = ideas[index % Math.max(ideas.length, 1)] ?? {
-      platform: "instagram" as const,
-      title: `Mettre en avant ${merchant.business_type.toLowerCase()}`,
-      angle: "Créer un post simple pour rappeler ce que vos clients apprécient déjà."
-    };
+    const ideaIndex = availableIdeas.findIndex((candidate) => !candidate.eventDate || candidate.eventDate >= availableDates[index].toISOString().slice(0, 10));
+    if (ideaIndex < 0) break;
+    const [idea] = availableIdeas.splice(ideaIndex, 1);
     const { draft } = await generateDraftContent({
       merchant,
       idea: {
@@ -102,6 +95,12 @@ export async function ensureAutomatedSocialDrafts({
         title: idea.title,
         angle: idea.angle,
         source: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Automatisation Hans",
+        sourcePainPoint: idea.sourcePainPoint,
+        sourceStrength: idea.sourceStrength,
+        localEvent: idea.localEvent,
+        seasonalMoment: idea.seasonalMoment,
+        eventDate: idea.eventDate,
+        sourceUrl: idea.sourceUrl,
         visualDirection: idea.visualDirection,
         avoidTopics: (recentPosts ?? []).slice(0, 20).map((post) => `${post.title} — ${post.caption.slice(0, 140)}`)
       }
@@ -161,7 +160,7 @@ export async function ensureAutomatedSocialDrafts({
         template_id: null,
         visual_text: draft.visualHook,
         visual_html: renderBuilderStateToHtml(builderState),
-        builder_state: designDocument,
+        builder_state: withRecommendationOrigin(designDocument, idea),
         primary_color: brand?.primary_color ?? "#4C1D95",
         secondary_color: brand?.secondary_color ?? "#F3E8FF",
         accent_color: brand?.accent_color ?? "#A855F7",

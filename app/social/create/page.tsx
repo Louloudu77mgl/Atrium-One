@@ -8,12 +8,13 @@ import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import { getFallbackReviewInsights, mapInsightRow } from "@/lib/review-insights";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
 import { getStoredReviewInsights } from "@/lib/review-insights-server";
-import { getStoredSocialRecommendations } from "@/lib/social-recommendations";
+import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { getSocialPosts } from "@/lib/social-posts";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { SocialCreatePostClient } from "./SocialCreatePostClient";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export default async function SocialCreatePage({
   searchParams
@@ -23,6 +24,8 @@ export default async function SocialCreatePage({
     title?: string;
     angle?: string;
     source?: string;
+    sourcePainPoint?: string;
+    sourceStrength?: string;
     category?: string;
     seasonalMoment?: string;
     localEvent?: string;
@@ -44,13 +47,14 @@ export default async function SocialCreatePage({
     : !hasSupabaseEnv() || isDemoMode()
       ? getFallbackReviewInsights(reviews)
       : null;
-  const ideas = getStoredSocialRecommendations({ analysis, posts });
+  const ideas = await getTopSocialRecommendations({ analysis, posts, reviews, merchant });
   const initialIdea: ReviewSocialPostIdea | null = params?.title && params.angle
     ? {
         platform: "instagram",
         title: params.title,
         angle: params.angle,
-        sourceStrength: params.source || undefined,
+        sourcePainPoint: params.sourcePainPoint || undefined,
+        sourceStrength: params.sourceStrength || undefined,
         category: params.category || undefined,
         seasonalMoment: params.seasonalMoment || undefined,
         localEvent: params.localEvent || undefined,

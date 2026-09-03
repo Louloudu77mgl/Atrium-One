@@ -36,6 +36,7 @@ export const buttonStyles = {
 } as const;
 
 export const badgeStyles = {
+  success: "ao-badge ao-badge-success",
   hans: "ao-badge ao-badge-hans",
   neutral: "ao-badge ao-badge-neutral",
   warning: "ao-badge ao-badge-warning",

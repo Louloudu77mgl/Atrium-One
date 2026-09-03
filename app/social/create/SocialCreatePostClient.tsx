@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { HansGeneratingModal } from "@/components/HansGeneratingModal";
+import { RecommendationSourceBadge } from "@/components/RecommendationSourceBadge";
 import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
@@ -48,6 +49,8 @@ export function SocialCreatePostClient({
           title: selectedIdea.title,
           angle: selectedIdea.angle,
           source: selectedIdea.sourcePainPoint ?? selectedIdea.sourceStrength ?? selectedIdea.localEvent ?? selectedIdea.seasonalMoment ?? "Recommandation Hans",
+          sourcePainPoint: selectedIdea.sourcePainPoint,
+          sourceStrength: selectedIdea.sourceStrength,
           category: selectedIdea.category,
           seasonalMoment: selectedIdea.seasonalMoment,
           localEvent: selectedIdea.localEvent,
@@ -136,6 +139,7 @@ export function SocialCreatePostClient({
                         </span>
                       </div>
                       <h2 className="text-[16px] font-extrabold leading-[1.35] text-[#1E1B2E]">{idea.title}</h2>
+                      <div className="mt-2"><RecommendationSourceBadge idea={idea} /></div>
                       <p className="mt-2 flex-1 text-[13px] leading-[1.55] text-[#6E6B80]">{idea.angle}</p>
                       <p className="mt-4 text-[11.5px] font-semibold text-[#8B7AA8]">Inspiré par : {source}</p>
                     </button>
