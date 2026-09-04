@@ -5,6 +5,7 @@ import { getGoogleConnectionWithAutoSync } from "@/lib/google-review-auto-sync";
 import { getMerchant } from "@/lib/merchants";
 import { reviews as mockReviews } from "@/lib/mock-data";
 import { getReviews } from "@/lib/reviews";
+import { isDemoMerchant } from "@/lib/demo-merchant";
 import { isDemoMode } from "@/lib/demo-mode";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -34,5 +35,5 @@ export default async function ReviewsPage() {
     getAutomationSettings(merchant)
   ]);
 
-  return <ReviewsPageClient reviews={reviews} merchant={merchant} googleConnection={googleConnection} automationSettings={automationSettings} />;
+  return <ReviewsPageClient reviews={reviews} merchant={merchant} googleConnection={googleConnection} automationSettings={automationSettings} canManageDemoReviews={isDemoMerchant(merchant)} />;
 }

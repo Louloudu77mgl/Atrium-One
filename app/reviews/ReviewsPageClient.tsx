@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { AdminReviewForm } from "@/components/AdminReviewForm";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BulkReplyModal, type BulkReplyProgress } from "@/components/BulkReplyModal";
 import { HansFloatingChat } from "@/components/HansFloatingChat";
 import { Header } from "@/components/Header";
@@ -114,13 +115,16 @@ export function ReviewsPageClient({
   reviews,
   merchant,
   googleConnection,
-  automationSettings
+  automationSettings,
+  canManageDemoReviews = false
 }: {
   reviews: Review[];
   merchant?: MerchantRow | null;
   googleConnection?: GoogleConnectionRow | null;
   automationSettings?: MerchantAutomationSettingsRow | null;
+  canManageDemoReviews?: boolean;
 }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const businessName = merchant?.business_name ?? "Maison Lavigne";
   const businessType = merchant?.business_type ?? "commerce";
@@ -135,6 +139,9 @@ export function ReviewsPageClient({
   const [loadingReviewId, setLoadingReviewId] = useState<string | null>(null);
   const [publishingReviewId, setPublishingReviewId] = useState<string | null>(null);
   const [savingEditReviewId, setSavingEditReviewId] = useState<string | null>(null);
+  const [reviewToDelete, setReviewToDelete] = useState<string | null>(null);
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+  const deletionInProgress = useRef(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(automationSettings?.reviews_auto_reply_enabled ?? false);
   const [autoReplySaving, setAutoReplySaving] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<BulkReplyProgress>({ total: 0, done: 0, errors: [], running: false });
@@ -314,6 +321,52 @@ export function ReviewsPageClient({
 
   function updateReview(reviewId: string, updater: (review: Review) => Review) {
     setLocalReviews((current) => current.map((review) => (review.id === reviewId ? updater(review) : review)));
+  }
+
+  function addCreatedReview(review: Review) {
+    setLocalReviews((current) => [review, ...current]);
+    if (canManageDemoReviews) {
+      setSearch("");
+      changeFilter("all");
+    }
+    router.refresh();
+  }
+
+  async function deleteReview(review: Review) {
+    if (!canManageDemoReviews || deletionInProgress.current) return;
+    deletionInProgress.current = true;
+    setDeletingReviewId(review.id);
+
+    try {
+      const response = await fetch("/api/admin/reviews", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ review_id: review.id })
+      });
+      const data = (await response.json()) as { deletedReviewId?: string; error?: string };
+      if (!response.ok || data.deletedReviewId !== review.id) {
+        throw new Error(data.error ?? "Impossible de supprimer l’avis.");
+      }
+
+      setLocalReviews((current) => current.filter((item) => item.id !== review.id));
+      setReviewToDelete(null);
+      autoProcessStarted.current.delete(review.id);
+      if (selectedReviewId === review.id) {
+        setChatOpen(false);
+        setSelectedReviewId(null);
+        setReplyDraft(null);
+        setReplyDraftId(null);
+        setReplyStatus(null);
+        setReplyEdited(false);
+      }
+      showToast("Avis supprimé du compte de démo", "success");
+      router.refresh();
+    } catch (error) {
+      showToast(getUserErrorMessage(error, "Impossible de supprimer l’avis."), "error");
+    } finally {
+      deletionInProgress.current = false;
+      setDeletingReviewId(null);
+    }
   }
 
   function openReviewInHans(review: Review) {
@@ -746,6 +799,8 @@ export function ReviewsPageClient({
                 </div>
               </section>
 
+              {canManageDemoReviews ? <AdminReviewForm demo onCreated={addCreatedReview} onToast={showToast} /> : null}
+
               <section className="mb-[22px] grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <SummaryCard label="Note moyenne" value={counters.total > 0 ? hansScore.averageRating.toFixed(1).replace(".", ",") : "0,0"} hint={counters.total > 0 ? `${counters.total} avis pris en compte` : "Connectez Google pour commencer"} showStars />
                 <SummaryCard label="Nombre total d’avis" value={String(counters.total)} hint={counters.total > 0 ? "Votre base client se construit" : "Importez vos premiers avis"} />
@@ -830,7 +885,8 @@ export function ReviewsPageClient({
                 ) : (
                   <div>
                     {filteredReviews.map((review) => {
-                      const busy = loadingReviewId === review.id || publishingReviewId === review.id;
+                      const busy = loadingReviewId === review.id || publishingReviewId === review.id || deletingReviewId === review.id;
+                      const deleteDisabled = busy || Boolean(deletingReviewId) || savingEditReviewId === review.id || bulkProgress.running;
                       const hasReply = Boolean(review.generatedReply || review.generatedReplyId);
                       const replyReadyToPublish = ["approved", "selected", "validation_required"].includes(review.generatedReplyStatus ?? "");
                       const readyForReview = ["generated", "ready_to_publish", "validation_required", "blocked_by_safety"].includes(normalizeStatus(review.status)) || hasReply;
@@ -900,7 +956,27 @@ export function ReviewsPageClient({
                                 {busy ? "Chargement..." : normalizeStatus(review.status) === "ready_to_publish" ? "Publier" : "Ouvrir dans Hans"}
                               </button>
                             ) : null}
+                            {canManageDemoReviews && reviewToDelete !== review.id ? (
+                              <button
+                                type="button"
+                                onClick={() => setReviewToDelete(review.id)}
+                                disabled={deleteDisabled}
+                                aria-label={`Supprimer l’avis de ${review.author}`}
+                                className="ml-auto inline-flex items-center rounded-full border border-[#F3C8C8] px-[14px] py-[8px] text-sm font-semibold text-[#A52D2D] hover:bg-[#FBEAEA] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Supprimer
+                              </button>
+                            ) : null}
                           </div>
+                          {canManageDemoReviews && reviewToDelete === review.id ? (
+                            <div role="group" aria-label={`Confirmer la suppression de l’avis de ${review.author}`} className="mt-3 rounded-xl border border-[#F3C8C8] bg-[#FFF7F7] p-3">
+                              <p className="text-sm text-[#842525]">Supprimer l’avis de {review.author} et sa réponse de ce compte de démo ?</p>
+                              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                                <button type="button" disabled={Boolean(deletingReviewId)} onClick={() => setReviewToDelete(null)} className="rounded-full border border-[#ECE9F4] bg-white px-4 py-2 text-sm font-semibold text-[#1E1B2E] disabled:opacity-60">Annuler</button>
+                                <button type="button" disabled={deleteDisabled} onClick={() => void deleteReview(review)} className="rounded-full bg-[#A52D2D] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">{deletingReviewId === review.id ? "Suppression..." : "Confirmer la suppression"}</button>
+                              </div>
+                            </div>
+                          ) : null}
                         </article>
                       );
                     })}
