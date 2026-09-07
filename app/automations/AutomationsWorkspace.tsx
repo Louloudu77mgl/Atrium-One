@@ -96,6 +96,16 @@ export function AutomationsWorkspace({
     });
     return mergeStoredFlows({ defaults, storedFlows, reviews, automationRuns });
   });
+  const [checkedAutomationIds, setCheckedAutomationIds] = useState<string[]>([]);
+  const checkedAutomations = automations.filter((automation) => checkedAutomationIds.includes(automation.id));
+  const allAutomationsChecked = automations.length > 0 && checkedAutomations.length === automations.length;
+
+  function toggleAutomationSelection(automationId: string) {
+    setCheckedAutomationIds((ids) => ids.includes(automationId)
+      ? ids.filter((id) => id !== automationId)
+      : [...ids, automationId]);
+  }
+
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -626,6 +636,7 @@ export function AutomationsWorkspace({
       const data = await response.json() as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Suppression serveur impossible.");
       setAutomations((items) => items.filter((item) => item.id !== automationId));
+      setCheckedAutomationIds((ids) => ids.filter((id) => id !== automationId));
       if (selectedAutomationId === automationId) setSelectedAutomationId(null);
       if (selectedRun?.automationId === automationId) setSelectedRunId(null);
       setHistoryFeedback("Scénario supprimé.");
@@ -774,11 +785,35 @@ export function AutomationsWorkspace({
             </div>
           </div>
 
+          <div className="mb-5 flex flex-wrap items-center gap-4 rounded-xl border border-[#EBE6DF] bg-[#FCFBF9] px-4 py-3">
+            <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-[#17131F]">
+              <input
+                type="checkbox"
+                checked={allAutomationsChecked}
+                ref={(input) => { if (input) input.indeterminate = checkedAutomations.length > 0 && !allAutomationsChecked; }}
+                disabled={automations.length === 0}
+                onChange={(event) => setCheckedAutomationIds(event.target.checked ? automations.map((automation) => automation.id) : [])}
+                className="h-4 w-4 accent-[#6E4DE0]"
+              />
+              Tout sélectionner
+            </label>
+            <span role="status" className="text-sm text-[#6E6A76]">{checkedAutomations.length} sur {automations.length} sélectionnée{checkedAutomations.length > 1 ? "s" : ""}</span>
+            {checkedAutomations.length > 0 ? <button type="button" onClick={() => setCheckedAutomationIds([])} className="ml-auto text-sm font-semibold text-[#6E4DE0]">Tout désélectionner</button> : null}
+          </div>
+
           {listMode === "cards" ? (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {automations.map((automation) => (
-                <article key={automation.id} onClick={() => openWorkflow(automation)} className="cursor-pointer rounded-[24px] border border-[#EBE6DF] bg-[#FCFBF9] p-5 text-left transition hover:border-[#6E4DE0] hover:bg-[#FBF8FF]">
+                <article key={automation.id} onClick={() => openWorkflow(automation)} className={`cursor-pointer rounded-[24px] border p-5 text-left transition hover:border-[#6E4DE0] hover:bg-[#FBF8FF] ${checkedAutomationIds.includes(automation.id) ? "border-[#6E4DE0] bg-[#F3EDFF]" : "border-[#EBE6DF] bg-[#FCFBF9]"}`}>
                   <div className="flex items-center justify-between gap-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Sélectionner ${automation.title}`}
+                      checked={checkedAutomationIds.includes(automation.id)}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={() => toggleAutomationSelection(automation.id)}
+                      className="h-4 w-4 shrink-0 accent-[#6E4DE0]"
+                    />
                     <span className={statusBadge(automation.status)}>{statusLabel(automation.status)}</span>
                     <span className="text-[12px] font-semibold text-[#9A96A1]">{automation.channel}</span>
                   </div>
@@ -818,6 +853,7 @@ export function AutomationsWorkspace({
               <table className="w-full min-w-[980px] text-left">
                 <thead className="bg-[#FBFAFD] text-[10px] font-black uppercase tracking-[0.09em] text-[#8B7AA8]">
                   <tr>
+                    <th scope="col" className="px-4 py-3"><span className="sr-only">Sélection</span></th>
                     <th className="px-5 py-3">Nom</th>
                     <th className="px-4 py-3">État</th>
                     <th className="px-4 py-3">Dernière exécution</th>
@@ -829,7 +865,10 @@ export function AutomationsWorkspace({
                 </thead>
                 <tbody className="divide-y divide-[#EEEAF3]">
                   {automations.map((automation) => (
-                    <tr key={automation.id} className="hover:bg-[#FBFAFD]">
+                    <tr key={automation.id} className={checkedAutomationIds.includes(automation.id) ? "bg-[#F3EDFF]" : "hover:bg-[#FBFAFD]"}>
+                      <td className="px-4 py-4">
+                        <input type="checkbox" aria-label={`Sélectionner ${automation.title}`} checked={checkedAutomationIds.includes(automation.id)} onChange={() => toggleAutomationSelection(automation.id)} className="h-4 w-4 accent-[#6E4DE0]" />
+                      </td>
                       <td className="px-5 py-4">
                         <div className="font-black text-[#211432]">{automation.title}</div>
                         <div className="mt-1 text-[11px] font-medium text-[#8B7AA8]">{automation.summary}</div>
