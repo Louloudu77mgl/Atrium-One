@@ -213,6 +213,8 @@ function safeFlowId(flowId: string) {
 }
 
 export async function saveStoredAutomationFlow(merchantId: string, flow: StoredAutomationFlow) {
+  const deleted = await downloadJson<{ deleted: boolean }>(`merchants/${merchantId}/deleted-flows/${safeFlowId(flow.id)}.json`);
+  if (deleted?.deleted) throw new Error("Cette automatisation a été supprimée. Rechargez la page.");
   const path = `merchants/${merchantId}/flows/${safeFlowId(flow.id)}.json`;
   const existing = await downloadJson<StoredAutomationFlow>(path);
   if (existing?.updatedAt && flow.updatedAt && existing.updatedAt > flow.updatedAt) {
@@ -239,9 +241,10 @@ export async function listStoredAutomationFlows(merchantId: string) {
   });
   if (error) throw new Error(error.message);
 
+  const deletedIds = new Set(await listDeletedAutomationFlowIds(merchantId));
   const flows = await Promise.all(
     (data ?? [])
-      .filter((item) => item.name.endsWith(".json"))
+      .filter((item) => item.name.endsWith(".json") && !deletedIds.has(item.name.slice(0, -5)))
       .map((item) => downloadJson<StoredAutomationFlow>(`${prefix}/${item.name}`))
   );
 
@@ -274,8 +277,19 @@ export async function saveStoredAutomationFlowRuntimeState(
   return state;
 }
 
+export async function listDeletedAutomationFlowIds(merchantId: string) {
+  await ensureAutomationBucket();
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase.storage.from(AUTOMATION_BUCKET)
+    .list(`merchants/${merchantId}/deleted-flows`, { limit: 1000 });
+  if (error) throw new Error(error.message);
+  return (data ?? []).filter((item) => item.name.endsWith(".json")).map((item) => item.name.slice(0, -5));
+}
+
 export async function deleteStoredAutomationFlow(merchantId: string, flowId: string) {
   await ensureAutomationBucket();
+  // A durable marker prevents default flows and delayed autosaves from restoring it.
+  await uploadJson(`merchants/${merchantId}/deleted-flows/${safeFlowId(flowId)}.json`, { deleted: true }, true);
   const supabase = createSupabaseAdminClient();
   const { error } = await supabase.storage
     .from(AUTOMATION_BUCKET)

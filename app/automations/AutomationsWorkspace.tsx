@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HansGeneratingModal } from "@/components/HansGeneratingModal";
 import { useFailureSupport } from "@/components/FailureSupportProvider";
 import { Icon } from "@/components/icons";
@@ -54,6 +54,7 @@ export function AutomationsWorkspace({
   settings,
   automationRuns,
   storedFlows,
+  deletedFlowIds = [],
   socialPosts,
   emailSubscribersCount,
   emailCampaignsCount,
@@ -68,6 +69,7 @@ export function AutomationsWorkspace({
   settings: MerchantAutomationSettingsRow | null;
   automationRuns: AutomationExecutionLog[];
   storedFlows: StoredAutomationFlow[];
+  deletedFlowIds?: string[];
   socialPosts: SocialPostRow[];
   emailSubscribersCount: number;
   emailCampaignsCount: number;
@@ -94,8 +96,11 @@ export function AutomationsWorkspace({
       instagramConnected: instagramConnection?.status === "connected" || instagramConnection?.status === "expiring",
       templates
     });
-    return mergeStoredFlows({ defaults, storedFlows, reviews, automationRuns });
+    return mergeStoredFlows({ defaults: defaults.filter((flow) => !deletedFlowIds.includes(flow.id)), storedFlows, reviews, automationRuns });
   });
+  const [deletingAutomations, setDeletingAutomations] = useState(false);
+  const deletionLock = useRef(false);
+  const pendingAutosave = useRef<Promise<unknown> | null>(null);
   const [checkedAutomationIds, setCheckedAutomationIds] = useState<string[]>([]);
   const checkedAutomations = automations.filter((automation) => checkedAutomationIds.includes(automation.id));
   const allAutomationsChecked = automations.length > 0 && checkedAutomations.length === automations.length;
@@ -198,7 +203,7 @@ export function AutomationsWorkspace({
       if (Array.isArray(parsed.automations)) {
         setAutomations((current) => {
           const currentIds = new Set(current.map((automation) => automation.id));
-          const localOnly = parsed.automations!.filter((automation) => automation.source !== "existing" && !currentIds.has(automation.id));
+          const localOnly = parsed.automations!.filter((automation) => automation.source !== "existing" && !deletedFlowIds.includes(automation.id) && !currentIds.has(automation.id));
           return [...current, ...localOnly];
         });
       }
@@ -216,15 +221,20 @@ export function AutomationsWorkspace({
   }, [favoriteTypes, recentTypes, selectedAutomationId, storageKey, view]);
 
   useEffect(() => {
-    if (!merchant || !automations.length) return;
+    if (!merchant || !automations.length || deletingAutomations) return;
     setAutosaveLabel("Sauvegarde serveur en cours…");
     const timeout = window.setTimeout(() => {
-      void Promise.all(automations.map(saveAutomationFlow))
+      if (deletionLock.current) return;
+      pendingAutosave.current = Promise.allSettled(automations.map(saveAutomationFlow))
+        .then((results) => {
+          const failed = results.find((result) => result.status === "rejected");
+          if (failed?.status === "rejected") throw failed.reason;
+        })
         .then(() => setAutosaveLabel(`Sauvegardé sur le compte à ${new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(new Date())}`))
         .catch((error) => setAutosaveLabel(error instanceof Error ? error.message : "Sauvegarde serveur impossible"));
     }, 650);
     return () => window.clearTimeout(timeout);
-  }, [automations, merchant]);
+  }, [automations, merchant, deletingAutomations]);
 
   useEffect(() => {
     if (view !== "workflow") return;
@@ -625,34 +635,62 @@ export function AutomationsWorkspace({
     }
   }
 
-  async function deleteScenario(automationId: string) {
-    const automation = automations.find((item) => item.id === automationId);
-    if (!automation) return;
-    if (!window.confirm(`Supprimer définitivement « ${automation.title} » de vos automatisations ?`)) return;
+  async function deleteScenarios(ids: string[]) {
+    if (deletionLock.current) return;
+    const targets = automations.filter((automation) => ids.includes(automation.id));
+    if (!targets.length) return;
+    const question = targets.length === 1
+      ? `Supprimer définitivement « ${targets[0].title} » de vos automatisations ?`
+      : `Supprimer définitivement les ${targets.length} automatisations sélectionnées ? Les automatisations actives seront arrêtées.`;
+    if (!window.confirm(question)) return;
 
+    deletionLock.current = true;
+    setDeletingAutomations(true);
+    const deleted = new Set<string>();
+    const failures: string[] = [];
+    let remaining = [...automations];
     try {
-      if (automation.status === "active") await syncScenarioStatus(automation, false);
-      const response = await fetch(`/api/automations/flows?id=${encodeURIComponent(automation.id)}`, { method: "DELETE" });
-      const data = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Suppression serveur impossible.");
-      setAutomations((items) => items.filter((item) => item.id !== automationId));
-      setCheckedAutomationIds((ids) => ids.filter((id) => id !== automationId));
-      if (selectedAutomationId === automationId) setSelectedAutomationId(null);
-      if (selectedRun?.automationId === automationId) setSelectedRunId(null);
-      setHistoryFeedback("Scénario supprimé.");
-    } catch (error) {
-      setHistoryFeedback(error instanceof Error ? error.message : "Impossible de supprimer ce scénario.");
+      await pendingAutosave.current;
+      for (const automation of targets) {
+        try {
+          if (automation.status === "active") {
+            await syncScenarioStatus(automation, false, remaining);
+            remaining = remaining.map((item) => item.id === automation.id ? { ...item, status: "paused" } : item);
+            setAutomations((items) => items.map((item) => item.id === automation.id ? { ...item, status: "paused" } : item));
+          }
+          const response = await fetch(`/api/automations/flows?id=${encodeURIComponent(automation.id)}`, { method: "DELETE" });
+          const data = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(data.error ?? "Suppression serveur impossible.");
+          deleted.add(automation.id);
+          remaining = remaining.filter((item) => item.id !== automation.id);
+          setAutomations((items) => items.filter((item) => item.id !== automation.id));
+          setCheckedAutomationIds((selected) => selected.filter((id) => id !== automation.id));
+          if (selectedAutomationId === automation.id) setSelectedAutomationId(null);
+          if (selectedRun?.automationId === automation.id) setSelectedRunId(null);
+          setHistoryFeedback(`Suppression en cours : ${deleted.size} sur ${targets.length}.`);
+        } catch (error) {
+          failures.push(`${automation.title} : ${error instanceof Error ? error.message : "suppression impossible"}`);
+        }
+      }
+      setHistoryFeedback(`${deleted.size} automatisation${deleted.size > 1 ? "s" : ""} supprimée${deleted.size > 1 ? "s" : ""}.${failures.length ? ` Échec pour ${failures.length} : ${failures.join(" ; ")}. Vous pouvez réessayer.` : ""}`);
+    } finally {
+      deletionLock.current = false;
+      setDeletingAutomations(false);
     }
   }
 
-  async function syncScenarioStatus(automation: AutomationFlow, enabled: boolean) {
+  async function deleteScenario(automationId: string) {
+    await deleteScenarios([automationId]);
+  }
+
+  async function syncScenarioStatus(automation: AutomationFlow, enabled: boolean, currentFlows = automations) {
     const hasReviews = automation.nodes.some((node) => node.type === "google_review");
     const hasInstagram = automation.nodes.some((node) => node.type === "publish_instagram");
     const storedFlow = { ...automation, status: enabled ? "active" as const : "paused" as const, updatedAt: new Date().toISOString() };
     await saveAutomationFlow(storedFlow);
     if (!hasReviews && !hasInstagram) return;
 
-    const otherActiveReviewFlow = automations.find((item) =>
+    const otherActiveReviewFlow = currentFlows.find((item) =>
       item.id !== automation.id &&
       item.status === "active" &&
       item.nodes.some((node) => node.type === "google_review")
@@ -675,7 +713,7 @@ export function AutomationsWorkspace({
             sensitive_keywords: []
           }
       : {
-          social_auto_publish_enabled: enabled
+          social_auto_publish_enabled: enabled || currentFlows.some((item) => item.id !== automation.id && item.status === "active" && item.nodes.some((node) => node.type === "publish_instagram"))
         };
 
     const response = await fetch("/api/settings/automation", {
@@ -688,7 +726,7 @@ export function AutomationsWorkspace({
   }
 
   return (
-    <div className="flex w-full flex-col gap-6 pb-16">
+    <div inert={deletingAutomations} aria-busy={deletingAutomations} className="flex w-full flex-col gap-6 pb-16">
       <section className={`${shellCard} p-7`}>
         <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-4xl">
@@ -798,6 +836,7 @@ export function AutomationsWorkspace({
               Tout sélectionner
             </label>
             <span role="status" className="text-sm text-[#6E6A76]">{checkedAutomations.length} sur {automations.length} sélectionnée{checkedAutomations.length > 1 ? "s" : ""}</span>
+            {checkedAutomations.length > 0 ? <button type="button" disabled={deletingAutomations} onClick={() => void deleteScenarios(checkedAutomations.map((automation) => automation.id))} className="rounded-lg bg-[#C2492F] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{deletingAutomations ? "Suppression…" : `Supprimer la sélection (${checkedAutomations.length})`}</button> : null}
             {checkedAutomations.length > 0 ? <button type="button" onClick={() => setCheckedAutomationIds([])} className="ml-auto text-sm font-semibold text-[#6E4DE0]">Tout désélectionner</button> : null}
           </div>
 
