@@ -85,8 +85,6 @@ export async function POST(request: Request) {
     author_name: authorName,
     rating,
     review_text: reviewText,
-    source: "manual",
-    source_review_id: null,
     sentiment: analysis.sentiment,
     status: analysis.status
   }).select("*").single();

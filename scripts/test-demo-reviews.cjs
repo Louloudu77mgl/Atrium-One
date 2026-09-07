@@ -53,7 +53,11 @@ function setup(options = {}) {
         return { data: state.rows.filter(matches), error: null };
       };
       const query = {
-        insert(input) { operation = "insert"; values = input; return query; },
+        insert(input) {
+          const columns = ["merchant_id", "author_name", "rating", "review_text", "sentiment", "status"];
+          assert.ok(Object.keys(input).every((key) => columns.includes(key)), "Insert must support the deployed reviews schema");
+          operation = "insert"; values = input; return query;
+        },
         delete() { operation = "delete"; return query; },
         eq(key, value) { filters.push([key, value]); return query; },
         select() { return query; },
@@ -121,8 +125,8 @@ test("created reviews persist under the signed-in merchant and update counters/i
   assert.equal(body.review.author, "Camille");
   assert.equal(body.review.text, "Très bon pain.");
   assert.equal(state.rows[0].merchant_id, demoId);
-  assert.equal(state.rows[0].source, "manual");
-  assert.equal(state.rows[0].source_review_id, null);
+  assert.equal(Object.hasOwn(state.rows[0], "source"), false);
+  assert.equal(Object.hasOwn(state.rows[0], "source_review_id"), false);
   assert.equal(state.refreshed[0].length, 1);
   assert.equal(load("lib/review-counters.ts").getReviewCountersFromReviews([body.review]).total, 1);
   assert.equal(load("lib/hans-score.ts").getHansScore([body.review]).averageRating, 5);
