@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { HansAvatar } from "@/components/hans-avatar";
 
@@ -21,6 +21,14 @@ export function HansGeneratingModal({
 }) {
   const [progress, setProgress] = useState(8);
   const [mounted, setMounted] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || !mounted) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, [open, mounted]);
 
   useEffect(() => {
     setMounted(true);
@@ -92,6 +100,10 @@ export function HansGeneratingModal({
     <div
       className="fixed inset-0 z-[9999] grid place-items-center bg-[#F4EEFF] px-4"
       role="dialog"
+      ref={dialogRef}
+      tabIndex={-1}
+      aria-label={title}
+      onKeyDown={(event) => { if (event.key === "Tab") event.preventDefault(); }}
       aria-modal="true"
       aria-busy="true"
     >

@@ -9,7 +9,7 @@
     "lint": "tsc --noEmit",
     "test:crm": "node --experimental-strip-types --test tests/crm.test.mjs",
     "test:social": "node --experimental-strip-types --test tests/social-recommendations.test.mjs",
-    "test:emailing": "node --test scripts/test-emailing-html.cjs scripts/test-emailing-visual.cjs scripts/test-emailing-generation.cjs",
+    "test:emailing": "node --test scripts/test-emailing-html.cjs scripts/test-emailing-visual.cjs scripts/test-emailing-generation.cjs scripts/test-emailing-brand.cjs scripts/test-emailing-brand-ui.cjs",
     "backfill:crm-opening-hours": "node scripts/backfill-crm-opening-hours.mjs"
   },
   "dependencies": {

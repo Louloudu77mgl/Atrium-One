@@ -114,9 +114,9 @@ export default async function SettingsPage({
                   Réglages détaillés
                 </div>
                 <div className="px-[30px] pb-[6px] pt-[8px]">
-                  <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9A96A1]">Réseaux sociaux</span>
-                  <h1 className="mt-1 text-[21px] font-extrabold text-[#17131F]">Style des publications</h1>
-                  <p className="mt-1 text-[13.5px] text-[#6E6A76]">Ces réglages servent uniquement à la création de posts sur les réseaux sociaux.</p>
+                  <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9A96A1]">Publications et e-mails</span>
+                  <h1 className="mt-1 text-[21px] font-extrabold text-[#17131F]">Charte graphique du commerce</h1>
+                  <p className="mt-1 text-[13.5px] text-[#6E6A76]">Choisissez les couleurs, la police et le ton que Hans utilisera dans vos prochaines créations.</p>
                 </div>
                 <BrandStyleForm brandSettings={brandSettings} businessName={merchant.business_name} logoUrl={merchant.logo_url} action={updateBrandSettings} />
               </section>
