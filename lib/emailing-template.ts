@@ -48,12 +48,25 @@ export function renderEmailHtml({ campaign, merchant, recipient, origin, include
       .replaceAll("{{first_name}}", () => escapeHtml(recipient?.firstName || ""))
       .replaceAll("{{last_name}}", () => escapeHtml(recipient?.lastName || ""))
       .replaceAll("{{unsubscribe_url}}", () => escapeHtml(unsubscribeUrl || "#"));
-    const clean = sanitizeEmailHtml(html);
-    const withFooter = includeFooter ? appendEmailFooter(clean, footer) : clean;
+    let clean = sanitizeEmailHtml(html);
+    const primaryDestination = safeHttpUrl(content.ctaUrl);
+    if (primaryDestination && base && recipient) {
+      const source = escapeHtml(primaryDestination), tracked = escapeHtml(`${base}/api/emailing/track/click?${query}`);
+      // Only the exact saved primary destination is tracked. Other links keep
+      // their destinations; editing a link can never redirect to the old CTA.
+      clean = clean.replace(/(<a\b[^>]*\bhref=")([^"]*)(")/gi, (match, prefix: string, href: string, suffix: string) => href === source ? `${prefix}${tracked}${suffix}` : match);
+    }
+    const managedFooter = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" align="center" style="max-width:640px"><tr><td>${footer}</td></tr></table>`;
+    const withFooter = includeFooter ? appendEmailFooter(clean, managedFooter) : clean;
     const preheader = `<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(personalize(content.preheader))}</div>`;
-    return /<body\b[^>]*>/i.test(withFooter)
+    const document = /<body\b[^>]*>/i.test(withFooter)
       ? withFooter.replace(/<body\b[^>]*>/i, (body) => `${body}${preheader}`)
       : `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head><body>${preheader}${withFooter}</body></html>`;
+    // Classic Outlook ignores max-width. Add only our own static, trusted MSO
+    // wrapper after sanitization, never preserve executable user comments/VML.
+    return /id="email-header"/.test(clean) ? document
+      .replace(/<body\b[^>]*>/i, (body) => `${body}<!--[if mso]><table role="presentation" align="center" width="640" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->`)
+      .replace(/<\/body>/i, "<!--[if mso]></td></tr></table><![endif]--></body>") : document;
   }
 
   const design = normalizeEmailDesign(content.design);

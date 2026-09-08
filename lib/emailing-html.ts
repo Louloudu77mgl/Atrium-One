@@ -27,7 +27,7 @@ function cleanCss(source: string, inline = false) {
 
 export function sanitizeEmailHtml(value: string): string {
   if (new TextEncoder().encode(value).byteLength > MAX_EMAIL_HTML_BYTES) throw new Error("Le fichier HTML doit faire moins de 500 Ko.");
-  return sanitizeHtml(value, {
+  const clean = sanitizeHtml(value, {
     allowedTags: ["html", "head", "body", "title", "style", "meta", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col", "div", "span", "p", "br", "hr", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6", "b", "strong", "i", "em", "u", "s", "small", "sub", "sup", "ul", "ol", "li", "blockquote", "pre", "code", "center"],
     allowedAttributes: {
       "*": ["style", "class", "id", "align", "valign", "width", "height", "bgcolor", "role", "aria-label", "lang", "dir"],
@@ -35,7 +35,7 @@ export function sanitizeEmailHtml(value: string): string {
       img: ["src", "alt", "title", "border"],
       table: ["cellpadding", "cellspacing", "border"],
       td: ["colspan", "rowspan"], th: ["colspan", "rowspan", "scope"],
-      meta: ["charset", { name: "name", values: ["viewport"] }, "content"]
+      meta: ["charset", { name: "name", values: ["viewport", "description"] }, "content"]
     },
     allowedSchemes: ["https", "http", "mailto", "tel"],
     allowedSchemesByTag: { img: ["https", "http", "cid"] },
@@ -52,7 +52,9 @@ export function sanitizeEmailHtml(value: string): string {
         return { tagName, attribs };
       }
     }
-  }).replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_, css: string) => `<style>${cleanCss(css)}</style>`);
+  }).replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_, open: string, css: string, close: string) => `${open}${cleanCss(css)}${close}`);
+  // Preserve standards mode for full documents, but never user-defined entities.
+  return /^\s*<!doctype html>/i.test(value) ? `<!DOCTYPE html>\n${clean.trimStart()}` : clean;
 }
 
 export function hasEmailHtmlContent(html: string) {

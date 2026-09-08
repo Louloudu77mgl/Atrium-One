@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
+import dynamic from "next/dynamic";
 import { HansGeneratingModal } from "@/components/HansGeneratingModal";
 import { buttonStyles, fieldStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 import type { EmailCampaignContent, EmailSubscriberProfile } from "@/lib/emailing-types";
@@ -11,6 +12,10 @@ import { hasEmailHtmlContent, MAX_EMAIL_HTML_BYTES, sanitizeEmailHtml } from "@/
 import { renderEmailHtml } from "@/lib/emailing-template";
 
 const inputClass = fieldStyles.input;
+const EmailNoCodeEditor = dynamic(() => import("./EmailNoCodeEditor").then((module) => module.EmailNoCodeEditor), {
+  ssr: false,
+  loading: () => <div role="status" className="fixed inset-0 z-[80] grid place-items-center bg-white text-sm font-bold text-[#4C1D95]">Ouverture de l’éditeur visuel…</div>
+});
 
 export function EmailEditor({ content, onChange, merchant, sampleSubscriber }: { content: EmailCampaignContent; onChange: (content: EmailCampaignContent) => void; merchant: MerchantRow | null; sampleSubscriber?: EmailSubscriberProfile }) {
   const [mobile, setMobile] = useState(false);
@@ -20,6 +25,7 @@ export function EmailEditor({ content, onChange, merchant, sampleSubscriber }: {
   const [htmlError, setHtmlError] = useState("");
   const [htmlNotice, setHtmlNotice] = useState("");
   const [importingHtml, setImportingHtml] = useState(false);
+  const [visualEditorHtml, setVisualEditorHtml] = useState<string | null>(null);
   const htmlInput = useRef<HTMLInputElement>(null);
   const latestContent = useRef(content);
   latestContent.current = content;
@@ -35,7 +41,7 @@ export function EmailEditor({ content, onChange, merchant, sampleSubscriber }: {
   }
 
   function editHtml() {
-    onChange({ ...content, editorMode: "html", html: content.html || generatedHtml() });
+    setVisualEditorHtml(htmlMode && content.html ? content.html : generatedHtml());
     setHtmlError("");
   }
 
@@ -50,9 +56,10 @@ export function EmailEditor({ content, onChange, merchant, sampleSubscriber }: {
       const raw = await file.text();
       const html = sanitizeEmailHtml(raw);
       if (!hasEmailHtmlContent(html)) throw new Error("Ce fichier ne contient pas de contenu d’e-mail exploitable.");
-      if (latestContent.current.html && !window.confirm("Remplacer le code HTML actuel par ce fichier ?")) return;
+      if (latestContent.current.html && !window.confirm("Remplacer le design libre actuel par ce fichier ?")) return;
       onChange({ ...latestContent.current, editorMode: "html", html, htmlFileName: file.name });
-      setHtmlNotice(`${file.name} importé. Vous pouvez modifier le code ci-dessous. Les scripts et éléments non adaptés aux e-mails sont retirés.`);
+      setVisualEditorHtml(html);
+      setHtmlNotice(`${file.name} importé. Cliquez sur les éléments du design pour les modifier sans code.`);
     } catch (error) { setHtmlError(error instanceof Error ? error.message : "Import HTML impossible."); }
     finally { setImportingHtml(false); input.value = ""; }
   }
@@ -94,29 +101,32 @@ export function EmailEditor({ content, onChange, merchant, sampleSubscriber }: {
     <>
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#DED7E8] bg-[#FBFAFD] p-3">
       <div className="flex flex-wrap gap-2" aria-label="Mode de création de l’e-mail">
-        <button type="button" aria-pressed={!htmlMode} onClick={() => setField("editorMode", "visual")} className={!htmlMode ? buttonStyles.primary : buttonStyles.secondary}>Éditeur visuel</button>
-        <button type="button" aria-pressed={htmlMode} onClick={editHtml} className={htmlMode ? buttonStyles.primary : buttonStyles.secondary}>Modifier le HTML</button>
+        <button type="button" aria-pressed={!htmlMode} onClick={() => setField("editorMode", "visual")} className={!htmlMode ? buttonStyles.primary : buttonStyles.secondary}>Contenu Hans</button>
+        <button type="button" onClick={editHtml} className={buttonStyles.primary}>Modifier le design sans code</button>
+        {!htmlMode && content.html ? <button type="button" onClick={() => setField("editorMode", "html")} className={buttonStyles.secondary}>Reprendre le design libre</button> : null}
       </div>
       <button type="button" onClick={() => htmlInput.current?.click()} disabled={importingHtml} className={`${buttonStyles.secondary} disabled:opacity-50`}>{importingHtml ? "Import en cours…" : "Importer un fichier HTML"}</button>
       <input ref={htmlInput} type="file" accept=".html,.htm,text/html" aria-label="Fichier HTML de l’e-mail" onChange={importHtml} className="hidden" />
     </div>
     {htmlError ? <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{htmlError}</p> : null}
     {htmlNotice ? <p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{htmlNotice}</p> : null}
-    <div className={`grid gap-5 ${htmlMode ? "xl:grid-cols-2" : "xl:grid-cols-[390px_minmax(0,1fr)]"}`}>
+    <div className="grid gap-5 xl:grid-cols-[390px_minmax(0,1fr)]">
       <div className={`${surfaceStyles.subtle} space-y-5 p-4 sm:p-5`}>
-        <div><div className="inline-flex rounded-full bg-[#F0E8FF] px-3 py-1 text-xs font-black uppercase tracking-[0.1em] text-[#5B2A9E]">{htmlMode ? "Modèle HTML" : "Design modifiable"}</div><div className={`${typographyStyles.h3} mt-3`}>Contenu et design</div><p className={`${typographyStyles.caption} mt-1`}>{htmlMode ? "Modifiez le texte, les liens, les images et les styles directement dans le code." : "Adaptez le contenu et la mise en page du design créé par Hans."}</p></div>
+        <div><div className="inline-flex rounded-full bg-[#F0E8FF] px-3 py-1 text-xs font-black uppercase tracking-[0.1em] text-[#5B2A9E]">{htmlMode ? "Design libre · no-code" : "Design modifiable"}</div><div className={`${typographyStyles.h3} mt-3`}>Contenu et design</div><p className={`${typographyStyles.caption} mt-1`}>{htmlMode ? "Modifiez les textes, ajoutez des blocs et importez vos photos directement dans le design." : "Adaptez le contenu et la mise en page du design créé par Hans."}</p></div>
         <label className="grid gap-1.5 text-xs font-black text-[#51485F]">Objet<input value={content.subject} onChange={(event) => setField("subject", event.target.value)} className={inputClass} /></label>
         <label className="grid gap-1.5 text-xs font-black text-[#51485F]">Pré-header<input value={content.preheader} onChange={(event) => setField("preheader", event.target.value)} className={inputClass} /></label>
         {htmlMode ? <>
           {content.htmlFileName ? <p className="break-all text-xs font-semibold text-[#736A80]">Fichier : {content.htmlFileName}</p> : null}
-          <label className="grid gap-2 text-sm font-bold text-[#51485F]">Code HTML<textarea rows={26} spellCheck={false} autoCapitalize="off" value={content.html ?? ""} onChange={(event) => setField("html", event.target.value)} className={`${inputClass} min-h-[480px] resize-y whitespace-pre font-mono text-xs font-normal`} /></label>
-          <p className="text-xs leading-5 text-[#736A80]">Variables : {"{{first_name}}"}, {"{{last_name}}"} et {"{{unsubscribe_url}}"}. Le lien de désabonnement est aussi ajouté automatiquement à l’envoi. Utilisez des URL HTTPS pour les images ; les fichiers présents uniquement sur votre ordinateur ne sont pas importés.</p>
-          <p className="text-xs leading-5 text-[#736A80]">Le HTML et l’éditeur visuel sont conservés séparément. Passer d’un mode à l’autre ne supprime pas votre travail ; seul le mode actif sera envoyé.</p>
+          <button type="button" onClick={editHtml} className={`${buttonStyles.primary} w-full`}>Ouvrir l’éditeur visuel</button>
+          <p className="text-sm leading-6 text-[#51485F]">Ajoutez des titres, textes, boutons, photos, séparateurs ou colonnes. Déplacez, dupliquez et supprimez les éléments sans écrire de HTML.</p>
+          <details className="rounded-xl border border-[#DED7E8] p-3"><summary className="cursor-pointer text-sm font-bold text-[#736A80]">Code HTML (avancé, facultatif)</summary><label className="mt-3 grid gap-2 text-sm font-bold text-[#51485F]">Code HTML<textarea rows={20} spellCheck={false} autoCapitalize="off" value={content.html ?? ""} onChange={(event) => setField("html", event.target.value)} className={`${inputClass} resize-y whitespace-pre font-mono text-sm font-normal`} /></label></details>
+          <p className="text-xs leading-5 text-[#736A80]">Variables : {"{{first_name}}"}, {"{{last_name}}"} et {"{{unsubscribe_url}}"}. Le lien de désabonnement est ajouté automatiquement à l’envoi. Si votre modèle référence des photos locales, ajoutez-les avec « Importer une photo » dans l’éditeur visuel.</p>
+          <p className="text-xs leading-5 text-[#736A80]">Le design libre et le contenu Hans sont conservés séparément. Seule la version affichée sera envoyée.</p>
           <button type="button" className={`${buttonStyles.tertiary} text-xs`} onClick={() => {
-            if (window.confirm("Remplacer le code actuel par le design de l’éditeur visuel ?")) {
+            if (window.confirm("Remplacer le design libre actuel par le design Hans ?")) {
               onChange({ ...content, html: generatedHtml(), htmlFileName: "" }); setHtmlNotice("");
             }
-          }}>Repartir du design visuel actuel</button>
+          }}>Repartir du design Hans</button>
         </> : <>
         <label className="grid gap-1.5 text-xs font-black text-[#51485F]">Titre<input value={content.heading} onChange={(event) => setField("heading", event.target.value)} className={inputClass} /></label>
         <label className="grid gap-1.5 text-xs font-black text-[#51485F]">Message<textarea rows={9} value={content.body} onChange={(event) => setField("body", event.target.value)} className={`${inputClass} resize-y`} /></label>
@@ -137,6 +147,10 @@ export function EmailEditor({ content, onChange, merchant, sampleSubscriber }: {
       </div>
     </div>
     <HansGeneratingModal open={generatingImage} title="Hans crée le visuel de l’e-mail" description="Hans traduit votre message en une image professionnelle, cohérente avec votre identité et adaptée au format e-mail." />
+    {visualEditorHtml !== null ? <EmailNoCodeEditor initialHtml={visualEditorHtml} onClose={() => setVisualEditorHtml(null)} onApply={(html) => {
+      onChange({ ...latestContent.current, editorMode: "html", html });
+      setVisualEditorHtml(null); setHtmlNotice("Design mis à jour. Enregistrez le brouillon pour conserver vos modifications.");
+    }} /> : null}
     </>
   );
 }

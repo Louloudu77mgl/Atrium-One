@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { fitEstimatedText } from "@/lib/social-editor/layout-safety";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { Database, MerchantRow } from "@/lib/supabase/types";
+import type { Database, MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
 
 type OpenAIImageBody = {
   data?: { b64_json?: string }[];
@@ -312,7 +312,10 @@ export async function generateAndStoreSocialVisual({
   visualPrompt,
   source,
   styleOverride,
-  supabaseClient
+  supabaseClient,
+  format = "social",
+  brandSettings,
+  signal
 }: {
   merchant: MerchantRow;
   postId?: string | null;
@@ -322,6 +325,9 @@ export async function generateAndStoreSocialVisual({
   source?: string | null;
   styleOverride?: string | null;
   supabaseClient?: SupabaseClient<Database>;
+  format?: "social" | "email";
+  brandSettings?: MerchantBrandSettingsRow | null;
+  signal?: AbortSignal;
 }) {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -338,15 +344,15 @@ export async function generateAndStoreSocialVisual({
     throw new Error("Utilisateur non connecté.");
   }
 
-  const brand = await getBrandSettings(merchant, supabaseClient);
+  const brand = brandSettings !== undefined ? brandSettings : await getBrandSettings(merchant, supabaseClient);
   const visualStyle = mapVisualStyleToPrompt(styleOverride ?? brand?.visual_style ?? "premium");
   const toneDirection = mapToneToVisualDirection(brand?.tone ?? "professionnel");
   const fontDirection = brand?.social_font_family ? `Police éditoriale de référence pour la future composition : ${brand.social_font_family}.` : "";
   const clientRequest = [source, visualPrompt, title].filter(Boolean).join(" · ");
   const creativeDirection = pickCreativeDirection(clientRequest);
-  const posterDirection = "Traite l’image comme une affiche photographique ou illustrée haut de gamme : idée visuelle forte, mise en scène créative, cadrage assumé et détails mémorables, tout en restant crédible pour ce commerce.";
+  const posterDirection = format === "email" ? "Photographie éditoriale naturelle, cadrage horizontal généreux, un sujet clair, lumière soignée, pas de texte ni de mise en page intégrée." : "Traite l’image comme une affiche photographique ou illustrée haut de gamme : idée visuelle forte, mise en scène créative, cadrage assumé et détails mémorables, tout en restant crédible pour ce commerce.";
   const prompt = [
-    `Crée une image carrée premium pour un post Instagram d'un commerce local.`,
+    format === "email" ? "Crée une photographie éditoriale horizontale premium pour le hero d’une newsletter de commerce local. Pas une affiche Instagram, aucun texte, aucun collage. Le sujet doit être réel, appétissant ou accueillant selon le secteur." : `Crée une image carrée premium pour un post Instagram d'un commerce local.`,
     clientRequest ? `DEMANDE ORIGINALE DU CLIENT — PRIORITÉ ABSOLUE : ${clientRequest}.` : "",
     "FIDÉLITÉ CLIENT : respecte exactement tous les éléments explicitement demandés — personnes, apparence, nombre, posture, action, objets, produits, lieux, cadre, époque, couleurs et détails. Ne remplace, ne retire et ne transpose jamais un élément précis de la demande.",
     `Secteur : ${merchant.business_type}. Ville : ${merchant.city}.`,
@@ -354,7 +360,7 @@ export async function generateAndStoreSocialVisual({
     `Style visuel attendu : ${visualStyle}.`,
     `Ton de marque à faire ressentir visuellement : ${toneDirection}.`,
     posterDirection,
-    `Palette de marque : primaire ${brand?.primary_color ?? "#4C1D95"}, secondaire ${brand?.secondary_color ?? "#F3E8FF"}, accent ${brand?.accent_color ?? "#A855F7"}.`,
+    format === "email" && !brand ? "Palette naturelle adaptée au secteur : crème, brun et terracotta pour une boulangerie ; sauge et nude pour un institut ; tons de la cuisine pour un restaurant. Ne pas imposer la couleur violette d’AtriumOne." : `Palette de marque : primaire ${brand?.primary_color ?? "#4C1D95"}, secondaire ${brand?.secondary_color ?? "#F3E8FF"}, accent ${brand?.accent_color ?? "#A855F7"}.`,
     fontDirection,
     source ? `Intention/source marketing : ${source}.` : "",
     `Titre du post : ${title}.`,
@@ -372,6 +378,7 @@ export async function generateAndStoreSocialVisual({
 
   const response = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
+    signal,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
@@ -379,7 +386,7 @@ export async function generateAndStoreSocialVisual({
     body: JSON.stringify({
       model: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2",
       prompt,
-      size: "1024x1024"
+      size: format === "email" ? "1536x1024" : "1024x1024"
     })
   });
   const body = (await response.json()) as OpenAIImageBody;

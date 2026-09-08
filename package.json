@@ -9,12 +9,15 @@
     "lint": "tsc --noEmit",
     "test:crm": "node --experimental-strip-types --test tests/crm.test.mjs",
     "test:social": "node --experimental-strip-types --test tests/social-recommendations.test.mjs",
-    "test:emailing": "node --test scripts/test-emailing-html.cjs",
+    "test:emailing": "node --test scripts/test-emailing-html.cjs scripts/test-emailing-visual.cjs scripts/test-emailing-generation.cjs",
     "backfill:crm-opening-hours": "node scripts/backfill-crm-opening-hours.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.0",
+    "cheerio": "^1.2.0",
+    "grapesjs": "^0.23.6",
+    "juice": "^12.1.2",
     "next": "^16.2.7",
     "postcss": "^8.5.28",
     "qrcode": "^1.5.4",
@@ -30,6 +33,7 @@
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
     "@types/sanitize-html": "^2.16.1",
+    "jsdom": "^27.4.0",
     "tailwindcss": "4.1.8",
     "typescript": "5.8.3"
   }
