@@ -95,11 +95,23 @@ export async function getReviews(currentMerchant?: MerchantRow | null): Promise<
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("reviews")
     .select("id,author_name,rating,review_text,status,sentiment,created_at,updated_at")
     .eq("merchant_id", merchant.id)
     .order("created_at", { ascending: false });
+
+  // Some deployed databases predate the optional updated_at migration.
+  // Keep the narrow projection without requiring a database migration to render.
+  if (error?.code === "42703" && error.message.includes("reviews.updated_at")) {
+    const legacy = await supabase
+      .from("reviews")
+      .select("id,author_name,rating,review_text,status,sentiment,created_at")
+      .eq("merchant_id", merchant.id)
+      .order("created_at", { ascending: false });
+    data = legacy.data?.map((review) => ({ ...review, updated_at: review.created_at })) ?? null;
+    error = legacy.error;
+  }
 
   if (error) {
     if (error.message.includes("Could not find the table")) {
@@ -109,11 +121,11 @@ export async function getReviews(currentMerchant?: MerchantRow | null): Promise<
     throw new Error(error.message);
   }
 
-  const reviewIds = data.map((review) => review.id);
-
-  if (reviewIds.length === 0) {
+  if (!data?.length) {
     return [];
   }
+
+  const reviewIds = data.map((review) => review.id);
 
   const { data: replies, error: repliesError } = await supabase
     .from("generated_replies")

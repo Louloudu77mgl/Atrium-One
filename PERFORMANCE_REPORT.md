@@ -30,6 +30,12 @@ Audit et corrections appliqués sur le `main` distant synchronisé avant le dép
 
 ## Verification
 
+Correctif de compatibilité production : certaines bases ne possèdent pas `reviews.updated_at`.
+La lecture des avis retente alors une projection sans cette colonne et conserve `created_at`
+comme date de référence. Quatre tests couvrent les deux schémas, les erreurs indépendantes
+et un compte vide. Une lecture réelle du compte démo a confirmé les mêmes 10 avis que la
+version fonctionnelle précédente ; aucune donnée ni migration n'a été modifiée.
+
 - `npm run lint` (`tsc --noEmit`) : réussi.
 - Tests CRM : 37/37.
 - Tests recommandations sociales : 10/10.
