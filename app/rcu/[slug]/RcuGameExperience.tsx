@@ -1,13 +1,11 @@
-"use client";
-
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
-import { useFormStatus } from "react-dom";
 import { HansAvatar } from "@/components/hans-avatar";
 import { getRcuTypeDefinition, type RcuFormType, type RcuProgram } from "@/lib/rcu";
 import type { RcuLoyaltySnapshot } from "@/lib/rcu-loyalty";
 import type { RcuGameRecord, RcuWalletRecord } from "@/lib/rcu-store";
 import type { MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
+import { RcuSubmitButton } from "./RcuSubmitButton";
 
 type BrandStyle = CSSProperties & {
   "--rcu-primary": string;
@@ -37,20 +35,6 @@ function HighlightedTitle({ title, type }: { title: string; type: RcuFormType })
       </span>
       {title.slice(start + term.length)}
     </>
-  );
-}
-
-function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="group relative w-full overflow-hidden rounded-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--rcu-primary)_32%,#241040),color-mix(in_srgb,var(--rcu-accent)_42%,#241040))] px-5 py-4 text-sm font-black uppercase tracking-[0.04em] text-white shadow-[0_12px_30px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 disabled:cursor-wait disabled:opacity-60"
-    >
-      <span className="absolute inset-y-0 -left-1/2 w-2/5 -skew-x-12 bg-gradient-to-r from-transparent via-white/35 to-transparent transition duration-700 group-hover:left-[120%]" />
-      <span className="relative">{pending ? "Validation en cours…" : label}</span>
-    </button>
   );
 }
 
@@ -405,7 +389,7 @@ export function RcuGameExperience({
               <span>J’accepte que {merchant?.business_name ?? "la boutique"} utilise mes informations pour gérer ma participation et mon programme de fidélité, et m’adresse ses offres par e-mail et par SMS. Je pourrai retirer mon accord à tout moment.</span>
             </label>
 
-            <div className="mt-5"><SubmitButton label={program.cta_label ?? type.defaultCtaLabel} /></div>
+            <div className="mt-5"><RcuSubmitButton label={program.cta_label ?? type.defaultCtaLabel} /></div>
           </form>
         )}
 

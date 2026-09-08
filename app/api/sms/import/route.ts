@@ -23,12 +23,11 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createServerSupabaseClient();
-
-  for (const row of rows) {
-    const { data: customer, error: customerError } = await supabase
-      .from("customers")
-      .upsert(
-        {
+  const latestRowByPhone = new Map(rows.map((row) => [row.phone!, row]));
+  const { data: importedCustomers, error: customerError } = await supabase
+    .from("customers")
+    .upsert(
+      Array.from(latestRowByPhone.values()).map((row) => ({
           merchant_id: merchant.id,
           first_name: row.first_name,
           last_name: row.last_name,
@@ -38,33 +37,38 @@ export async function POST(request: Request) {
           favorite_products: row.favorite_products,
           last_purchase_date: row.last_purchase_date,
           notes: row.notes
-        },
-        { onConflict: "merchant_id,phone" }
-      )
-      .select("*")
-      .single();
+      })),
+      { onConflict: "merchant_id,phone" }
+    )
+    .select("id,phone");
 
-    if (customerError) {
-      if (isMissingTable(customerError.message)) {
-        return NextResponse.json({ error: "Tables SMS absentes. Exécutez supabase/sms-module.sql puis réessayez." }, { status: 400 });
-      }
-
-      return NextResponse.json({ error: customerError.message }, { status: 500 });
+  if (customerError) {
+    if (isMissingTable(customerError.message)) {
+      return NextResponse.json({ error: "Tables SMS absentes. Exécutez supabase/sms-module.sql puis réessayez." }, { status: 400 });
     }
 
-    if (row.event_product_name) {
-      const { error: eventError } = await supabase.from("customer_events").insert({
+    return NextResponse.json({ error: customerError.message }, { status: 500 });
+  }
+
+  const customerIdByPhone = new Map((importedCustomers ?? []).map((customer) => [customer.phone, customer.id]));
+  const events = rows.flatMap((row) => {
+    const customerId = customerIdByPhone.get(row.phone!);
+    if (!row.event_product_name || !customerId) return [];
+
+    return [{
         merchant_id: merchant.id,
-        customer_id: customer.id,
+        customer_id: customerId,
         event_type: "purchase",
         product_name: row.event_product_name,
         happened_at: row.last_purchase_date ?? new Date().toISOString(),
         notes: row.notes
-      });
+    }];
+  });
 
-      if (eventError && !isMissingTable(eventError.message)) {
-        return NextResponse.json({ error: eventError.message }, { status: 500 });
-      }
+  if (events.length > 0) {
+    const { error: eventError } = await supabase.from("customer_events").insert(events);
+    if (eventError && !isMissingTable(eventError.message)) {
+      return NextResponse.json({ error: eventError.message }, { status: 500 });
     }
   }
 

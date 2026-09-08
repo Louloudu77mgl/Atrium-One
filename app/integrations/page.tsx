@@ -20,8 +20,11 @@ export default async function IntegrationsPage({
 }: {
   searchParams?: Promise<{ error?: string; saved?: string; imported?: string; sync_error?: string }>;
 }) {
-  const params = await searchParams;
-  const { reviews, merchant, googleConnection } = await getAppShellData();
+  const [params, shell] = await Promise.all([
+    searchParams,
+    getAppShellData({ reviews: "shell" })
+  ]);
+  const { reviews, merchant, googleConnection } = shell;
   const [instagramConnection, gmailConnection] = merchant
     ? await Promise.all([getInstagramConnection(merchant), getGmailConnection(merchant)])
     : [null, null];

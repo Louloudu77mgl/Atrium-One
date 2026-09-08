@@ -1,9 +1,8 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
-import { getRecommendationOrigin, readRecommendationOrigin } from "@/lib/social-recommendation-shared";
+import { getRecommendationOrigin, readRecommendationOrigin, type RecommendationPost } from "@/lib/social-recommendation-shared";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
-import type { SocialPostRow } from "@/lib/supabase/types";
 
 const matchPublishedThemes = unstable_cache(async (merchantId: string, themes: { key: string; label: string }[], posts: { id: string; title: string; caption: string; source: string | null }[]) => {
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -27,7 +26,7 @@ const matchPublishedThemes = unstable_cache(async (merchantId: string, themes: {
   return result.matches.filter((match) => themes.some((theme) => theme.key === match.themeKey) && posts.some((post) => post.id === match.postId)).map((match) => match.themeKey!);
 }, ["hans-published-themes-v1"], { revalidate: 7 * 24 * 60 * 60 });
 
-export async function getPreviouslyPublishedThemes(merchantId: string, ideas: ReviewSocialPostIdea[], posts: SocialPostRow[]) {
+export async function getPreviouslyPublishedThemes(merchantId: string, ideas: ReviewSocialPostIdea[], posts: RecommendationPost[]) {
   const themes = [...new Map(ideas.map((idea) => {
     const origin = getRecommendationOrigin(idea);
     return [origin.themeKey, { key: origin.themeKey, label: origin.sourceLabel }];

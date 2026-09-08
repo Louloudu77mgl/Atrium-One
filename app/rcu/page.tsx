@@ -10,7 +10,7 @@ import { RcuClient } from "./RcuClient";
 export const dynamic = "force-dynamic";
 
 export default async function RcuPage() {
-  const { reviews, merchant, googleConnection } = await getAppShellData();
+  const { reviews, merchant, googleConnection } = await getAppShellData({ reviews: "shell" });
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
   const rcuData = await getRcuDashboardData(merchant);

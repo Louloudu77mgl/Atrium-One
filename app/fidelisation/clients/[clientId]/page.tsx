@@ -24,7 +24,7 @@ function getResultLabel(play: NonNullable<Awaited<ReturnType<typeof getStoredRcu
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ clientId: string }> }) {
   const { clientId } = await params;
-  const { reviews, merchant, googleConnection } = await getAppShellData();
+  const { reviews, merchant, googleConnection } = await getAppShellData({ reviews: "shell" });
   if (!merchant) notFound();
   const [detail, rcuPrograms] = await Promise.all([
     getStoredRcuCustomerDetail(merchant.id, clientId),

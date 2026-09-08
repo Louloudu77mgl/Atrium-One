@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   const rules = Array.isArray(payload.segmentRules) ? payload.segmentRules.slice(0, 8) : [];
   if (rules.length === 0) return NextResponse.json({ error: "Choisissez au moins un groupe de clients." }, { status: 400 });
   const mode: EmailSegmentMode = payload.segmentMode === "any" ? "any" : "all";
-  const reviews = await getReviews();
+  const reviews = await getReviews(merchant);
   const data = await getEmailingDashboardData(merchant, reviews);
   const audience = filterEmailSubscribers(data.subscribers, rules, mode);
   const action = payload.action ?? "draft";

@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { HansAvatar } from "@/components/hans-avatar";
@@ -28,7 +26,7 @@ export function AtriumHubDashboard({
   instagramConnected?: boolean;
   insights?: ReviewInsightsAnalysis | null;
   insightsUpdatedAt?: string | null;
-  socialPosts?: SocialPostRow[];
+  socialPosts?: Array<{ status: SocialPostRow["status"] }>;
   shouldAutoAnalyze?: boolean;
 }) {
   const counters = getReviewCountersFromReviews(reviews);
@@ -458,7 +456,7 @@ function buildActivityItems({
 }: {
   reviews: Review[];
   analysis: ReviewInsightsAnalysis | null;
-  activeDrafts: SocialPostRow[];
+  activeDrafts: Array<{ status: SocialPostRow["status"] }>;
   publishedPostsCount: number;
   insightsUpdatedAt?: string | null;
 }) {

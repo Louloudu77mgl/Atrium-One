@@ -1,6 +1,8 @@
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
 import type { Json, SocialPostRow } from "@/lib/supabase/types";
 
+export type RecommendationPost = Pick<SocialPostRow, "id" | "platform" | "status" | "builder_state" | "title" | "caption" | "published_at" | "updated_at">;
+
 export type RecommendationOrigin = {
   version: 1;
   themeKey: string;
@@ -55,7 +57,7 @@ export function similarityScore(left: string, right: string) {
   return overlap / Math.min(leftTokens.size, rightTokens.size);
 }
 
-export function isRecommendationPublished(idea: ReviewSocialPostIdea, posts: Pick<SocialPostRow, "platform" | "status" | "builder_state" | "title" | "caption">[]) {
+export function isRecommendationPublished(idea: ReviewSocialPostIdea, posts: RecommendationPost[]) {
   const origin = getRecommendationOrigin(idea);
   return posts.some((post) => {
     if (post.platform !== "instagram" || post.status !== "published") return false;
@@ -91,7 +93,7 @@ export function isUpcomingRecommendation(idea: ReviewSocialPostIdea, today = par
   return Boolean(idea.eventDate && idea.eventDate >= today && (!idea.localEvent || idea.sourceUrl));
 }
 
-export function selectRecommendationMix(groups: ReviewSocialPostIdea[][], posts: SocialPostRow[], target = 10, today = parisDateKey()) {
+export function selectRecommendationMix(groups: ReviewSocialPostIdea[][], posts: RecommendationPost[], target = 10, today = parisDateKey()) {
   const selected: ReviewSocialPostIdea[] = [];
   const quotas = [Math.max(1, target - 4), 2, 2];
   const add = (idea: ReviewSocialPostIdea) => {

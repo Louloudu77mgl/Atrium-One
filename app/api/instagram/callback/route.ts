@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     });
   }
 
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
 
   if (!merchant) {
     return createOAuthCompletionResponse(origin, {

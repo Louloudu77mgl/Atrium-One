@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreatePostButton } from "@/components/CreatePostButton";
@@ -93,9 +94,19 @@ export function SocialPageClient({
   }, [router, busyId, instagramModalOpen, posts]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setCurrentTime(Date.now()), 15_000);
-    return () => window.clearInterval(timer);
-  }, []);
+    const nextPublicationAt = posts.reduce<number | null>((next, post) => {
+      if (!post.published_at) return next;
+      const timestamp = new Date(post.published_at).getTime();
+      if (!Number.isFinite(timestamp) || timestamp <= currentTime) return next;
+      return next === null || timestamp < next ? timestamp : next;
+    }, null);
+
+    if (nextPublicationAt === null) return;
+
+    const delay = Math.min(Math.max(nextPublicationAt - currentTime + 50, 50), 2_147_483_647);
+    const timer = window.setTimeout(() => setCurrentTime(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [currentTime, posts]);
 
   const instagramConnected = instagramConnection?.status === "connected" || instagramConnection?.status === "expiring";
   const publishingConfigured = instagramConnected;
@@ -427,7 +438,8 @@ export function SocialPageClient({
       }
       setInstagramCardMessage("Le compte Instagram a été déconnecté.");
       showToast("Compte Instagram déconnecté", "success");
-      window.location.href = "/social";
+      setInstagramActionBusy(null);
+      router.refresh();
     } catch (error) {
       const message = getUserErrorMessage(error, "Déconnexion impossible.");
       setInstagramCardMessage(message);
@@ -898,7 +910,7 @@ function InstagramAtriumConnectionVisual() {
         </span>
       </div>
       <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-[16px] border border-[#E2D7F3] bg-white p-2 shadow-[0_10px_26px_rgba(76,29,149,0.14)] sm:h-16 sm:w-16 sm:rounded-[20px] sm:p-2.5">
-        <img src="/atriumone-logo.webp" alt="AtriumOne" className="h-full w-full object-contain" />
+        <Image src="/atriumone-logo.webp" alt="AtriumOne" width={64} height={64} className="h-full w-full object-contain" />
       </div>
     </div>
   );

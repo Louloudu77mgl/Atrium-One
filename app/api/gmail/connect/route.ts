@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const origin = getAppOriginFromRequest(request);
   const user = await getCurrentUser();
   if (!user) return NextResponse.redirect(new URL("/login", origin));
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
   if (!merchant) return NextResponse.redirect(new URL("/onboarding", origin));
 
   let config: ReturnType<typeof getGmailOAuthConfig>;

@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HansGeneratingModal } from "@/components/HansGeneratingModal";
 import { useFailureSupport } from "@/components/FailureSupportProvider";
@@ -8,18 +9,19 @@ import type { HansAutomationBlueprint } from "@/lib/automation-hans-blueprint";
 import type { AutomationExecutionLog, StoredAutomationFlow } from "@/lib/automation-execution-store";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewCounters } from "@/lib/review-counters";
-import type { GoogleConnectionRow, InstagramConnectionRow, MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
-import { AutomationCanvas } from "./automation-builder/AutomationCanvas";
-import { AutomationHistory } from "./automation-builder/AutomationHistory";
-import { AutomationTemplates } from "./automation-builder/AutomationTemplates";
-import { AutomationToolbar } from "./automation-builder/AutomationToolbar";
-import { HansFlowGenerator } from "./automation-builder/HansFlowGenerator";
-import { NodeConfigPanel } from "./automation-builder/NodeConfigPanel";
-import { NodeLibrary } from "./automation-builder/NodeLibrary";
-import { TestFlowPanel } from "./automation-builder/TestFlowPanel";
+import type { GoogleConnectionRow, InstagramConnectionRow, MerchantAutomationSettingsRow, MerchantRow } from "@/lib/supabase/types";
 import { autoLayout, buildExecutionPreview, cloneFlow, duplicateSelected, removeNodesAndEdges, validateFlow } from "./automation-builder/helpers";
 import { buildTemplates, createNodeFromLibrary, NODE_LIBRARY } from "./automation-builder/templates";
 import type { AutomationFlow, AutomationMode, AutomationStatus, AutomationView, CanvasConnectionDraft, ExecutionRecord, TestScenario } from "./automation-builder/types";
+
+const AutomationCanvas = dynamic(() => import("./automation-builder/AutomationCanvas").then((module) => module.AutomationCanvas));
+const AutomationHistory = dynamic(() => import("./automation-builder/AutomationHistory").then((module) => module.AutomationHistory));
+const AutomationTemplates = dynamic(() => import("./automation-builder/AutomationTemplates").then((module) => module.AutomationTemplates));
+const AutomationToolbar = dynamic(() => import("./automation-builder/AutomationToolbar").then((module) => module.AutomationToolbar));
+const HansFlowGenerator = dynamic(() => import("./automation-builder/HansFlowGenerator").then((module) => module.HansFlowGenerator));
+const NodeConfigPanel = dynamic(() => import("./automation-builder/NodeConfigPanel").then((module) => module.NodeConfigPanel));
+const NodeLibrary = dynamic(() => import("./automation-builder/NodeLibrary").then((module) => module.NodeLibrary));
+const TestFlowPanel = dynamic(() => import("./automation-builder/TestFlowPanel").then((module) => module.TestFlowPanel));
 
 const shellCard = "rounded-[28px] border border-[#EBE6DF] bg-white shadow-[0_12px_32px_rgba(23,19,31,0.05)]";
 const inputClass = "w-full rounded-[14px] border border-[#EBE6DF] bg-white px-4 py-3 text-sm text-[#17131F] outline-none focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-[#6E4DE0]";
@@ -55,7 +57,6 @@ export function AutomationsWorkspace({
   automationRuns,
   storedFlows,
   deletedFlowIds = [],
-  socialPosts,
   emailSubscribersCount,
   emailCampaignsCount,
   emailProviderReady
@@ -70,7 +71,6 @@ export function AutomationsWorkspace({
   automationRuns: AutomationExecutionLog[];
   storedFlows: StoredAutomationFlow[];
   deletedFlowIds?: string[];
-  socialPosts: SocialPostRow[];
   emailSubscribersCount: number;
   emailCampaignsCount: number;
   emailProviderReady: boolean;
@@ -88,7 +88,6 @@ export function AutomationsWorkspace({
       automationRuns,
       reviews,
       reviewCounters,
-      socialPosts,
       emailSubscribersCount,
       emailCampaignsCount,
       emailProviderReady,
@@ -1264,7 +1263,6 @@ function buildExistingAutomations({
   automationRuns,
   reviews,
   reviewCounters,
-  socialPosts,
   emailSubscribersCount,
   emailCampaignsCount,
   emailProviderReady,
@@ -1277,7 +1275,6 @@ function buildExistingAutomations({
   automationRuns: AutomationExecutionLog[];
   reviews: Review[];
   reviewCounters: ReviewCounters;
-  socialPosts: SocialPostRow[];
   emailSubscribersCount: number;
   emailCampaignsCount: number;
   emailProviderReady: boolean;

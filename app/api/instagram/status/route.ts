@@ -16,7 +16,7 @@ export async function GET() {
     return NextResponse.json({ status: "error" }, { status: 401 });
   }
 
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
   if (!merchant) {
     return NextResponse.json({ status: "error" }, { status: 404 });
   }

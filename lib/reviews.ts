@@ -3,6 +3,16 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Review } from "@/lib/mock-data";
 import type { GeneratedReplyRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
 
+type ReviewListRow = Pick<
+  ReviewRow,
+  "id" | "author_name" | "rating" | "review_text" | "status" | "sentiment" | "created_at" | "updated_at"
+>;
+
+type GeneratedReplyListRow = Pick<
+  GeneratedReplyRow,
+  "id" | "review_id" | "generated_text" | "reply_text" | "status" | "is_edited" | "created_at"
+>;
+
 function normalizeStatus(status: string | null | undefined): Review["status"] {
   switch (status) {
     case "urgent":
@@ -52,7 +62,7 @@ function dateLabel(createdAt: string) {
   }).format(new Date(createdAt));
 }
 
-export function mapReviewRow(row: ReviewRow, index = 0, reply?: GeneratedReplyRow): Review {
+export function mapReviewRow(row: ReviewListRow, index = 0, reply?: GeneratedReplyListRow): Review {
   const colors: Review["avatarColor"][] = ["red", "green", "amber", "gray", "navy"];
 
   return {
@@ -87,7 +97,7 @@ export async function getReviews(currentMerchant?: MerchantRow | null): Promise<
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("reviews")
-    .select("*")
+    .select("id,author_name,rating,review_text,status,sentiment,created_at,updated_at")
     .eq("merchant_id", merchant.id)
     .order("created_at", { ascending: false });
 
@@ -107,7 +117,7 @@ export async function getReviews(currentMerchant?: MerchantRow | null): Promise<
 
   const { data: replies, error: repliesError } = await supabase
     .from("generated_replies")
-    .select("*")
+    .select("id,review_id,generated_text,reply_text,status,is_edited,created_at")
     .in("review_id", reviewIds)
     .in("status", ["generated", "selected", "approved", "validation_required", "published", "published_auto", "published_manual", "blocked_by_safety"])
     .order("created_at", { ascending: false });
@@ -120,7 +130,7 @@ export async function getReviews(currentMerchant?: MerchantRow | null): Promise<
     throw new Error(repliesError.message);
   }
 
-  const repliesByReviewId = new Map<string, GeneratedReplyRow>();
+  const repliesByReviewId = new Map<string, GeneratedReplyListRow>();
 
   replies.forEach((reply) => {
     if (!repliesByReviewId.has(reply.review_id)) {
@@ -129,4 +139,44 @@ export async function getReviews(currentMerchant?: MerchantRow | null): Promise<
   });
 
   return data.map((review, index) => mapReviewRow(review, index, repliesByReviewId.get(review.id)));
+}
+
+export async function getShellReviews(currentMerchant: MerchantRow): Promise<Review[]> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("reviews")
+    .select("id,rating,review_text,status,sentiment")
+    .eq("merchant_id", currentMerchant.id);
+
+  if (error) {
+    if (error.message.includes("Could not find the table")) return [];
+    throw new Error(error.message);
+  }
+
+  if (data.length === 0) return [];
+
+  const { data: replies, error: repliesError } = await supabase
+    .from("generated_replies")
+    .select("id,review_id")
+    .in("review_id", data.map((review) => review.id))
+    .in("status", ["generated", "selected", "approved", "validation_required", "published", "published_auto", "published_manual", "blocked_by_safety"]);
+
+  if (repliesError && !repliesError.message.includes("Could not find the table")) {
+    throw new Error(repliesError.message);
+  }
+
+  const replyIdByReviewId = new Map((replies ?? []).map((reply) => [reply.review_id, reply.id]));
+
+  return data.map((review) => ({
+    id: review.id,
+    author: "",
+    initials: "",
+    avatarColor: "gray",
+    rating: review.rating,
+    date: "",
+    status: normalizeStatus(review.status),
+    sentiment: normalizeSentiment(review.sentiment),
+    text: review.review_text,
+    generatedReplyId: replyIdByReviewId.get(review.id)
+  }));
 }

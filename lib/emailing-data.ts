@@ -17,6 +17,16 @@ function isWinningWheelPrize(label: string | undefined) {
   return Boolean(value && !value.includes("rien") && !value.includes("retentez") && !value.includes("rejouez"));
 }
 
+function groupByCustomerKey<T extends { customer_key: string }>(records: T[]) {
+  const grouped = new Map<string, T[]>();
+  records.forEach((record) => {
+    const current = grouped.get(record.customer_key);
+    if (current) current.push(record);
+    else grouped.set(record.customer_key, [record]);
+  });
+  return grouped;
+}
+
 export async function getEmailingDashboardData(
   merchant: MerchantRow | null,
   reviews: Review[],
@@ -66,6 +76,12 @@ export async function getEmailingDashboardData(
   }
 
   const [leads, plays, redemptions, raffleDraws, campaigns, suppressedEmails, brand, gmailConnection] = dashboardData;
+  const playsByCustomer = groupByCustomerKey(plays);
+  const redemptionsByCustomer = groupByCustomerKey(redemptions);
+  const drawsByCustomer = groupByCustomerKey(raffleDraws);
+  const now = Date.now();
+  const thirtyDaysAgo = now - 30 * 86_400_000;
+  const ninetyDaysAgo = now - 90 * 86_400_000;
   const latestByCustomer = new Map<string, (typeof leads)[number]>();
   leads.forEach((lead) => {
     const key = getRcuCustomerKey(merchant.id, lead.phone, lead.email);
@@ -85,9 +101,13 @@ export async function getEmailingDashboardData(
     const hasEmailConsent = lead.consent_email === true;
     const emailValid = /^\S+@\S+\.\S+$/.test(email);
     const customerName = normalizeName(`${lead.first_name} ${lead.last_name}`);
-    const customerPlays = plays.filter((play) => play.customer_key === customerKey || (play.customer_key === lead.customer_key && normalizeName(`${play.first_name} ${play.last_name}`) === customerName));
-    const customerRedemptions = redemptions.filter((redemption) => redemption.customer_key === customerKey);
-    const customerDraws = raffleDraws.filter((draw) => draw.customer_key === customerKey);
+    const directPlays = playsByCustomer.get(customerKey) ?? [];
+    const legacyPlays = lead.customer_key && lead.customer_key !== customerKey
+      ? (playsByCustomer.get(lead.customer_key) ?? []).filter((play) => normalizeName(`${play.first_name} ${play.last_name}`) === customerName)
+      : [];
+    const customerPlays = legacyPlays.length > 0 ? [...directPlays, ...legacyPlays] : directPlays;
+    const customerRedemptions = redemptionsByCustomer.get(customerKey) ?? [];
+    const customerDraws = drawsByCustomer.get(customerKey) ?? [];
     const review = reviewByName.get(normalizeName(`${lead.first_name}${lead.last_name}`))
       ?? reviewByName.get(normalizeName(`${lead.first_name} ${lead.last_name}`));
     const rewardsWon = customerPlays.reduce((total, play) => total
@@ -111,8 +131,8 @@ export async function getEmailingDashboardData(
       reviewRating: review?.rating ?? null,
       birthday: lead.birthday ?? null,
       preferences: (lead.favorite_products ?? "").split(/[,;|]/).map((value) => value.trim()).filter(Boolean),
-      visitsLast30Days: customerPlays.filter((play) => new Date(play.occurred_at).getTime() >= Date.now() - 30 * 86_400_000).length,
-      visitsLast90Days: customerPlays.filter((play) => new Date(play.occurred_at).getTime() >= Date.now() - 90 * 86_400_000).length
+      visitsLast30Days: customerPlays.filter((play) => new Date(play.occurred_at).getTime() >= thirtyDaysAgo).length,
+      visitsLast90Days: customerPlays.filter((play) => new Date(play.occurred_at).getTime() >= ninetyDaysAgo).length
     };
     const existing = profilesByCustomer.get(profile.id);
     if (!existing || profile.registeredAt > existing.registeredAt) profilesByCustomer.set(profile.id, profile);

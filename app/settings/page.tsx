@@ -9,7 +9,7 @@ import { updateMerchantProfile } from "@/lib/merchant-actions";
 import { getMerchant } from "@/lib/merchants";
 import { getAppNotifications } from "@/lib/notifications";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
-import { getReviews } from "@/lib/reviews";
+import { getShellReviews } from "@/lib/reviews";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { appShellStyles } from "@/lib/design-system";
@@ -37,14 +37,14 @@ export default async function SettingsPage({
     redirect("/login");
   }
 
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
   if (!merchant) {
     redirect("/onboarding");
   }
 
   const [googleConnection, reviews, brandSettings, automationSettings] = await Promise.all([
     getGoogleConnection(merchant),
-    getReviews(),
+    getShellReviews(merchant),
     getBrandSettings(merchant),
     getAutomationSettings(merchant)
   ]);

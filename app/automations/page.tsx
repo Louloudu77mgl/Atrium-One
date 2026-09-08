@@ -8,7 +8,6 @@ import { getEmailingDashboardData } from "@/lib/emailing-data";
 import { getInstagramConnection } from "@/lib/instagram-connections";
 import { getAppNotifications } from "@/lib/notifications";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
-import { getSocialPosts } from "@/lib/social-posts";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
 import { AutomationsWorkspace } from "./AutomationsWorkspace";
 
@@ -19,17 +18,18 @@ export default async function AutomationsPage({
 }: {
   searchParams?: Promise<{ error?: string; saved?: string }>;
 }) {
-  const params = await searchParams;
-  const { reviews, merchant, googleConnection } = await getAppShellData();
+  const [params, shell] = await Promise.all([searchParams, getAppShellData()]);
+  const { reviews, merchant, googleConnection } = shell;
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
-  const settings = merchant ? await getAutomationSettings(merchant) : null;
-  const instagramConnection = merchant ? await getInstagramConnection(merchant) : null;
-  const socialPosts = merchant ? await getSocialPosts(merchant) : [];
-  const automationRuns = merchant ? await listAutomationExecutionLogs(merchant.id).catch(() => []) : [];
-  const storedFlows = merchant ? await listStoredAutomationFlows(merchant.id).catch(() => []) : [];
-  const deletedFlowIds = merchant ? await listDeletedAutomationFlowIds(merchant.id) : [];
-  const emailingData = await getEmailingDashboardData(merchant, reviews);
+  const [settings, instagramConnection, automationRuns, storedFlows, deletedFlowIds, emailingData] = await Promise.all([
+    merchant ? getAutomationSettings(merchant) : Promise.resolve(null),
+    merchant ? getInstagramConnection(merchant) : Promise.resolve(null),
+    merchant ? listAutomationExecutionLogs(merchant.id).catch(() => []) : Promise.resolve([]),
+    merchant ? listStoredAutomationFlows(merchant.id).catch(() => []) : Promise.resolve([]),
+    merchant ? listDeletedAutomationFlowIds(merchant.id) : Promise.resolve([]),
+    getEmailingDashboardData(merchant, reviews)
+  ]);
 
   return (
     <div className={appShellStyles.page}>
@@ -48,7 +48,6 @@ export default async function AutomationsPage({
             automationRuns={automationRuns}
             storedFlows={storedFlows}
             deletedFlowIds={deletedFlowIds}
-            socialPosts={socialPosts}
             emailSubscribersCount={emailingData.subscribers.length}
             emailCampaignsCount={emailingData.campaigns.length}
             emailProviderReady={emailingData.providerReady}

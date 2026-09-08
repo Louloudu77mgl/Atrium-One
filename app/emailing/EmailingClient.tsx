@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GmailConnectionActions } from "@/components/GmailConnectionActions";
@@ -109,7 +110,7 @@ function GmailAtriumConnectionVisual() {
         </span>
       </div>
       <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-[18px] border border-[#E2D7F3] bg-white p-2.5 shadow-[0_10px_26px_rgba(76,29,149,0.14)]">
-        <img src="/atriumone-logo.webp" alt="AtriumOne" className="h-full w-full object-contain" />
+        <Image src="/atriumone-logo.webp" alt="AtriumOne" width={56} height={56} className="h-full w-full object-contain" />
       </div>
     </div>
   );

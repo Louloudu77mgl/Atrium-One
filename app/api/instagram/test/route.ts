@@ -16,7 +16,7 @@ export async function POST() {
     return NextResponse.json({ error: "Utilisateur non connecté." }, { status: 401 });
   }
 
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
   if (!merchant) {
     return NextResponse.json({ error: "Commerce introuvable." }, { status: 404 });
   }

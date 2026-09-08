@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { GoogleLoginButton } from "@/components/GoogleLoginButton";
 import { HansAvatar } from "@/components/hans-avatar";
@@ -31,7 +32,7 @@ export default async function LoginPage({
     <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#F3E8FF_0,#FBFAFF_42%,#FFFFFF_100%)] px-4 py-10">
       <section className="w-full max-w-md rounded-[20px] border border-[#E9D5FF] bg-white p-8 shadow-[0_8px_32px_rgba(76,29,149,0.10)]">
         <Link href="/dashboard" className="mb-8 flex items-center gap-2.5">
-          <img src="/atriumone-logo.webp" alt="AtriumOne" className="h-[42px] w-[42px] object-contain drop-shadow-sm" />
+          <Image src="/atriumone-logo.webp" alt="AtriumOne" width={42} height={42} className="h-[42px] w-[42px] object-contain drop-shadow-sm" priority />
           <span className="text-xl font-bold text-[#4C1D95]">
             Atrium<span className="text-[#A855F7]">One</span>
           </span>

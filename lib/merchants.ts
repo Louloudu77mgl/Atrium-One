@@ -14,12 +14,7 @@ async function resolveMerchantLogoUrl({
 
   const publicStorageMarker = "/storage/v1/object/public/merchant-logos/";
   if (logoUrl.includes(publicStorageMarker)) {
-    const storagePath = decodeURIComponent(logoUrl.split(publicStorageMarker)[1]?.split("?")[0] ?? "");
-    const signedUrl = await supabase.storage.from("merchant-logos").createSignedUrl(storagePath, 60 * 60);
-
-    if (!signedUrl.error && signedUrl.data?.signedUrl) {
-      return signedUrl.data.signedUrl;
-    }
+    return logoUrl;
   }
 
   if (/^https?:\/\//i.test(logoUrl)) {

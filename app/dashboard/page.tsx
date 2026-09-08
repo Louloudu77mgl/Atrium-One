@@ -7,7 +7,7 @@ import { reviews as mockReviews } from "@/lib/mock-data";
 import { getFallbackReviewInsights, mapInsightRow } from "@/lib/review-insights";
 import { getStoredReviewInsights } from "@/lib/review-insights-server";
 import { getReviews } from "@/lib/reviews";
-import { getSocialPosts } from "@/lib/social-posts";
+import { getSocialPostSummaries } from "@/lib/social-posts";
 import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { isDemoMode } from "@/lib/demo-mode";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
@@ -38,13 +38,21 @@ export default async function DashboardPage() {
     getReviews(merchant),
     getInstagramConnection(merchant),
     getStoredReviewInsights(merchant),
-    getSocialPosts(merchant)
+    getSocialPostSummaries(merchant)
   ]);
   const visibleInsights = storedInsights
     ? mapInsightRow(storedInsights)
     : null;
 
-  if (visibleInsights) visibleInsights.socialPostIdeas = await getTopSocialRecommendations({ analysis: visibleInsights, reviews, merchant, posts: socialPosts });
+  if (visibleInsights) {
+    visibleInsights.socialPostIdeas = await getTopSocialRecommendations({
+      analysis: visibleInsights,
+      reviews,
+      merchant,
+      posts: socialPosts,
+      enrichWithExternalSources: false
+    });
+  }
 
   return <AtriumHubDashboard reviews={reviews} merchant={merchant} googleConnection={googleConnection} instagramConnected={instagramConnection?.status === "connected" || instagramConnection?.status === "expiring"} insights={visibleInsights} insightsUpdatedAt={storedInsights?.updated_at ?? null} socialPosts={socialPosts} shouldAutoAnalyze={false} />;
 }

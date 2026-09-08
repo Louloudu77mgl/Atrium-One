@@ -10,7 +10,7 @@ import { getReviewCountersFromReviews } from "@/lib/review-counters";
 export const dynamic = "force-dynamic";
 
 export default async function SmsCampaignsPage() {
-  const { reviews, merchant, googleConnection } = await getAppShellData();
+  const { reviews, merchant, googleConnection } = await getAppShellData({ reviews: "shell" });
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
   return (

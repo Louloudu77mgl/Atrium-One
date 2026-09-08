@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/login", origin));
   }
 
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
 
   if (!merchant) {
     return NextResponse.redirect(new URL("/onboarding", origin));

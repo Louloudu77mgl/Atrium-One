@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, type ComponentProps } from "react";
 import { HansAvatar } from "@/components/hans-avatar";
@@ -110,7 +111,7 @@ export function Sidebar({
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col overflow-y-auto bg-[#4C1D95] md:flex">
         <div className="border-b border-white/10 px-5 pb-[18px] pt-[22px]">
           <Link href="/dashboard" className="flex items-center gap-2.5">
-            <img src="/atriumone-logo.webp" alt="AtriumOne" className="h-[38px] w-[38px] object-contain drop-shadow-sm" />
+            <Image src="/atriumone-logo.webp" alt="AtriumOne" width={38} height={38} className="h-[38px] w-[38px] object-contain drop-shadow-sm" priority />
             <span className="text-[17px] font-bold text-white">
               Atrium<span className="text-[#C084FC]">One</span>
             </span>

@@ -4,21 +4,24 @@ import type { Review } from "@/lib/mock-data";
 import type { ReviewInsightsAnalysis, ReviewSocialPostIdea } from "@/lib/review-insights";
 import { getUpcomingFrenchCommercialMoments } from "@/lib/social-calendar";
 import { getUpcomingLocalSocialIdeas } from "@/lib/social-local-events";
-import { getRecommendationOrigin, normalizeTheme, selectRecommendationMix } from "@/lib/social-recommendation-shared";
+import { getRecommendationOrigin, normalizeTheme, selectRecommendationMix, type RecommendationPost } from "@/lib/social-recommendation-shared";
 import { getPreviouslyPublishedThemes } from "@/lib/social-recommendation-history";
-import type { MerchantRow, SocialPostRow } from "@/lib/supabase/types";
+import type { MerchantRow } from "@/lib/supabase/types";
 
-export async function getTopSocialRecommendations({ analysis, merchant, posts = [] }: {
+export async function getTopSocialRecommendations({ analysis, merchant, posts = [], enrichWithExternalSources = true }: {
   analysis: ReviewInsightsAnalysis | null;
   reviews: Review[];
   merchant?: MerchantRow | null;
-  posts?: SocialPostRow[];
+  posts?: RecommendationPost[];
+  enrichWithExternalSources?: boolean;
 }) {
   const insightIdeas = buildInsightReserve(analysis);
-  const [localIdeas, retired] = await Promise.all([
-    merchant ? getUpcomingLocalSocialIdeas(merchant) : Promise.resolve([]),
-    merchant ? getPreviouslyPublishedThemes(merchant.id, insightIdeas, posts) : Promise.resolve(new Set<string>())
-  ]);
+  const [localIdeas, retired] = enrichWithExternalSources
+    ? await Promise.all([
+        merchant ? getUpcomingLocalSocialIdeas(merchant) : Promise.resolve([]),
+        merchant ? getPreviouslyPublishedThemes(merchant.id, insightIdeas, posts) : Promise.resolve(new Set<string>())
+      ])
+    : [[], new Set<string>()];
   return selectRecommendationMix([insightIdeas.filter((idea) => !retired.has(getRecommendationOrigin(idea).themeKey)), localIdeas, buildSeasonalIdeas(merchant)], posts);
 }
 

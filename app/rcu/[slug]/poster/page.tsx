@@ -18,8 +18,10 @@ export default async function RcuPosterPage({
     notFound();
   }
 
-  const origin = await getAppOriginFromHeaders();
-  const merchant = await getMerchant().catch(() => null);
+  const [origin, merchant] = await Promise.all([
+    getAppOriginFromHeaders(),
+    getMerchant().catch(() => null)
+  ]);
   const ownMerchant = merchant?.id === form.merchant_id ? merchant : null;
   const brandSettings = ownMerchant ? await getBrandSettings(ownMerchant).catch(() => null) : null;
 

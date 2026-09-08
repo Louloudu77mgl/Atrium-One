@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
@@ -114,9 +115,9 @@ export function SocialGalleryManager({
               {busy === "site" ? "Import..." : "Importer les images du site"}
             </button>
           ) : (
-            <a href="/settings" className={`${buttonStyles.secondary} h-fit`}>
+            <Link href="/settings" className={`${buttonStyles.secondary} h-fit`}>
               Ajouter mon site dans Réglages
-            </a>
+            </Link>
           )}
         </div>
 

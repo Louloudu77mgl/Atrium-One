@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { HansAvatar } from "@/components/hans-avatar";
 import { LogoUploadField } from "@/components/LogoUploadField";
@@ -39,7 +40,7 @@ export default async function OnboardingPage({
       redirect("/login");
     }
 
-    const merchant = await getMerchant();
+    const merchant = await getMerchant(user.id);
 
     if (merchant) {
       redirect("/dashboard");
@@ -50,7 +51,7 @@ export default async function OnboardingPage({
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,#F3E8FF_0,#FBFAFF_42%,#FFFFFF_100%)] px-4 py-10">
       <div className="mx-auto max-w-5xl">
         <Link href="/dashboard" className="mb-10 inline-flex items-center gap-2.5">
-          <img src="/atriumone-logo.webp" alt="AtriumOne" className="h-[42px] w-[42px] object-contain drop-shadow-sm" />
+          <Image src="/atriumone-logo.webp" alt="AtriumOne" width={42} height={42} className="h-[42px] w-[42px] object-contain drop-shadow-sm" priority />
           <span className="text-xl font-bold text-[#4C1D95]">
             Atrium<span className="text-[#A855F7]">One</span>
           </span>

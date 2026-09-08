@@ -12,11 +12,15 @@ export default async function SocialVisualEditorPage({
   params: Promise<{ postId: string }>;
   searchParams?: Promise<{ action?: string; scheduledAt?: string }>;
 }) {
-  const { postId } = await params;
-  const editorAction = await searchParams;
-  const { merchant } = await getAppShellData();
-  const post = await getSocialPostById(postId, merchant);
-  const brandSettings = await getBrandSettings(merchant);
+  const [{ postId }, editorAction, { merchant }] = await Promise.all([
+    params,
+    searchParams,
+    getAppShellData({ reviews: "none", google: false })
+  ]);
+  const [post, brandSettings] = await Promise.all([
+    getSocialPostById(postId, merchant),
+    getBrandSettings(merchant)
+  ]);
 
   return (
     <VisualPostEditor

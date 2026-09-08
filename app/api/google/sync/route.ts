@@ -11,7 +11,7 @@ import { getCurrentUser } from "@/lib/supabase/server";
 export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Utilisateur non connecté." }, { status: 401 });
-  const merchant = await getMerchant();
+  const merchant = await getMerchant(user.id);
   if (!merchant) return NextResponse.json({ error: "Commerce introuvable." }, { status: 404 });
   const connection = await getGoogleConnection(merchant);
   if (!connection) return NextResponse.json({ error: "Google Business non connecté." }, { status: 409 });

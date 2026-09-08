@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 const links = [
@@ -18,7 +19,7 @@ export function CrmSidebar({ email }: { email: string }) {
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[236px] flex-col border-r border-[#E8E4DB] bg-[#211432] md:flex">
       <div className="border-b border-white/10 px-5 py-5">
         <Link href="/crm" className="flex items-center gap-2.5">
-          <img src="/atriumone-logo.webp" alt="AtriumOne" className="h-9 w-9 object-contain" />
+          <Image src="/atriumone-logo.webp" alt="AtriumOne" width={36} height={36} className="h-9 w-9 object-contain" priority />
           <span className="text-[16px] font-black text-white">Atrium<span className="text-[#C084FC]">One</span></span>
         </Link>
         <div className="mt-3 inline-flex rounded-md bg-[#A855F7]/15 px-2 py-1 text-[10px] font-black uppercase tracking-[.12em] text-[#D8B4FE]">CRM interne</div>

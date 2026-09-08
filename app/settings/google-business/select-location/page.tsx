@@ -11,8 +11,10 @@ export const dynamic = "force-dynamic";
 async function selectGoogleLocation(formData: FormData) {
   "use server";
 
-  const merchant = await getMerchant();
-  const temporaryTokens = await getTemporaryGoogleTokens();
+  const [merchant, temporaryTokens] = await Promise.all([
+    getMerchant(),
+    getTemporaryGoogleTokens()
+  ]);
   const googleConnection = merchant ? await getGoogleConnection(merchant) : null;
   const accessToken = temporaryTokens.accessToken ?? googleConnection?.access_token_encrypted;
   const refreshToken = temporaryTokens.refreshToken ?? googleConnection?.refresh_token_encrypted ?? null;
@@ -58,8 +60,10 @@ export default async function SelectGoogleLocationPage() {
     redirect("/login");
   }
 
-  const merchant = await getMerchant();
-  const temporaryTokens = await getTemporaryGoogleTokens();
+  const [merchant, temporaryTokens] = await Promise.all([
+    getMerchant(user.id),
+    getTemporaryGoogleTokens()
+  ]);
   const googleConnection = merchant ? await getGoogleConnection(merchant) : null;
   const accessToken = temporaryTokens.accessToken ?? googleConnection?.access_token_encrypted;
 

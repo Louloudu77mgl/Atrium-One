@@ -10,7 +10,7 @@ import { ClientsDatabaseClient } from "./ClientsDatabaseClient";
 export const dynamic = "force-dynamic";
 
 export default async function ClientsDatabasePage() {
-  const { reviews, merchant, googleConnection } = await getAppShellData();
+  const { reviews, merchant, googleConnection } = await getAppShellData({ reviews: "shell" });
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
   const { customers } = await getRcuDashboardData(merchant);
