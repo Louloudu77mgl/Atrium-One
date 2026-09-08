@@ -63,6 +63,18 @@ export type EmailSubscriberProfile = {
   visitsLast90Days: number;
 };
 
+export type EmailDesign = {
+  font: "arial" | "georgia" | "verdana";
+  textSize: number;
+  headingSize: number;
+  alignment: "left" | "center" | "right";
+  width: number;
+  padding: number;
+  radius: number;
+  textColor: string;
+  imagePosition: "top" | "below_heading";
+};
+
 export type EmailCampaignContent = {
   subject: string;
   preheader: string;
@@ -76,6 +88,10 @@ export type EmailCampaignContent = {
   primaryColor: string;
   backgroundColor: string;
   buttonColor: string;
+  editorMode?: "visual" | "html";
+  html?: string;
+  htmlFileName?: string;
+  design?: Partial<EmailDesign>;
 };
 
 export type EmailCampaignRecipient = {

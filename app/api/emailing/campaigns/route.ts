@@ -1,31 +1,14 @@
 import { NextResponse } from "next/server";
 import { getEmailingDashboardData } from "@/lib/emailing-data";
+import { emailContentError, normalizeEmailContent } from "@/lib/emailing-content";
 import { dispatchEmailCampaign } from "@/lib/emailing-provider";
 import { filterEmailSubscribers, getEmailSegmentLabel } from "@/lib/emailing-segments";
 import { createEmailCampaign, createEmailRecipients, getEmailCampaign, updateEmailCampaign } from "@/lib/emailing-store";
-import { DEFAULT_EMAIL_CONTENT, EMAIL_CAMPAIGN_TYPES, type EmailCampaignContent, type EmailCampaignRecord, type EmailCampaignType, type EmailSegmentMode, type EmailSegmentRule } from "@/lib/emailing-types";
+import { EMAIL_CAMPAIGN_TYPES, type EmailCampaignContent, type EmailCampaignRecord, type EmailCampaignType, type EmailSegmentMode, type EmailSegmentRule } from "@/lib/emailing-types";
 import { getMerchant } from "@/lib/merchants";
 import { getReviews } from "@/lib/reviews";
 
 export const maxDuration = 60;
-
-function normalizeContent(value: Partial<EmailCampaignContent> | undefined): EmailCampaignContent {
-  const content = { ...DEFAULT_EMAIL_CONTENT, ...value };
-  return {
-    subject: String(content.subject).trim().slice(0, 120),
-    preheader: String(content.preheader).trim().slice(0, 180),
-    heading: String(content.heading).trim().slice(0, 180),
-    body: String(content.body).trim().slice(0, 6000),
-    ctaLabel: String(content.ctaLabel).trim().slice(0, 60),
-    ctaUrl: String(content.ctaUrl).trim().slice(0, 1000),
-    signature: String(content.signature).trim().slice(0, 600),
-    imageUrl: String(content.imageUrl).trim().slice(0, 1000),
-    showLogo: content.showLogo !== false,
-    primaryColor: String(content.primaryColor),
-    backgroundColor: String(content.backgroundColor),
-    buttonColor: String(content.buttonColor)
-  };
-}
 
 export async function POST(request: Request) {
   const merchant = await getMerchant();
@@ -42,6 +25,14 @@ export async function POST(request: Request) {
     campaignId?: string;
   };
   if (!EMAIL_CAMPAIGN_TYPES.includes(payload.campaignType as EmailCampaignType)) return NextResponse.json({ error: "Choisissez un type de campagne." }, { status: 400 });
+  let content: EmailCampaignContent;
+  try {
+    content = normalizeEmailContent(payload.content);
+    const error = emailContentError(content);
+    if (error) return NextResponse.json({ error }, { status: 400 });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Contenu HTML invalide." }, { status: 400 });
+  }
   const rules = Array.isArray(payload.segmentRules) ? payload.segmentRules.slice(0, 8) : [];
   if (rules.length === 0) return NextResponse.json({ error: "Choisissez au moins un groupe de clients." }, { status: 400 });
   const mode: EmailSegmentMode = payload.segmentMode === "any" ? "any" : "all";
@@ -53,8 +44,6 @@ export async function POST(request: Request) {
   if (action !== "draft" && !data.providerReady) return NextResponse.json({ error: "Connectez Gmail pour envoyer ou programmer cette campagne." }, { status: 409 });
   const scheduledAt = action === "scheduled" && payload.scheduledAt ? new Date(payload.scheduledAt) : null;
   if (action === "scheduled" && (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date())) return NextResponse.json({ error: "Choisissez une date future pour programmer la campagne." }, { status: 400 });
-  const content = normalizeContent(payload.content);
-  if (!content.subject || !content.heading || !content.body) return NextResponse.json({ error: "Objet, titre et contenu sont requis." }, { status: 400 });
   const recipients = createEmailRecipients(audience);
   const campaignPayload: Omit<EmailCampaignRecord, "id" | "created_at" | "updated_at"> = {
     merchant_id: merchant.id,

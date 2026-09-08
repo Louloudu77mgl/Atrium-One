@@ -25,3 +25,15 @@ Le flux réutilise `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET`. `GMAIL_REDIRECT
 - Chaque message contient un lien de désabonnement persistant.
 - Les ouvertures et clics sont comptés une seule fois par destinataire et campagne.
 - Les filtres sont exprimés en critères métier combinables avec `ET` ou `OU`.
+
+## Import HTML et édition du design
+
+- À l’étape « Finaliser », « Importer un fichier HTML » accepte `.html` et `.htm` (UTF-8, 500 Ko maximum). Le code reste modifiable avec un aperçu desktop/mobile.
+- Les images doivent être hébergées sur des URL HTTPS : l’import ne téléverse pas les fichiers locaux référencés par le modèle. Les scripts, formulaires, embeds, imports CSS et styles dangereux sont retirés ; les tableaux et styles responsive sont conservés. L’aperçu est isolé dans une iframe sans scripts, formulaires ni navigation autorisés.
+- Les designs générés restent réglables sans code : texte, images, liens, couleurs, police, tailles, alignement, largeur, espacements, arrondis et position du visuel. « Modifier le HTML » permet aussi d’éditer le code complet du design généré.
+- Les versions visuelle et HTML sont conservées séparément dans `campaign.content`. Seul `editorMode` décide de la version envoyée. Aucune migration SQL n’est nécessaire ; les anciens brouillons utilisent les réglages par défaut.
+- Les variables `{{first_name}}`, `{{last_name}}` et `{{unsubscribe_url}}` sont disponibles en HTML. Le pied de page de désabonnement est ajouté au moment de l’envoi, même si le modèle n’en contient pas. Les tests utilisent un destinataire fictif et ne déclenchent pas de suivi.
+- L’aperçu, le test Gmail et l’envoi utilisent le même moteur de rendu. Les liens propres aux modèles importés conservent leur destination (pas de réécriture de suivi des clics) ; le suivi des ouvertures reste actif à l’envoi réel.
+- Vérification : `npm run test:emailing` teste le nettoyage, les réglages, la personnalisation, la sauvegarde/reprise, les droits d’accès et le rendu des tests/envois avec des services simulés, sans envoyer d’emails réels.
+
+Validation du 8 septembre 2026 : compilation de production réussie, 77 tests passants (14 emailing, 16 avis/démo/automatisations, 37 CRM, 10 recommandations sociales). Aucun envoi ni modification de campagne en production pendant les tests. L’audit des dépendances garde des alertes préexistantes sur Next.js et ses dépendances ; les nouveaux traitements HTML utilisent sanitize-html 2.17.7 et PostCSS 8.5.28, avec chargement des source maps désactivé.

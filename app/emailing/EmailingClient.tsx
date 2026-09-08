@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GmailConnectionActions } from "@/components/GmailConnectionActions";
@@ -10,7 +11,10 @@ import { Icon } from "@/components/icons";
 import { badgeStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 import { DEFAULT_EMAIL_CONTENT, type EmailCampaignContent, type EmailCampaignRecord, type EmailSubscriberProfile } from "@/lib/emailing-types";
 import type { MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
-import { EmailCampaignWizard } from "./EmailCampaignWizard";
+const EmailCampaignWizard = dynamic(() => import("./EmailCampaignWizard").then((module) => module.EmailCampaignWizard), {
+  ssr: false,
+  loading: () => <div role="status" className="fixed inset-0 z-50 flex items-center justify-center bg-[#211432]/60"><div className="rounded-2xl bg-white p-6 text-sm font-bold text-[#4C1D95]">Ouverture de l’éditeur…</div></div>
+});
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -49,7 +53,7 @@ export function EmailingClient({ merchant, brand, subscribers, initialCampaigns,
   }, [campaigns]);
   const latestCampaign = campaigns.find((campaign) => campaign.status === "sent") ?? campaigns[0];
   const scheduledCount = campaigns.filter((campaign) => campaign.status === "scheduled").length;
-  const initialContent: EmailCampaignContent = { ...DEFAULT_EMAIL_CONTENT, primaryColor: brand?.primary_color ?? DEFAULT_EMAIL_CONTENT.primaryColor, backgroundColor: brand?.secondary_color ?? DEFAULT_EMAIL_CONTENT.backgroundColor, buttonColor: brand?.accent_color ?? DEFAULT_EMAIL_CONTENT.buttonColor, signature: `À très vite,\nL’équipe ${merchant?.business_name ?? "de votre boutique"}` };
+  const initialContent: EmailCampaignContent = useMemo(() => ({ ...DEFAULT_EMAIL_CONTENT, primaryColor: brand?.primary_color ?? DEFAULT_EMAIL_CONTENT.primaryColor, backgroundColor: brand?.secondary_color ?? DEFAULT_EMAIL_CONTENT.backgroundColor, buttonColor: brand?.accent_color ?? DEFAULT_EMAIL_CONTENT.buttonColor, signature: `À très vite,\nL’équipe ${merchant?.business_name ?? "de votre boutique"}` }), [brand?.primary_color, brand?.secondary_color, brand?.accent_color, merchant?.business_name]);
 
   function created(campaign: EmailCampaignRecord) {
     setCampaigns((current) => [campaign, ...current.filter((item) => item.id !== campaign.id)]);
@@ -95,7 +99,7 @@ export function EmailingClient({ merchant, brand, subscribers, initialCampaigns,
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EDE8F2] px-5 py-4"><div><h2 className={typographyStyles.h2}>Campagnes précédentes</h2><p className="mt-1 text-xs font-medium text-[#7A7188]">Brouillons, campagnes programmées et résultats.</p></div><button type="button" onClick={createCampaign} className={`${buttonStyles.primary} gap-2`}><Icon name="sparkle" className="h-4 w-4" />Nouvelle campagne</button></div>
         {campaigns.length ? <div className="overflow-x-auto"><table className="w-full min-w-[960px] text-left"><thead className="bg-[#FBFAFD] text-[10px] font-black uppercase tracking-[0.09em] text-[#8B7AA8]"><tr><th className="px-5 py-3">Nom</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Segment</th><th className="px-4 py-3">Envoyés</th><th className="px-4 py-3">Ouverture</th><th className="px-4 py-3">Clic</th><th className="px-4 py-3">Statut</th><th className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#EEEAF3]">{campaigns.map((campaign) => <tr key={campaign.id} className="text-sm hover:bg-[#FBFAFD]"><td className="px-5 py-4"><div className="flex items-center gap-2"><span className="rounded-full bg-[#F0E8FF] px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#5B2A9E]">E-mail</span><div className="font-black text-[#211432]">{campaign.name}</div></div><div className="mt-1 text-[11px] font-medium text-[#8B7AA8]">{campaign.recipient_count} destinataire{campaign.recipient_count > 1 ? "s" : ""}</div></td><td className="px-4 py-4 text-xs font-semibold text-[#6B617F]">{formatDate(campaign.scheduled_at ?? campaign.sent_at ?? campaign.created_at)}</td><td className="max-w-[250px] px-4 py-4 text-xs font-semibold text-[#6B617F]"><span className="line-clamp-2">{campaign.segment_label}</span></td><td className="px-4 py-4 font-black text-[#211432]">{campaign.sent_count}</td><td className="px-4 py-4 font-black text-[#211432]">{campaign.open_rate} %</td><td className="px-4 py-4 font-black text-[#211432]">{campaign.click_rate} %</td><td className="px-4 py-4"><span className={campaign.status === "sent" ? badgeStyles.hans : campaign.status === "failed" ? badgeStyles.danger : campaign.status === "scheduled" ? badgeStyles.warning : badgeStyles.neutral}>{statusLabels[campaign.status]}</span>{campaign.error_message ? <div className="mt-1 max-w-[180px] text-[10px] text-red-600">{campaign.error_message}</div> : null}</td><td className="px-5 py-4">{campaign.status !== "sent" && campaign.status !== "sending" ? <button type="button" onClick={() => editCampaign(campaign)} className={buttonStyles.tertiary}>Modifier</button> : <span className="text-xs font-semibold text-[#9B91A8]">Terminée</span>}</td></tr>)}</tbody></table></div> : <div className={`${surfaceStyles.empty} m-5 px-5 py-10 text-center`}><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#7C3AED]"><Icon name="mail" className="h-6 w-6" /></div><div className="mt-3 text-sm font-black text-[#211432]">Aucune campagne pour le moment</div><p className="mt-1 text-xs font-medium text-[#7A7188]">Votre première campagne se crée en quelques minutes avec Hans.</p></div>}
       </section>
-      <EmailCampaignWizard open={wizardOpen} merchant={merchant} subscribers={subscribers} providerReady={providerReady} initialContent={initialContent} editingCampaign={editingCampaign} onClose={() => setWizardOpen(false)} onCreated={created} />
+      {wizardOpen ? <EmailCampaignWizard open merchant={merchant} subscribers={subscribers} providerReady={providerReady} initialContent={initialContent} editingCampaign={editingCampaign} onClose={() => setWizardOpen(false)} onCreated={created} /> : null}
     </div>
   );
 }
