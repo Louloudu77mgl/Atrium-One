@@ -1,4 +1,6 @@
 import sharp from "sharp";
+import { randomUUID } from "node:crypto";
+import { emailImagePrompt } from "@/lib/emailing-image-prompt";
 import { createElement } from "react";
 import { ImageResponse } from "next/og";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -351,8 +353,8 @@ export async function generateAndStoreSocialVisual({
   const clientRequest = [source, visualPrompt, title].filter(Boolean).join(" · ");
   const creativeDirection = pickCreativeDirection(clientRequest);
   const posterDirection = format === "email" ? "Photographie éditoriale naturelle, cadrage horizontal généreux, un sujet clair, lumière soignée, pas de texte ni de mise en page intégrée." : "Traite l’image comme une affiche photographique ou illustrée haut de gamme : idée visuelle forte, mise en scène créative, cadrage assumé et détails mémorables, tout en restant crédible pour ce commerce.";
-  const prompt = [
-    format === "email" ? "Crée une photographie éditoriale horizontale premium pour le hero d’une newsletter de commerce local. Pas une affiche Instagram, aucun texte, aucun collage. Le sujet doit être réel, appétissant ou accueillant selon le secteur." : `Crée une image carrée premium pour un post Instagram d'un commerce local.`,
+  const prompt = format === "email" ? emailImagePrompt({ merchant, brand, brief: source || caption || title, visualPrompt }) : [
+    `Crée une image carrée premium pour un post Instagram d'un commerce local.`,
     clientRequest ? `DEMANDE ORIGINALE DU CLIENT — PRIORITÉ ABSOLUE : ${clientRequest}.` : "",
     "FIDÉLITÉ CLIENT : respecte exactement tous les éléments explicitement demandés — personnes, apparence, nombre, posture, action, objets, produits, lieux, cadre, époque, couleurs et détails. Ne remplace, ne retire et ne transpose jamais un élément précis de la demande.",
     `Secteur : ${merchant.business_type}. Ville : ${merchant.city}.`,
@@ -360,7 +362,7 @@ export async function generateAndStoreSocialVisual({
     `Style visuel attendu : ${visualStyle}.`,
     `Ton de marque à faire ressentir visuellement : ${toneDirection}.`,
     posterDirection,
-    format === "email" && !brand ? "Palette naturelle adaptée au secteur : crème, brun et terracotta pour une boulangerie ; sauge et nude pour un institut ; tons de la cuisine pour un restaurant. Ne pas imposer la couleur violette d’AtriumOne." : `Palette de marque : primaire ${brand?.primary_color ?? "#4C1D95"}, secondaire ${brand?.secondary_color ?? "#F3E8FF"}, accent ${brand?.accent_color ?? "#A855F7"}.`,
+    `Palette de marque : primaire ${brand?.primary_color ?? "#4C1D95"}, secondaire ${brand?.secondary_color ?? "#F3E8FF"}, accent ${brand?.accent_color ?? "#A855F7"}.`,
     fontDirection,
     source ? `Intention/source marketing : ${source}.` : "",
     `Titre du post : ${title}.`,
@@ -386,7 +388,8 @@ export async function generateAndStoreSocialVisual({
     body: JSON.stringify({
       model: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2",
       prompt,
-      size: format === "email" ? "1536x1024" : "1024x1024"
+      size: format === "email" ? "1536x1024" : "1024x1024",
+      ...(format === "email" ? { quality: "medium", output_format: "png", n: 1 } : {})
     })
   });
   const body = (await response.json()) as OpenAIImageBody;
@@ -396,12 +399,13 @@ export async function generateAndStoreSocialVisual({
     throw new Error(body.error?.message ?? "Génération d'image IA impossible.");
   }
 
-  const path = `${user?.id ?? merchant.id}/${postId ?? "social-visual"}/ai-${Date.now()}.png`;
+  signal?.throwIfAborted();
+  const path = format === "email" ? `${user?.id ?? merchant.id}/email-campaigns/ai-${randomUUID()}.png` : `${user?.id ?? merchant.id}/${postId ?? "social-visual"}/ai-${Date.now()}.png`;
   const { error: uploadError } = await supabase.storage
     .from("social-visuals")
     .upload(path, Buffer.from(base64, "base64"), {
       contentType: "image/png",
-      upsert: true
+      upsert: format !== "email"
     });
 
   if (uploadError) {

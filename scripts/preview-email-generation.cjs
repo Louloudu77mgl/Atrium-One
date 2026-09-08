@@ -4,7 +4,7 @@ const path = require("node:path");
 const { parseEnv } = require("node:util");
 const { load } = require("./emailing-test-loader.cjs");
 const fixtures = require("./emailing-generation-fixtures.cjs");
-const { generateEmailHtml, prepareGeneratedEmailHtml, emailHtmlMetadata } = load("lib/emailing-generation.ts");
+const { generateEmailHtml, prepareGeneratedEmailHtml, fallbackEmailHtml, emailHtmlMetadata } = load("lib/emailing-generation.ts");
 const args = process.argv.slice(2), live = args.includes("--live");
 const flag = (name) => args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
 const output = flag("--output");
@@ -16,10 +16,10 @@ if (live && flag("--env-file")) {
 if (live && !process.env.OPENAI_API_KEY) throw new Error("No API key configured for live validation");
 fs.mkdirSync(output, { recursive: true });
 Promise.all(fixtures.filter((fixture) => !flag("--only") || fixture.id === flag("--only")).map(async ({ id, ...input }) => {
-  const start = Date.now(); let notice = "", diagnostic = "";
-  const html = args.includes("--revalidate") ? prepareGeneratedEmailHtml(fs.readFileSync(path.join(output, `${id}.html`), "utf8"), input) : await generateEmailHtml(input, { apiKey: live ? process.env.OPENAI_API_KEY : "", onFallback: (message, detail) => { notice = message; diagnostic = detail || ""; } });
+  const start = Date.now(); const notice = live ? "" : "Exemple de mise en page hors ligne, pas une génération IA.", diagnostic = "";
+  const html = args.includes("--revalidate") ? prepareGeneratedEmailHtml(fs.readFileSync(path.join(output, `${id}.html`), "utf8"), input) : live ? await generateEmailHtml(input) : prepareGeneratedEmailHtml(fallbackEmailHtml(input), input);
   fs.writeFileSync(path.join(output, `${id}.html`), html);
-  const result = { id, source: notice ? "fallback" : "live-model", elapsedMs: Date.now() - start, bytes: Buffer.byteLength(html), ...emailHtmlMetadata(html), notice, diagnostic };
+  const result = { id, source: live ? "live-model" : "offline-layout", elapsedMs: Date.now() - start, bytes: Buffer.byteLength(html), ...emailHtmlMetadata(html), notice, diagnostic };
   console.log(JSON.stringify({ id: result.id, source: result.source, elapsedMs: result.elapsedMs, bytes: result.bytes, subject: result.subject, notice, diagnostic }));
   return result;
 })).then((results) => {

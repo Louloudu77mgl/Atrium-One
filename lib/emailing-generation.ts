@@ -21,11 +21,29 @@ export function emailHtmlMetadata(html: string) {
   return { subject: $("title").first().text().trim().slice(0, 80), preheader: ($('meta[name="description"]').attr("content") ?? "").slice(0, 140), heading: $("h1").first().text().slice(0, 180), body: $("p").map((_, element) => $(element).text()).get().join("\n\n").slice(0, 6000), ctaUrl: emailHttpUrl(primary.attr("href")), ctaLabel: primary.text().trim().slice(0, 60) };
 }
 
+const normalizeCopy = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** Do not confuse commercial facts with instructions addressed to the writer. */
+export function assertEmailBriefWasInterpreted(html: string, input: EmailGenerationInput) {
+  const $ = load(html);
+  $("style,script").remove();
+  const published = normalizeCopy([$("body").text(), $("title").text(), $('meta[name="description"]').attr("content"), ...$("img").map((_, el) => $(el).attr("alt")).get()].join(" "));
+  const brief = normalizeCopy(input.campaign.brief);
+  const instructions = /\b(?:je (?:veux|voudrais|souhaite|souhaiterais)|j aimerais|(?:peux|pourrais) tu|(?:fais|fait|faire|redige|rediger|ecris|ecrire|cree|creer|genere|generer|prepare|preparer|concois|concevoir) (?:moi |nous |un |une |le |la |des |cet |cette )|mets? en avant|mettre en avant|(?:ajoute|ajouter|insere|inserer|utilise|utiliser|evite|eviter|invite|inviter|integre|integrer) |(?:il faut|tu dois|n oublie pas)|(?:ton|style|design|mise en page|objectif) (?:chaleureux|apaisant|premium|convivial|professionnel|moderne|doit)|(?:le mail|l email|la newsletter) doit)\b/g;
+  for (const match of brief.matchAll(instructions)) {
+    const excerpt = brief.slice(match.index).split(" ").slice(0, 8).join(" ");
+    if (excerpt.split(" ").length >= 4 && published.includes(excerpt)) throw new Error("Le brief a été recopié au lieu d’être rédigé pour les clients.");
+  }
+  const words = brief.split(" ");
+  if (words.length >= 30 && published.includes(brief)) throw new Error("Le brief complet ne doit pas apparaître dans l’email.");
+}
+
 /** Validate before storing: no guessed images/destinations, no truncated or web-only layouts. */
 export function prepareGeneratedEmailHtml(raw: string, input: EmailGenerationInput) {
   if (!/^\s*<!doctype html>/i.test(raw) || !/<\/html>\s*$/i.test(raw) || !/<\/body>/i.test(raw)) throw new Error("Document HTML incomplet.");
   if (/display\s*:\s*(?:grid|(?:inline-)?flex)|position\s*:\s*(?:absolute|fixed)|@font-face|@import|<script\b|<iframe\b|<form\b/i.test(raw)) throw new Error("Mise en page non compatible e-mail.");
   const clean = sanitizeEmailHtml(raw);
+  assertEmailBriefWasInterpreted(clean, input);
   const $ = load(clean);
   const links = new Set(emailAllowedLinks(input));
   const images = new Map((input.images ?? []).map((image) => [image.url, image.alt]));
@@ -71,13 +89,9 @@ export function fallbackEmailHtml(input: EmailGenerationInput, direction = email
   const typeHeadings = { promotion: "Votre prochaine belle découverte", new_product: "Place à la nouveauté", event: "Un rendez-vous à partager", reactivation: "Et si on se retrouvait ?", loyalty: "Merci d’être à nos côtés", birthday: "Une journée qui vous ressemble", newsletter: "Le carnet de la maison", other: "Un moment à partager" };
   const title = input.content?.heading || typeHeadings[input.campaign.type];
   const subject = input.content?.subject || `${typeHeadings[input.campaign.type]} · ${input.business.name}`;
-  // A brief contains instructions, not finished copy. Do not expose production
-  // directions such as “Inviter…” / “Sans prix…” in a fallback that may be sent.
-  const paragraphs = input.content?.body ? input.content.body.split(/\n+/).filter(Boolean).slice(0, 3) : input.campaign.brief
-    .split(/\n+|;\s*|[.!?]\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part && !/^(?:inviter|ton\b|sans\b|aucun|ne\b|pas\b|rédige|ecris|écris|genere|génère|cree|crée|retourne|ignore|utilise|html|structure|email|e-mail)/i.test(part))
-    .map((part) => part.replace(/^(?:présenter|annoncer|mettre en avant|faire découvrir)\s+/i, "À découvrir : ").slice(0, 420)).slice(0, 3);
+  // Offline layout fixture only, NEVER returned by live generation. Even here,
+  // only explicitly approved copy is printable; no heuristic extraction of brief.
+  const paragraphs = input.content?.body?.split(/\n+/).filter(Boolean).slice(0, 3) ?? [];
   const hero = input.images?.[0];
   const destination = emailAllowedLinks(input)[0];
   const label = input.content?.ctaLabel || (direction.sector === "beauty" || direction.sector === "hair" ? "Préparer ma visite" : direction.sector === "restaurant" ? "Découvrir la table" : "En savoir plus");
@@ -97,26 +111,43 @@ export function fallbackEmailHtml(input: EmailGenerationInput, direction = email
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="${escape(input.content?.preheader || paragraphs[0]?.slice(0, 100) || `Les nouvelles de ${input.business.name}`)}"><title>${escape(subject.slice(0, 80))}</title><style>@media(max-width:600px){.email-padding{padding:24px 20px!important}.email-column{display:block!important;width:100%!important}h1{font-size:28px!important}}</style></head><body style="margin:0;padding:0;background-color:${secondary};font-family:Arial,Helvetica,sans-serif;color:${ink}"><table width="100%" role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;background-color:${secondary}"><tr><td align="center" style="padding:24px 8px"><table width="100%" role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:620px;table-layout:fixed;background-color:#ffffff;border-radius:18px;overflow:hidden">${header}${composition}${contact}${footer}</table></td></tr></table></body></html>`;
 }
 
-type GenerationOptions = { apiKey?: string; fetcher?: typeof fetch; onFallback?: (reason: string, diagnostic?: string) => void };
+export class EmailGenerationError extends Error {
+  constructor(public readonly code: "not_configured" | "unavailable" | "invalid_output", message: string) {
+    super(message);
+    this.name = "EmailGenerationError";
+  }
+}
+
+type GenerationOptions = { apiKey?: string; fetcher?: typeof fetch; signal?: AbortSignal };
 
 export async function generateEmailHtml(input: EmailGenerationInput, options: GenerationOptions = {}): Promise<string> {
   const direction = emailArtDirection(input);
-  const fallback = () => prepareGeneratedEmailHtml(fallbackEmailHtml(input, direction), input);
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
-  if (!apiKey) { options.onFallback?.("La génération IA n’est pas configurée. Une composition de secours adaptée à votre secteur a été préparée."); return fallback(); }
-  try {
-    const response = await (options.fetcher ?? fetch)("https://api.openai.com/v1/responses", {
-      method: "POST", signal: AbortSignal.timeout(65_000),
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: process.env.OPENAI_EMAIL_MODEL || process.env.OPENAI_MODEL || "gpt-5.4-mini", instructions: EMAIL_HTML_SYSTEM_PROMPT, input: emailGenerationPrompt(input, direction, emailAllowedLinks(input)), max_output_tokens: 7000, store: false, text: { format: { type: "text" } } })
-    });
-    if (!response.ok) throw new Error(`Génération indisponible (${response.status}).`);
-    const result = await response.json() as { status?: string; output_text?: string; output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> };
-    if (result.status && result.status !== "completed") throw new Error("Génération interrompue.");
-    const html = result.output_text || result.output?.filter((item) => item.type === "message").flatMap((item) => item.content ?? []).filter((item) => item.type === "output_text").map((item) => item.text ?? "").join("") || "";
-    return prepareGeneratedEmailHtml(html.trim(), input);
-  } catch (error) {
-    options.onFallback?.("Hans n’a pas pu valider la composition IA. Une version de secours a été préparée ; vous pouvez la modifier ou relancer la génération.", error instanceof Error ? error.message : "Échec de génération.");
-    return fallback();
+  if (!apiKey) throw new EmailGenerationError("not_configured", "La génération IA n’est pas configurée. Aucun email n’a été créé. Contactez l’assistance.");
+  const deadline = AbortSignal.timeout(90_000);
+  let correction = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let result: { status?: string; output_text?: string; output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> };
+    try {
+      const signal = AbortSignal.any([deadline, AbortSignal.timeout(45_000), ...(options.signal ? [options.signal] : [])]);
+      const response = await (options.fetcher ?? fetch)("https://api.openai.com/v1/responses", {
+        method: "POST", signal,
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: process.env.OPENAI_EMAIL_MODEL || process.env.OPENAI_MODEL || "gpt-5.4-mini", instructions: EMAIL_HTML_SYSTEM_PROMPT + correction, input: emailGenerationPrompt(input, direction, emailAllowedLinks(input)), max_output_tokens: 9000, store: false, text: { format: { type: "text" } } })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      result = await response.json();
+    } catch {
+      throw new EmailGenerationError("unavailable", "Hans n’a pas pu terminer la rédaction IA. Aucun email de remplacement n’a été créé. Réessayez dans un instant.");
+    }
+    try {
+      if (result.status && result.status !== "completed") throw new Error("Génération interrompue : produire un document complet et plus concis.");
+      const html = result.output_text || result.output?.filter((item) => item.type === "message").flatMap((item) => item.content ?? []).filter((item) => item.type === "output_text").map((item) => item.text ?? "").join("") || "";
+      return prepareGeneratedEmailHtml(html.trim(), input);
+    } catch (error) {
+      // One fresh attempt with validator feedback, never pasted output or a canned email.
+      correction = `\nCORRECTION OBLIGATOIRE : ${error instanceof Error ? error.message : "Document invalide."} Recompose entièrement l’email à partir du brief interprété. Rédige pour les clients, jamais pour le commanditaire.`;
+    }
   }
+  throw new EmailGenerationError("invalid_output", "Hans n’a pas réussi à valider le texte et le design après deux tentatives. Aucun email de remplacement n’a été créé. Relancez la génération.");
 }
