@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { HansAvatar } from "@/components/hans-avatar";
+import { HansGeneratingModal } from "@/components/HansGeneratingModal";
 import { Icon } from "@/components/icons";
 import { buttonStyles } from "@/lib/design-system";
 import { filterEmailSubscribers, getEmailAudiencePreview, getEmailSegmentLabel } from "@/lib/emailing-segments";
@@ -78,6 +79,7 @@ export function EmailCampaignWizard({
   }
 
   async function generate() {
+    if (generating) return;
     if (!brief.trim()) { setError("Expliquez simplement à Hans ce que vous souhaitez annoncer."); return; }
     setGenerating(true); setError(""); setGenerationNotice("");
     try {
@@ -131,7 +133,8 @@ export function EmailCampaignWizard({
   const canContinue = step === 1 ? Boolean(campaignType) : step === 2 ? rules.length > 0 : true;
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-[#211432]/60 px-3 py-4 backdrop-blur-sm sm:px-6 sm:py-8">
-      <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-[28px] bg-white shadow-[0_28px_90px_rgba(33,20,50,0.4)]">
+      <HansGeneratingModal open={generating} title="Hans crée votre e-mail" description="Hans génère un visuel original, rédige votre message et compose l’e-mail avec les couleurs et la police de votre commerce." steps={["Prise en compte de votre charte", "Création de votre visuel original", "Rédaction et composition de l’e-mail", "Vérifications du contenu et du design"]} statusText="Cela peut prendre une à deux minutes. Votre brouillon reste intact pendant la préparation." progressDurationMs={90_000} />
+      <div inert={generating} aria-hidden={generating || undefined} className="mx-auto w-full max-w-6xl overflow-hidden rounded-[28px] bg-white shadow-[0_28px_90px_rgba(33,20,50,0.4)]">
         <header className="flex items-center justify-between gap-4 border-b border-[#EDE8F2] px-5 py-4 sm:px-7">
           <div><div className="text-xs font-black uppercase tracking-[0.12em] text-[#7C3AED]">Assistant de campagne</div><h2 className="mt-1 text-xl font-black text-[#211432]">{editingCampaign ? "Reprendre la campagne" : "Hans prépare tout avec vous"}</h2></div>
           <button type="button" onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F5F2F8] text-xl font-bold text-[#6B617F]">×</button>

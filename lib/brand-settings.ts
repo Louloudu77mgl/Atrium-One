@@ -5,6 +5,8 @@ import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
 import { SOCIAL_FONT_VALUES } from "@/lib/social-fonts";
+import { normalizeBrandColors } from "@/lib/brand-palette";
+import { readBrandPalette, saveBrandPalette } from "@/lib/brand-palette-store";
 
 export const DEFAULT_BRAND_SETTINGS = {
   primary_color: "#4C1D95",
@@ -52,7 +54,9 @@ export async function getBrandSettings(
     throw new Error(error.message);
   }
 
-  return data;
+  if (!data) return null;
+  const palette = await readBrandPalette(currentMerchant.id);
+  return { ...data, additional_colors: palette.additional_colors, social_font_family: palette.font_family ?? data.social_font_family ?? DEFAULT_BRAND_SETTINGS.social_font_family };
 }
 
 export async function updateBrandSettings(formData: FormData) {
@@ -68,6 +72,9 @@ export async function updateBrandSettings(formData: FormData) {
   const visualStyle = String(formData.get("visual_style") ?? DEFAULT_BRAND_SETTINGS.visual_style);
   const tone = String(formData.get("tone") ?? DEFAULT_BRAND_SETTINGS.tone);
   const socialFontFamily = String(formData.get("social_font_family") ?? DEFAULT_BRAND_SETTINGS.social_font_family);
+  const submittedColors = formData.getAll("additional_colors");
+  if (submittedColors.some((color) => typeof color !== "string" || !/^#[0-9a-f]{6}$/i.test(color.trim()))) redirect(`/settings?error=${encodeURIComponent("Chaque couleur doit être au format #RRGGBB.")}`);
+  const additionalColors = normalizeBrandColors(submittedColors);
   const showLogoOnSocialPosts = formData.get("show_logo_on_social_posts") === "on";
   const requestedLogoPosition = String(formData.get("social_logo_position") ?? DEFAULT_BRAND_SETTINGS.social_logo_position);
   const allowedStyles = ["premium", "chaleureux", "moderne", "artisanal", "minimaliste", "dynamique"];
@@ -129,7 +136,14 @@ export async function updateBrandSettings(formData: FormData) {
     redirect(`/settings?error=${encodeURIComponent(error.message)}`);
   }
 
+  try {
+    await saveBrandPalette(merchant.id, additionalColors, payload.social_font_family);
+  } catch (paletteError) {
+    redirect(`/settings?error=${encodeURIComponent(paletteError instanceof Error ? paletteError.message : "Palette non sauvegardée.")}`);
+  }
+
   revalidatePath("/settings");
+  revalidatePath("/emailing");
   revalidatePath("/social");
   revalidatePath("/social/create");
   const schemaWarning = omittedColumns.length > 0

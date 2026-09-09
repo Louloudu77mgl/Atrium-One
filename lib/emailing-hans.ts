@@ -16,7 +16,7 @@ export async function generateEmailWithHans({ merchant, brand, brief, campaignTy
   const input: EmailGenerationInput = {
     business: { name: merchant.business_name, sector: merchant.business_type, city: merchant.city, description: merchant.description, logo: emailHttpUrl(merchant.logo_url), website: emailHttpUrl(merchant.website_url), phone: merchant.phone },
     campaign: { type: campaignType, brief: brief.slice(0, 6000), audience: segmentLabel.slice(0, 300) },
-    branding: { primary: brand?.primary_color, secondary: brand?.secondary_color, accent: brand?.accent_color, tone: brand?.tone || merchant.response_tone, style: brand?.visual_style },
+    branding: { primary: brand?.primary_color, secondary: brand?.secondary_color, accent: brand?.accent_color, additionalColors: brand?.additional_colors, fontFamily: brand?.social_font_family, tone: brand?.tone || merchant.response_tone, style: brand?.visual_style },
     images: images.filter((image) => emailHttpUrl(image.url)).slice(0, 6),
     variant: Math.floor(Math.random() * 3)
   };

@@ -1,5 +1,7 @@
 import { load } from "cheerio";
 import juice from "juice";
+import postcss from "postcss";
+import { emailBrandFont } from "@/lib/emailing-brand";
 import { sanitizeEmailHtml } from "@/lib/emailing-html";
 import { emailArtDirection, emailGenerationPrompt, EMAIL_HTML_SYSTEM_PROMPT, type EmailGenerationInput } from "@/lib/emailing-generation-prompt";
 
@@ -76,7 +78,25 @@ export function prepareGeneratedEmailHtml(raw: string, input: EmailGenerationInp
   if ((input.images?.length ?? 0) > 0 && !$("img").toArray().some((el) => input.images?.some((image) => image.url === $(el).attr("src")))) throw new Error("Le visuel disponible n’est pas utilisé.");
   if (!/max-width:\s*(?:5[89]\d|6[0-4]\d)px/i.test(clean)) throw new Error("Container email fluide manquant.");
   // Resource loading is deliberately never enabled. Only inline CSS and media queries survive.
-  const final = sanitizeEmailHtml(juice($.html(), { preserveMediaQueries: true, removeStyleTags: false, applyWidthAttributes: true, applyHeightAttributes: false }));
+  const inlined = load(juice($.html(), { preserveMediaQueries: true, removeStyleTags: false, applyWidthAttributes: true, applyHeightAttributes: false }));
+  const brandFont = emailBrandFont(input.branding?.fontFamily);
+  if (brandFont) {
+    // Enforce brand typography after model output and CSS inlining; not on later
+    // user edits, imports or sends. Keep size/weight from font shorthands intact.
+    inlined("body,table,td,th,h1,h2,h3,h4,h5,h6,p,a,span,div,li,b,strong,i,em,small,blockquote,pre,code").each((_, element) => {
+      const node = inlined(element), root = postcss.parse(`email{${node.attr("style") ?? ""}}`, { from: undefined });
+      root.walkDecls("font-family", (decl) => { decl.remove(); });
+      const rule = root.first;
+      if (rule?.type === "rule") { rule.append({ prop: "font-family", value: brandFont.stack, important: true }); node.attr("style", rule.nodes.map((decl) => decl.toString()).join(";")); }
+    });
+  }
+  const final = sanitizeEmailHtml(inlined.html());
+  const primary = input.branding?.primary;
+  if (primary && /^#[a-f\d]{6}$/i.test(primary)) {
+    const styles = inlined("[style]").map((_, el) => inlined(el).attr("style")).get().join(" ").toLowerCase();
+    const rgb = [1, 3, 5].map((start) => parseInt(primary.slice(start, start + 2), 16)).join(",");
+    if (!styles.includes(primary.toLowerCase()) && !styles.replace(/\s/g, "").includes(`rgb(${rgb})`)) throw new Error("La couleur principale de la charte doit être utilisée dans les styles.");
+  }
   if (new TextEncoder().encode(final).byteLength > 90_000) throw new Error("Email trop volumineux.");
   return /^<!doctype html>/i.test(final) ? final : `<!DOCTYPE html>\n${final}`;
 }

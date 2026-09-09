@@ -395,6 +395,8 @@ export type Database = {
           primary_color: string;
           secondary_color: string;
           accent_color: string;
+          /** Enriched from private brand-palette storage; not a SQL column. */
+          additional_colors?: string[];
           social_font_family: string;
           social_template_style: "editorial" | "artisan" | "impact";
           show_logo_on_social_posts: boolean;

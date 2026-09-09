@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import type { MerchantBrandSettingsRow, MerchantRow } from "@/lib/supabase/types";
 import { SocialFontPicker } from "@/components/SocialFontPicker";
 import { getSocialFontStack } from "@/lib/social-fonts";
+import { normalizeBrandColors } from "@/lib/brand-palette";
+import { emailBrandFont } from "@/lib/emailing-brand";
 
 type ActionFn = (formData: FormData) => void | Promise<void>;
 
@@ -119,6 +121,7 @@ export function BrandStyleForm({
   const [primary, setPrimary] = useState(brandSettings?.primary_color ?? "#4C1D95");
   const [secondary, setSecondary] = useState(brandSettings?.secondary_color ?? "#F3E8FF");
   const [accent, setAccent] = useState(brandSettings?.accent_color ?? "#A855F7");
+  const [additionalColors, setAdditionalColors] = useState(() => normalizeBrandColors(brandSettings?.additional_colors));
   const visualStyle = brandSettings?.visual_style ?? "premium";
   const [font, setFont] = useState(brandSettings?.social_font_family ?? "Sora");
   const [tone, setTone] = useState(brandSettings?.tone ?? "professionnel");
@@ -136,10 +139,28 @@ export function BrandStyleForm({
               <ColorField label="Couleur d'accent" name="accent_color" value={accent} onChange={setAccent} />
             </div>
 
+            <div className="rounded-[14px] border border-[#E4DBF6] p-4">
+              <h3 className="text-[13.5px] font-bold text-[#17131F]">Couleurs supplémentaires</h3>
+              <p className="mt-1 text-xs leading-5 text-[#6E6A76]">Gardez vos trois couleurs de base et ajoutez autant de nuances que nécessaire. Hans choisira celles qui conviennent à chaque création.</p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {additionalColors.map((color, index) => <div key={index} className="min-w-0 rounded-xl bg-[#FBFAFF] p-3">
+                  <ColorField label={`Couleur supplémentaire ${index + 1}`} name="additional_colors" value={color} onChange={(value) => setAdditionalColors((current) => current.map((item, position) => position === index ? value : item))} />
+                  <button type="button" aria-label={`Retirer la couleur supplémentaire ${index + 1}`} onClick={() => setAdditionalColors((current) => current.filter((_, position) => position !== index))} className="mt-2 text-xs font-semibold text-[#8C4658]">Retirer</button>
+                </div>)}
+              </div>
+              <button type="button" onClick={() => setAdditionalColors((current) => {
+                const used = new Set([primary, secondary, accent, ...current].map((item) => item.toUpperCase()));
+                let candidate = 0xD6E8DC;
+                while (used.has(`#${candidate.toString(16).padStart(6, "0").toUpperCase()}`)) candidate = (candidate + 1) % 0x1000000;
+                return [...current, `#${candidate.toString(16).padStart(6, "0").toUpperCase()}`];
+              })} className="mt-4 rounded-full border border-[#D8CAEE] px-4 py-2 text-xs font-bold text-[#6E4DE0]">+ Ajouter une couleur</button>
+            </div>
+
             <input type="hidden" name="visual_style" value={visualStyle} />
             <div>
-              <label className="mb-2 block text-[12.5px] font-semibold text-[#6E6A76]">Police des posts</label>
+              <label className="mb-2 block text-[12.5px] font-semibold text-[#6E6A76]">Police du commerce — publications et e-mails</label>
               <SocialFontPicker name="social_font_family" value={font} onChange={setFont} />
+              <p className="mt-2 text-xs leading-5 text-[#6E6A76]">Dans les e-mails, {font} est utilisée si elle est disponible sur l’appareil du destinataire. Sinon, la messagerie utilise {emailBrandFont(font)?.fallback.split(",")[0] ?? "Arial"}. Les textes restent lisibles, même sans police externe.</p>
             </div>
 
             <div>
@@ -214,13 +235,15 @@ export function BrandStyleForm({
               <span className="inline-flex rounded-full bg-[#F0EDEA] px-[13px] py-[5px] text-[11.5px] font-bold text-[#6E6A76]">Ton · {getToneLabel(tone)}</span>
               <span className="inline-flex rounded-full bg-[#F0EDEA] px-[13px] py-[5px] text-[11.5px] font-bold text-[#6E6A76]">Logo · {showLogo ? getLogoPositionLabel(logoPosition) : "masqué"}</span>
             </div>
+            <div className="mt-4 flex flex-wrap gap-2" aria-label="Palette complète du commerce">{[primary, secondary, accent, ...additionalColors].map((color, index) => <span key={index} title={color} aria-label={`Couleur ${index + 1} : ${color}`} className="h-7 w-7 rounded-full border border-black/10" style={{ backgroundColor: color }} />)}</div>
+            <p className="mt-3 text-xs leading-5 text-[#6E6A76]">Cette charte est également utilisée pour vos nouveaux e-mails. Vos créations déjà sauvegardées restent inchangées.</p>
           </div>
         </div>
       </div>
 
       <div className="flex justify-end px-[30px] pb-[26px] pt-1">
         <button type="submit" className="inline-flex items-center rounded-full bg-[#2B1A4A] px-[18px] py-[10px] text-[13.5px] font-semibold text-white transition hover:bg-[#221540]">
-          Sauvegarder la charte sociale
+          Sauvegarder la charte graphique
         </button>
       </div>
     </form>
@@ -251,7 +274,7 @@ function ColorField({
     <div>
       <label className="mb-2 block text-[12.5px] font-semibold text-[#6E6A76]">{label}</label>
       <div className="relative h-11 overflow-hidden rounded-[12px] border border-[#EBE6DF]">
-        <input name={name} type="color" value={value} onChange={(event) => onChange(event.target.value.toUpperCase())} className="absolute inset-[-4px] h-[calc(100%+8px)] w-[calc(100%+8px)] cursor-pointer border-0 p-0" />
+        <input aria-label={label} name={name} type="color" value={value} onChange={(event) => onChange(event.target.value.toUpperCase())} className="absolute inset-[-4px] h-[calc(100%+8px)] w-[calc(100%+8px)] cursor-pointer border-0 p-0" />
         <span className="pointer-events-none absolute right-[10px] top-1/2 -translate-y-1/2 rounded-full bg-white/80 px-[9px] py-[3px] text-[11.5px] font-bold tracking-[0.02em] text-[#17131F]">
           {value.toUpperCase()}
         </span>

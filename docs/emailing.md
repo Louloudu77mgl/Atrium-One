@@ -57,6 +57,18 @@ Le format Responses et la sortie texte ont été vérifiés avec [OpenAI Docs](h
 
 ## Validation
 
+### Charte graphique et chargement Hans
+
+La génération réutilise l’écran plein écran `HansGeneratingModal`, avec progression estimée, verrouillage des interactions et restauration du focus après succès ou erreur. Le brouillon reste intact en cas d’échec.
+
+Les réglages proposent trois couleurs de base et autant de couleurs supplémentaires que souhaité. La palette complète est transmise au prompt HTML et à la direction du visuel ; le modèle sélectionne les accents utiles sans devoir afficher toutes les couleurs. La couleur principale est contrôlée dans le HTML final. La police choisie est transmise au prompt puis appliquée en inline à la génération uniquement : les designs existants, importés ou modifiés manuellement ne sont pas réécrits.
+
+`brand-palette-store.ts` conserve les couleurs supplémentaires et la police dans le bucket Supabase privé existant `emailing-data`, au chemin `merchants/<merchant-id>/brand-palette.json`. Le commerce est résolu depuis la session authentifiée, jamais depuis le formulaire. Le lecteur enrichit les champs SQL historiques sans migration ; la police reste persistante même si son ancienne colonne facultative est absente. Une erreur de stockage est signalée et permet de réessayer, sans prétendre que tout est sauvegardé. Les champs SQL peuvent avoir été mis à jour avant cette erreur.
+
+La police choisie est suivie d’une famille de repli Arial ou Georgia, sans dépendance à une police externe. Une police personnalisée ne s’affichera que si le client et l’appareil du destinataire la prennent en charge ; sinon le repli s’applique, conformément aux [limites de polices des emails](https://mailchimp.com/help/limitations-of-html-email/). Le contexte de marque et ses priorités sont centralisés dans le prompt envoyé avec [Responses](https://developers.openai.com/api/reference/typescript/resources/beta/subresources/responses/methods/create).
+
+Recette du 8 septembre 2026 : 111 tests passants (48 emailing, 16 avis/démo/automatisations, 37 CRM, 10 recommandations sociales), contrôles navigateur du formulaire et du chargement, et une génération texte réelle avec palette personnalisée et Trebuchet MS. Les tests React vérifient l’ajout/suppression de couleurs, le choix de police, la fermeture du chargement après succès/erreur ; le stockage et les mutations de réglages sont simulés. Aucun réglage commerçant ni campagne de production modifié pour cette recette, aucun email envoyé.
+
 Validation du 8 septembre 2026 : compilation de production et lint, 95 tests (32 emailing, 16 avis/démo/automatisations, 37 CRM, 10 recommandations sociales). Trois appels au modèle réel validés pour boulangerie, institut et restaurant (le premier essai restaurant a déclenché le secours, le second a réussi), puis contrôle visuel desktop/mobile à 375 px. Un débordement des cartes institut a été détecté et corrigé dans le post-traitement ; les trois pages ont ensuite une largeur de 375 px sans débordement. Exemples conservés dans [emailing-examples](emailing-examples/README.md).
 
 Parcours no-code vérifiés dans le navigateur local : import d’une newsletter réellement générée, modification via panneau et saisie directe, ajout de texte, duplication/suppression, édition de l’URL/description/taille d’une photo, application et réouverture. Le téléversement photo et la persistance côté API sont testés avec services simulés. Aucun email envoyé ni campagne modifiée en production. Le rendu dans les clients Gmail/Outlook/Apple Mail réels n’a pas fait l’objet d’un envoi de test ; une recette multi-messageries reste conseillée avant une première campagne importante.

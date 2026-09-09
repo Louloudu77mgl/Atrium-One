@@ -16,6 +16,7 @@ if (live && flag("--env-file")) {
 if (live && !process.env.OPENAI_API_KEY) throw new Error("No API key configured for live validation");
 fs.mkdirSync(output, { recursive: true });
 Promise.all(fixtures.filter((fixture) => !flag("--only") || fixture.id === flag("--only")).map(async ({ id, ...input }) => {
+  if (args.includes("--brand-regression")) input.branding = { ...input.branding, primary: "#126E82", secondary: "#F4F7FA", accent: "#DF6885", additionalColors: ["#F1B23D", "#335577"], fontFamily: "Trebuchet MS" };
   const start = Date.now(); const notice = live ? "" : "Exemple de mise en page hors ligne, pas une génération IA.", diagnostic = "";
   const html = args.includes("--revalidate") ? prepareGeneratedEmailHtml(fs.readFileSync(path.join(output, `${id}.html`), "utf8"), input) : live ? await generateEmailHtml(input) : prepareGeneratedEmailHtml(fallbackEmailHtml(input), input);
   fs.writeFileSync(path.join(output, `${id}.html`), html);
