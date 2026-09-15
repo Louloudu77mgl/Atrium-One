@@ -30,7 +30,7 @@ export async function getOwnBusinessAccess(): Promise<{ access: BusinessAccess |
   if (!merchant) return { access: null, modules: {} };
   const supabase = await createServerSupabaseClient();
   const [{ data: access, error }, { data: moduleRows }] = await Promise.all([
-    supabase.from("business_access" as never).select("*").eq("business_id", merchant.id).maybeSingle(),
+    supabase.from("business_access" as never).select("business_id,account_enabled,onboarding_status,signup_source,enabled_at,enabled_by,disabled_at,updated_at").eq("business_id", merchant.id).maybeSingle(),
     supabase.from("business_module_access" as never).select("module_key,enabled").eq("business_id", merchant.id)
   ]);
 

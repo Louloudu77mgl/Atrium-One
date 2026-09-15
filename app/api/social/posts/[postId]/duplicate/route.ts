@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMerchant } from "@/lib/merchants";
+import { withoutRecommendationOrigin } from "@/lib/social-recommendation-shared";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(
@@ -47,7 +48,7 @@ export async function POST(
       last_saved_at: new Date().toISOString(),
       template_id: source.template_id,
       visual_html: source.visual_html,
-      builder_state: source.builder_state,
+      builder_state: withoutRecommendationOrigin(source.builder_state),
       visual_text: source.visual_text,
       image_url: source.image_url,
       primary_color: source.primary_color,

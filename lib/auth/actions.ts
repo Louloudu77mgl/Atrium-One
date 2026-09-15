@@ -1,10 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { getAppOriginFromHeaders } from "@/lib/auth/google-login";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isCrmAdminEmail } from "@/lib/crm/access";
+import { ADMIN_IMPERSONATION_COOKIE } from "@/lib/crm/impersonation-constants";
 
 export async function login(formData: FormData) {
   if (!hasSupabaseEnv()) {
@@ -89,5 +91,7 @@ export async function logout() {
 
   const supabase = await createServerSupabaseClient();
   await supabase.auth.signOut();
+  const cookieStore = await cookies();
+  cookieStore.delete(ADMIN_IMPERSONATION_COOKIE);
   redirect("/login");
 }

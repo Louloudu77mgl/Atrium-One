@@ -1,4 +1,5 @@
 export const HANS_AUTOMATION_NODE_TYPES = [
+  "new_week",
   "new_customer",
   "new_visit",
   "new_reward",
@@ -125,7 +126,7 @@ export function parseHansAutomationBlueprint(value: unknown): HansAutomationBlue
 }
 
 function isTrigger(type: HansAutomationNodeType) {
-  return ["new_customer", "new_visit", "new_reward", "google_review", "customer_returned", "customer_inactive", "customer_birthday", "registration_anniversary", "visit_milestone", "points_milestone", "profile_completed", "consent_granted", "game_participation", "game_reward_won", "reward_used", "near_reward", "visit_velocity", "review_by_rating", "review_keyword"].includes(type);
+  return ["new_week", "new_customer", "new_visit", "new_reward", "google_review", "customer_returned", "customer_inactive", "customer_birthday", "registration_anniversary", "visit_milestone", "points_milestone", "profile_completed", "consent_granted", "game_participation", "game_reward_won", "reward_used", "near_reward", "visit_velocity", "review_by_rating", "review_keyword"].includes(type);
 }
 
 function cleanConfig(value: unknown) {

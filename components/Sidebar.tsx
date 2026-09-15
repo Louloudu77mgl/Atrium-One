@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useState, type ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps, type MouseEvent as ReactMouseEvent } from "react";
 import { HansAvatar } from "@/components/hans-avatar";
 import { Icon } from "@/components/icons";
 import { MerchantLogo } from "@/components/MerchantLogo";
@@ -84,14 +84,17 @@ function isItemActive(pathname: string, href?: string) {
 export function Sidebar({
   merchant: currentMerchant,
   pendingReviews = 0,
-  counters
+  counters,
+  navigationOnly = false
 }: {
   active?: "dashboard" | "reviews" | "insights" | "social" | "sms" | "emailing" | "rcu" | "clients" | "automations" | "integrations" | "settings";
   merchant?: MerchantRow | null;
   pendingReviews?: number;
   counters?: ReviewCounters;
+  navigationOnly?: boolean;
 }) {
   const pathname = usePathname();
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
   const reviewBadgeCount = counters?.pending ?? pendingReviews;
   const businessName = currentMerchant?.business_name ?? merchant.name;
   const activeGroup = groups.find((group) => group.items.some((item) => isItemActive(pathname, item.href)))?.id;
@@ -102,15 +105,29 @@ export function Sidebar({
     settings: activeGroup === "settings"
   });
 
+  useEffect(() => {
+    setPendingHref(null);
+  }, [pathname]);
+
+  function beginNavigation(event: ReactMouseEvent<HTMLAnchorElement>, href: string) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || pathname === href) return;
+    setPendingHref(href);
+  }
+
   function toggleGroup(groupId: SidebarGroup["id"]) {
     setOpenGroups((current) => ({ ...current, [groupId]: !current[groupId] }));
   }
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col overflow-y-auto bg-[#4C1D95] md:flex">
+      {pendingHref ? (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] h-1 overflow-hidden bg-[#E9D5FF]" role="status" aria-label="Navigation en cours">
+          <span className="block h-full w-full animate-pulse bg-[#7C3AED]" />
+        </div>
+      ) : null}
+      <aside aria-busy={Boolean(pendingHref)} className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col overflow-y-auto bg-[#4C1D95] md:flex">
         <div className="border-b border-white/10 px-5 pb-[18px] pt-[22px]">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link href="/dashboard" prefetch onClick={(event) => beginNavigation(event, "/dashboard")} className="flex items-center gap-2.5">
             <Image src="/atriumone-logo.webp" alt="AtriumOne" width={38} height={38} className="h-[38px] w-[38px] object-contain drop-shadow-sm" priority />
             <span className="text-[17px] font-bold text-white">
               Atrium<span className="text-[#C084FC]">One</span>
@@ -125,6 +142,8 @@ export function Sidebar({
 
           <Link
             href="/dashboard"
+            prefetch
+            onClick={(event) => beginNavigation(event, "/dashboard")}
             className={`relative mb-1 flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13.5px] font-medium transition hover:bg-white/10 hover:text-white ${
               pathname === "/dashboard" ? "bg-white/10 text-white before:absolute before:left-0 before:top-1/2 before:h-3/5 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-[#C084FC]" : "text-white/60"
             }`}
@@ -174,6 +193,8 @@ export function Sidebar({
                           <Link
                             key={item.label}
                             href={item.href!}
+                            prefetch
+                            onClick={(event) => beginNavigation(event, item.href!)}
                             className={`relative flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/10 hover:text-white ${
                               isActive ? "bg-white/10 text-white" : "text-white/55"
                             }`}
@@ -203,13 +224,20 @@ export function Sidebar({
         </nav>
 
         <div className="mt-auto border-t border-white/10 p-3.5">
-          <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 transition hover:bg-white/10">
-            <MerchantLogo merchantName={businessName} logoUrl={currentMerchant?.logo_url} className="h-12 w-12 rounded-xl bg-white object-contain" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] font-semibold text-white">{businessName}</div>
-              <div className="text-[11px] text-white/40">{merchant.plan} ✦</div>
+          {navigationOnly ? (
+            <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2.5">
+              <span className="ao-skeleton h-12 w-12 rounded-xl bg-white/20" />
+              <span className="ao-skeleton h-3 w-28 bg-white/20" />
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 transition hover:bg-white/10">
+              <MerchantLogo merchantName={businessName} logoUrl={currentMerchant?.logo_url} className="h-12 w-12 rounded-xl bg-white object-contain" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold text-white">{businessName}</div>
+                <div className="text-[11px] text-white/40">{merchant.plan} ✦</div>
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -221,7 +249,7 @@ export function Sidebar({
           { href: "/emailing", icon: "mail", label: "Fidélisation" },
           { href: "/settings", icon: "gear", label: "Paramètres" }
         ].map((item) => (
-          <Link key={item.href} href={item.href} className="flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-semibold text-[#6B617F] transition hover:bg-[#F3F0FF] hover:text-[#4C1D95]">
+          <Link key={item.href} href={item.href} prefetch onClick={(event) => beginNavigation(event, item.href)} className="flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-semibold text-[#6B617F] transition hover:bg-[#F3F0FF] hover:text-[#4C1D95]">
             <Icon name={item.icon as ComponentProps<typeof Icon>["name"]} className="h-4 w-4" />
             {item.label}
           </Link>

@@ -1,6 +1,6 @@
 import { CrmPageHeader } from "@/components/crm/CrmPageHeader";
 import { ProspectionWorkspace } from "@/components/crm/ProspectionWorkspace";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createSessionSupabaseClient as createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function ProspectionPage() {
   const supabase = await createServerSupabaseClient() as any;

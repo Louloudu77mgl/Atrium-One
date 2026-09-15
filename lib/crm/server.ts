@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient, getCurrentUser } from "@/lib/supabase/server";
+import { createSessionSupabaseClient as createServerSupabaseClient, getCurrentUser } from "@/lib/supabase/server";
 import { isCrmAdminEmail } from "@/lib/crm/access";
 export { findDuplicate, normalizeDomain, normalizeNameAddress, normalizePhone } from "@/lib/crm/logic";
 

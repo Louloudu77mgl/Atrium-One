@@ -1,6 +1,6 @@
 import { CrmPageHeader } from "@/components/crm/CrmPageHeader";
 import { CalendarWorkspace } from "@/components/crm/CalendarWorkspace";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createSessionSupabaseClient as createServerSupabaseClient } from "@/lib/supabase/server";
 
 type CalendarView = "today" | "day" | "week" | "month";
 

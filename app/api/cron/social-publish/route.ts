@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getInstagramFailureCode, getInstagramIntegrationErrorDetails } from "@/lib/instagram-errors";
 import { createMerchantNotification } from "@/lib/merchant-notifications";
 import { publishPostToInstagram } from "@/lib/social-publish";
+import { syncSocialRecommendationLifecycleForPost } from "@/lib/social-recommendation-usage";
 import { createSupabaseAdminClient, hasSupabaseAdminEnv } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ async function runScheduledPublications(request: Request) {
   const now = new Date();
   const nowIso = now.toISOString();
   const staleClaimCutoff = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+  const retryCutoff = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
 
   await supabase
     .from("social_posts")
@@ -45,21 +47,44 @@ async function runScheduledPublications(request: Request) {
     .not("scheduled_at", "is", null)
     .lte("updated_at", staleClaimCutoff);
 
+  const { data: publishedRecommendations } = await supabase
+    .from("social_posts")
+    .select("id,merchant_id,status,scheduled_at,published_at,builder_state")
+    .eq("platform", "instagram")
+    .eq("status", "published")
+    .not("builder_state", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(100);
+  if (publishedRecommendations?.length) {
+    const { data: usageRows } = await supabase
+      .from("social_recommendation_usages")
+      .select("social_post_id,status")
+      .in("social_post_id", publishedRecommendations.map((post) => post.id));
+    const synchronizedPostIds = new Set((usageRows ?? []).filter((usage) => usage.status === "published").map((usage) => usage.social_post_id));
+    await Promise.allSettled(publishedRecommendations
+      .filter((post) => !synchronizedPostIds.has(post.id))
+      .map((post) => syncSocialRecommendationLifecycleForPost(post, supabase)));
+  }
+
   const { data: posts, error } = await supabase
     .from("social_posts")
     .select("*")
-    .eq("status", "scheduled")
+    .in("status", ["scheduled", "failed"])
+    .lt("retry_count", 3)
     .lte("scheduled_at", nowIso)
     .order("scheduled_at", { ascending: true })
-    .limit(20);
+    .limit(100);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const results = await Promise.all((posts ?? []).map(async (row) => {
+  const duePosts = (posts ?? [])
+    .filter((post) => post.status === "scheduled" || !post.last_attempt_at || post.last_attempt_at <= retryCutoff)
+    .slice(0, 20);
+  const results = await Promise.all(duePosts.map(async (row) => {
     const queuedAt = new Date();
-      const { data: queuedPost, error: claimError } = await supabase
+    const { data: queuedPost, error: claimError } = await supabase
       .from("social_posts")
       .update({
         status: "publishing",
@@ -74,7 +99,7 @@ async function runScheduledPublications(request: Request) {
       })
       .eq("id", row.id)
       .eq("merchant_id", row.merchant_id)
-      .eq("status", "scheduled")
+      .eq("status", row.status)
       .lte("scheduled_at", nowIso)
       .select("*")
       .maybeSingle();

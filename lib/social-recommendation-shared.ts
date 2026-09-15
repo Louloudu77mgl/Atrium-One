@@ -47,6 +47,12 @@ export function preserveRecommendationOrigin(next: Json, previous: Json | null):
   return origin ? { ...document, _recommendation: origin } : document;
 }
 
+export function withoutRecommendationOrigin(state: Json): Json {
+  if (!state || typeof state !== "object" || Array.isArray(state)) return state;
+  const { _recommendation: ignored, ...document } = state;
+  return document;
+}
+
 export function similarityScore(left: string, right: string) {
   const tokenize = (value: string) => new Set(normalizeTheme(value).split(" ").filter((token) => token.length >= 4 && !stopWords.has(token)));
   const leftTokens = tokenize(left);
@@ -63,6 +69,20 @@ export function isRecommendationPublished(idea: ReviewSocialPostIdea, posts: Rec
     if (post.platform !== "instagram" || post.status !== "published") return false;
     const saved = readRecommendationOrigin(post.builder_state);
     if (saved) return saved.themeKey === origin.themeKey;
+    const text = `${post.title} ${post.caption}`;
+    const source = normalizeTheme(origin.sourceLabel);
+    return (source.length >= 8 && normalizeTheme(text).includes(source))
+      || similarityScore(`${idea.title} ${idea.angle}`, text) >= 0.55;
+  });
+}
+
+export function isRecommendationUsed(idea: ReviewSocialPostIdea, posts: RecommendationPost[]) {
+  const origin = getRecommendationOrigin(idea);
+  return posts.some((post) => {
+    if (post.platform !== "instagram") return false;
+    const saved = readRecommendationOrigin(post.builder_state);
+    if (saved) return saved.themeKey === origin.themeKey;
+    if (post.status !== "published") return false;
     const text = `${post.title} ${post.caption}`;
     const source = normalizeTheme(origin.sourceLabel);
     return (source.length >= 8 && normalizeTheme(text).includes(source))
@@ -97,7 +117,7 @@ export function selectRecommendationMix(groups: ReviewSocialPostIdea[][], posts:
   const selected: ReviewSocialPostIdea[] = [];
   const quotas = [Math.max(1, target - 4), 2, 2];
   const add = (idea: ReviewSocialPostIdea) => {
-    if (selected.length >= target || !isUpcomingRecommendation(idea, today) || isRecommendationPublished(idea, posts)) return;
+    if (selected.length >= target || !isUpcomingRecommendation(idea, today) || isRecommendationUsed(idea, posts)) return;
     if (selected.some((other) => getRecommendationOrigin(other).themeKey === getRecommendationOrigin(idea).themeKey)) return;
     selected.push(idea);
   };

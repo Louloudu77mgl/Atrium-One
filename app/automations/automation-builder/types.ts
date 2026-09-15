@@ -14,6 +14,8 @@ export type NodeField = {
   label: string;
   type: NodeFieldType;
   options?: string[];
+  min?: number;
+  max?: number;
 };
 
 export type NodeLibraryItem = {

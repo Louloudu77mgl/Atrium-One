@@ -52,7 +52,8 @@ export function NodeConfigPanel({
               className={inputClass}
               type={field.type === "number" ? "number" : "text"}
               value={String(selectedNode.config[field.key] ?? "")}
-              min={field.type === "number" ? 1 : undefined}
+              min={field.type === "number" ? field.min ?? 1 : undefined}
+              max={field.type === "number" ? field.max : undefined}
               onChange={(event) => onChange(selectedNode.id, field.key, field.type === "number" ? Number(event.target.value) : event.target.value)}
             />
           )}
@@ -74,7 +75,7 @@ export function NodeConfigPanel({
                       {(field.options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
                   ) : (
-                    <input className={inputClass} type={field.type === "number" ? "number" : "text"} value={String(selectedNode.config[field.key] ?? "")} onChange={(event) => onChange(selectedNode.id, field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} />
+                    <input className={inputClass} type={field.type === "number" ? "number" : "text"} min={field.type === "number" ? field.min ?? 1 : undefined} max={field.type === "number" ? field.max : undefined} value={String(selectedNode.config[field.key] ?? "")} onChange={(event) => onChange(selectedNode.id, field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} />
                   )}
                 </label>
               ))}

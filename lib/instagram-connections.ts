@@ -3,6 +3,35 @@ import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, InstagramConnectionRow, MerchantRow } from "@/lib/supabase/types";
 
+export async function getInstagramConnectionSummary(
+  merchant?: MerchantRow | null,
+  databaseClient?: SupabaseClient<Database>
+): Promise<InstagramConnectionRow | null> {
+  const currentMerchant = merchant ?? (await getMerchant());
+  if (!currentMerchant) return null;
+
+  const supabase = databaseClient ?? await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("instagram_connections")
+    .select("id,merchant_id,instagram_username,connected_at,last_sync_at,last_error,status,token_expires_at,last_checked_at,updated_at")
+    .eq("merchant_id", currentMerchant.id)
+    .maybeSingle();
+
+  if (error) {
+    if (error.message.includes("Could not find the table") || error.message.includes("schema cache")) return null;
+    throw new Error(error.message);
+  }
+
+  return data ? {
+    ...data,
+    instagram_account_id: null,
+    access_token_encrypted: null,
+    refresh_token_encrypted: null,
+    granted_scopes: [],
+    page_id: null
+  } : null;
+}
+
 export async function getInstagramConnection(
   merchant?: MerchantRow | null,
   databaseClient?: SupabaseClient<Database>

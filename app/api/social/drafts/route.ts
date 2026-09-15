@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getMerchant } from "@/lib/merchants";
 import { createSocialDraftFromIdea, type DraftIdeaInput } from "@/lib/social-drafts";
+import { RecommendationAlreadyUsedError } from "@/lib/social-recommendation-usage";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -30,6 +31,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ post: result.post, imageUrl: result.imageUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Création du brouillon impossible.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: error instanceof RecommendationAlreadyUsedError ? 409 : 500 });
   }
 }

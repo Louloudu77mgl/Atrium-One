@@ -5,6 +5,38 @@ import type { Database, GoogleConnectionRow, MerchantRow } from "@/lib/supabase/
 
 const optionalGoogleConnectionColumns = ["granted_scopes", "last_error"] as const;
 
+export function toPublicGoogleConnection(connection: GoogleConnectionRow | null): GoogleConnectionRow | null {
+  return connection ? { ...connection, access_token_encrypted: null, refresh_token_encrypted: null } : null;
+}
+
+export async function getGoogleConnectionSummary(
+  merchant?: MerchantRow | null,
+  databaseClient?: SupabaseClient<Database>
+): Promise<GoogleConnectionRow | null> {
+  const currentMerchant = merchant ?? (await getMerchant());
+  if (!currentMerchant) return null;
+
+  const supabase = databaseClient ?? await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("google_connections")
+    .select("id,merchant_id,google_account_email,google_location_name,google_location_id,connected_at,last_sync_at,status")
+    .eq("merchant_id", currentMerchant.id)
+    .maybeSingle();
+
+  if (error) {
+    if (error.message.includes("Could not find the table")) return null;
+    throw new Error(error.message);
+  }
+
+  return data ? {
+    ...data,
+    access_token_encrypted: null,
+    refresh_token_encrypted: null,
+    granted_scopes: [],
+    last_error: null
+  } : null;
+}
+
 export async function getGoogleConnection(
   merchant?: MerchantRow | null,
   databaseClient?: SupabaseClient<Database>

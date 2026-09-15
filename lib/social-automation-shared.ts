@@ -14,15 +14,20 @@ export function normalizeSocialAutomationWindow(settings?: { social_cycle_weeks?
 
 export function getRecommendedPublishingDays(businessType?: string | null, postsPerCycle = 3) {
   const normalized = businessType?.toLowerCase() ?? "";
-  const preferred = normalized.includes("restaurant") || normalized.includes("boulanger") || normalized.includes("aliment")
-    ? [2, 4, 6]
-    : normalized.includes("coiff") || normalized.includes("beaute") || normalized.includes("beauté")
-      ? [2, 5, 6]
-      : normalized.includes("fleur")
-        ? [2, 4, 6]
-        : [2, 4, 5];
-
-  return preferred.slice(0, Math.max(1, Math.min(postsPerCycle, preferred.length)));
+  const count = Math.max(1, Math.min(7, postsPerCycle));
+  const patterns: Record<number, number[]> = {
+    1: [2],
+    2: [2, 5],
+    3: [2, 4, 6],
+    4: [1, 3, 5, 0],
+    5: [1, 2, 4, 5, 0],
+    6: [1, 2, 3, 4, 5, 6],
+    7: [1, 2, 3, 4, 5, 6, 0]
+  };
+  if (count === 3 && (normalized.includes("coiff") || normalized.includes("beaute") || normalized.includes("beauté"))) {
+    return [2, 5, 6];
+  }
+  return patterns[count];
 }
 
 export function getRecommendedPublishingSentence(businessType?: string | null, postsPerCycle = 3) {
@@ -32,7 +37,7 @@ export function getRecommendedPublishingSentence(businessType?: string | null, p
     return `Hans recommande de publier le ${days[0]} pour garder une présence régulière.`;
   }
 
-  return `Hans recommande de publier ${days.join(" et ")} pour garder une présence régulière.`;
+  return `Hans recommande de publier ${days.slice(0, -1).join(", ")} et ${days.at(-1)} pour garder une présence régulière.`;
 }
 
 export function buildAutomationSlots({
@@ -49,7 +54,9 @@ export function buildAutomationSlots({
   const slots: Date[] = [];
   const start = new Date(fromDate);
   start.setHours(10, 0, 0, 0);
-  const preferredDays = getRecommendedPublishingDays(businessType, Math.min(3, postsPerCycle));
+  const postsPerWeek = Math.min(7, Math.ceil(postsPerCycle / Math.max(1, cycleWeeks)));
+  const preferredDays = getRecommendedPublishingDays(businessType, postsPerWeek);
+  const usedTimestamps = new Set<number>();
 
   for (let offset = 0; offset < cycleWeeks * 7 && slots.length < postsPerCycle; offset += 1) {
     const date = new Date(start);
@@ -57,16 +64,20 @@ export function buildAutomationSlots({
 
     if (preferredDays.includes(date.getDay())) {
       slots.push(date);
+      usedTimestamps.add(date.getTime());
     }
   }
 
-  while (slots.length < postsPerCycle) {
+  for (let offset = 0; slots.length < postsPerCycle && offset < cycleWeeks * 7; offset += 1) {
     const date = new Date(start);
-    date.setDate(start.getDate() + slots.length);
-    slots.push(date);
+    date.setDate(start.getDate() + offset);
+    if (!usedTimestamps.has(date.getTime())) {
+      slots.push(date);
+      usedTimestamps.add(date.getTime());
+    }
   }
 
-  return slots;
+  return slots.sort((left, right) => left.getTime() - right.getTime());
 }
 
 function clamp(value: number, min: number, max: number) {

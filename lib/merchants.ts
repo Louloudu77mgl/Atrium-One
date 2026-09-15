@@ -1,5 +1,8 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getCurrentUser } from "@/lib/supabase/server";
+import { getAdminImpersonationSession } from "@/lib/crm/impersonation-session";
+import { CRM_ADMIN_EMAIL } from "@/lib/crm/types";
 import type { MerchantRow } from "@/lib/supabase/types";
+import { cache } from "react";
 
 async function resolveMerchantLogoUrl({
   supabase,
@@ -33,18 +36,13 @@ async function resolveMerchantLogoUrl({
 }
 
 
-export async function getMerchant(userId?: string): Promise<MerchantRow | null> {
+const getMerchantByUserId = cache(async (userId: string): Promise<MerchantRow | null> => {
   const supabase = await createServerSupabaseClient();
-  const user = userId ? { id: userId } : (await supabase.auth.getUser()).data.user;
-
-  if (!user) {
-    return null;
-  }
 
   const { data, error } = await supabase
     .from("merchants")
     .select("*")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .maybeSingle();
 
   if (error) {
@@ -57,4 +55,30 @@ export async function getMerchant(userId?: string): Promise<MerchantRow | null> 
   });
 
   return data ? { ...data, logo_url: logoUrl } : data;
+});
+
+const getMerchantByBusinessId = cache(async (businessId: string): Promise<MerchantRow | null> => {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("merchants")
+    .select("*")
+    .eq("id", businessId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  const logoUrl = await resolveMerchantLogoUrl({ supabase, logoUrl: data?.logo_url });
+  return data ? { ...data, logo_url: logoUrl } : data;
+});
+
+export async function getMerchant(userId?: string): Promise<MerchantRow | null> {
+  const currentUser = await getCurrentUser();
+  const impersonation = currentUser?.email?.trim().toLowerCase() === CRM_ADMIN_EMAIL
+    ? await getAdminImpersonationSession()
+    : null;
+  if (impersonation) return getMerchantByBusinessId(impersonation.businessId);
+
+  const resolvedUserId = userId ?? currentUser?.id;
+  if (!resolvedUserId) return null;
+  return getMerchantByUserId(resolvedUserId);
 }

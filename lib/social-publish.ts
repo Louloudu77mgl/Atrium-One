@@ -9,6 +9,7 @@ import { getValidInstagramAccessToken, markInstagramConnectionFailure } from "@/
 import { validateDesignDocumentLayout } from "@/lib/social-editor/layout-safety";
 import { isEditorDocument } from "@/lib/social-editor/types";
 import { canPublishSocialDesignToInstagram, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
+import { syncSocialRecommendationLifecycleForPost } from "@/lib/social-recommendation-usage";
 import type { MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { assertBusinessFeatureAccessAdmin } from "@/lib/crm/access";
@@ -178,6 +179,15 @@ export async function publishPostToInstagram({
     .from("instagram_connections")
     .update({ last_sync_at: now, last_error: null })
     .eq("merchant_id", merchant.id);
+
+  try {
+    await syncSocialRecommendationLifecycleForPost(updatedPost, supabase);
+  } catch (error) {
+    console.error("[instagram/publish] recommendation_lifecycle_sync_failed", {
+      postId: updatedPost.id,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 
   try {
     revalidatePath("/social");

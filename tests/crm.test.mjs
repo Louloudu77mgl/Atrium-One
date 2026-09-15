@@ -28,6 +28,9 @@ const onboardingTestPage = read("../app/crm/onboarding-test/page.tsx");
 const crmSidebar = read("../components/crm/CrmSidebar.tsx");
 const openingHoursMigration = read("../supabase/crm-opening-hours.sql");
 const openingHoursRoute = read("../app/api/crm/leads/[id]/opening-hours/route.ts");
+const impersonationRoute = read("../app/api/crm/impersonation/route.ts");
+const impersonationBanner = read("../components/AdminImpersonationBanner.tsx");
+const serverSupabase = read("../lib/supabase/server.ts");
 
 test("sécurité — l’admin exact est isolé dans /crm et les autres utilisateurs sont refusés", () => {
   assert.match(sqlV1, /louisdacre@gmail\.com/);
@@ -298,6 +301,17 @@ test("onboarding test — la page est fixe, simple et non personnalisée par cli
 test("association compte — email exact automatique, signaux faibles manuels", () => {
   assert.equal(associationStrength({ leadEmail: "CONTACT@EXEMPLE.FR", accountEmail: "contact@exemple.fr" }), "exact_email");
   assert.equal(associationStrength({ leadPhone: "06 00 00 00 00", accountPhone: "+33 6 00 00 00 00" }), "phone");
+});
+
+test("accès AtriumOne — l’admin ouvre le compte associé sans remplacer sa propre session", () => {
+  assert.match(leadWorkspace, /Ouvrir l’espace du commerce/);
+  assert.match(leadWorkspace, /businessId: lead\.business_id, leadId: lead\.id/);
+  assert.match(impersonationRoute, /lead\.business_id !== merchant\.id/);
+  assert.match(impersonationRoute, /generateLink\(\{ type: "magiclink"/);
+  assert.match(impersonationRoute, /httpOnly: true/);
+  assert.match(serverSupabase, /property === "auth" \? target : merchantClient/);
+  assert.match(impersonationBanner, /Retour au CRM/);
+  assert.match(impersonationBanner, /\?tab=access/);
 });
 
 test("migration V2 — additive, RLS admin et backfills idempotents", () => {

@@ -3,7 +3,7 @@
 import type { AutomationEdge, AutomationFlow, AutomationNodeData, ExecutionRecord, TestScenario, ValidationIssue } from "./types";
 
 const supportedNodeTypes = new Set([
-  "new_customer", "new_visit", "new_reward", "google_review", "customer_returned", "customer_inactive", "customer_birthday", "registration_anniversary", "visit_milestone", "points_milestone", "profile_completed", "consent_granted", "game_participation", "game_reward_won", "reward_used", "near_reward", "visit_velocity", "review_by_rating", "review_keyword",
+  "new_week", "new_customer", "new_visit", "new_reward", "google_review", "customer_returned", "customer_inactive", "customer_birthday", "registration_anniversary", "visit_milestone", "points_milestone", "profile_completed", "consent_granted", "game_participation", "game_reward_won", "reward_used", "near_reward", "visit_velocity", "review_by_rating", "review_keyword",
   "marketing_consent", "review_rating_gte", "reward_count", "visit_comparison", "last_visit_age", "points_comparison", "customer_status", "customer_contact_field", "review_rating_compare", "review_content", "review_status",
   "send_email", "generate_email", "prepare_instagram", "publish_instagram",
   "generate_review_reply", "publish_review_reply", "notify_merchant", "request_human_validation", "schedule_instagram",
@@ -95,6 +95,12 @@ export function validateFlow(
     }
     if (node.type === "review_keyword" && !String(node.config.keyword ?? "").trim()) {
       issues.push({ id: `review-keyword-${node.id}`, level: "error", message: "Indiquez le mot ou l'expression à détecter.", nodeId: node.id });
+    }
+    if (node.type === "new_week") {
+      const postsPerWeek = Number(node.config.posts_per_week);
+      if (!Number.isInteger(postsPerWeek) || postsPerWeek < 1 || postsPerWeek > 7) {
+        issues.push({ id: `weekly-post-count-${node.id}`, level: "error", message: "Choisissez entre 1 et 7 publications par semaine.", nodeId: node.id });
+      }
     }
     if (node.type === "publish_review_reply" && !hasReviewReplyGeneration) {
       issues.push({ id: `review-source-${node.id}`, level: "error", message: "Ajoutez une card « Générer une réponse à un avis » avant la publication Google.", nodeId: node.id });

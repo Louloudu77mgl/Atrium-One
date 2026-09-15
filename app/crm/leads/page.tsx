@@ -1,6 +1,6 @@
 import { CrmPageHeader } from "@/components/crm/CrmPageHeader";
 import { LeadsWorkspace } from "@/components/crm/LeadsWorkspace";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createSessionSupabaseClient as createServerSupabaseClient } from "@/lib/supabase/server";
 
 export default async function LeadsPage() {
   const supabase = await createServerSupabaseClient() as any;

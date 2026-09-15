@@ -73,7 +73,7 @@ export async function getGoogleBusinessLocations(accessToken: string): Promise<G
     const locationsResponse = await fetchGoogleApiWithRetry(url, accessToken);
 
     if (!locationsResponse.ok) {
-      continue;
+      throw await createGoogleBusinessError(locationsResponse, "Impossible de récupérer les fiches de ce compte Google Business.");
     }
 
     const locationsData = (await locationsResponse.json()) as GoogleLocationsResponse;
@@ -151,6 +151,9 @@ async function createGoogleBusinessError(response: Response, fallbackMessage: st
   }
 
   if (response.status === 403) {
+    if (apiReason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT" || normalizedMessage.includes("insufficient authentication scopes")) {
+      return new Error("Autorisation Google Business manquante. Cliquez sur Reconnecter Google et autorisez la gestion de vos fiches d’établissement pour importer les avis.");
+    }
     if (normalizedMessage.includes("api has not been used") || normalizedMessage.includes("is not enabled")) {
       return new Error("L’API Google Business n’est pas activée dans Google Cloud pour ce projet.");
     }

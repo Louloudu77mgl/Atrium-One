@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AtriumHubDashboard } from "@/components/AtriumHubDashboard";
 import { getGoogleConnectionWithAutoSync } from "@/lib/google-review-auto-sync";
-import { getInstagramConnection } from "@/lib/instagram-connections";
+import { getInstagramConnectionSummary } from "@/lib/instagram-connections";
 import { getMerchant } from "@/lib/merchants";
 import { reviews as mockReviews } from "@/lib/mock-data";
 import { getFallbackReviewInsights, mapInsightRow } from "@/lib/review-insights";
@@ -33,10 +33,10 @@ export default async function DashboardPage() {
     redirect("/onboarding");
   }
 
-  const googleConnection = await getGoogleConnectionWithAutoSync(merchant);
-  const [reviews, instagramConnection, storedInsights, socialPosts] = await Promise.all([
+  const [googleConnection, reviews, instagramConnection, storedInsights, socialPosts] = await Promise.all([
+    getGoogleConnectionWithAutoSync(merchant),
     getReviews(merchant),
-    getInstagramConnection(merchant),
+    getInstagramConnectionSummary(merchant),
     getStoredReviewInsights(merchant),
     getSocialPostSummaries(merchant)
   ]);

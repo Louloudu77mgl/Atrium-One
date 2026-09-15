@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getBrandSettings, updateBrandSettings } from "@/lib/brand-settings";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
-import { getGoogleConnection } from "@/lib/google-connections";
+import { getGoogleConnectionSummary } from "@/lib/google-connections";
 import { updateMerchantProfile } from "@/lib/merchant-actions";
 import { getMerchant } from "@/lib/merchants";
 import { getAppNotifications } from "@/lib/notifications";
@@ -43,7 +43,7 @@ export default async function SettingsPage({
   }
 
   const [googleConnection, reviews, brandSettings, automationSettings] = await Promise.all([
-    getGoogleConnection(merchant),
+    getGoogleConnectionSummary(merchant),
     getShellReviews(merchant),
     getBrandSettings(merchant),
     getAutomationSettings(merchant)

@@ -29,8 +29,8 @@ export default async function ReviewsPage() {
     redirect("/onboarding");
   }
 
-  const googleConnection = await getGoogleConnectionWithAutoSync(merchant);
-  const [reviews, automationSettings] = await Promise.all([
+  const [googleConnection, reviews, automationSettings] = await Promise.all([
+    getGoogleConnectionWithAutoSync(merchant),
     getReviews(merchant),
     getAutomationSettings(merchant)
   ]);

@@ -1,7 +1,8 @@
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Review } from "@/lib/mock-data";
-import type { GeneratedReplyRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
+import type { Database, GeneratedReplyRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
 
 type ReviewListRow = Pick<
   ReviewRow,
@@ -87,14 +88,14 @@ export function mapReviewRow(row: ReviewListRow, index = 0, reply?: GeneratedRep
   };
 }
 
-export async function getReviews(currentMerchant?: MerchantRow | null): Promise<Review[]> {
+export async function getReviews(currentMerchant?: MerchantRow | null, client?: SupabaseClient<Database>): Promise<Review[]> {
   const merchant = currentMerchant ?? await getMerchant();
 
   if (!merchant) {
     return [];
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = client ?? await createServerSupabaseClient();
   let { data, error } = await supabase
     .from("reviews")
     .select("id,author_name,rating,review_text,status,sentiment,created_at,updated_at")
@@ -155,29 +156,34 @@ export async function getReviews(currentMerchant?: MerchantRow | null): Promise<
 
 export async function getShellReviews(currentMerchant: MerchantRow): Promise<Review[]> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  const nested = await supabase
     .from("reviews")
-    .select("id,rating,review_text,status,sentiment")
+    .select("id,rating,review_text,status,sentiment,generated_replies(id,status)")
     .eq("merchant_id", currentMerchant.id);
 
-  if (error) {
-    if (error.message.includes("Could not find the table")) return [];
-    throw new Error(error.message);
+  let data: Array<{
+    id: string;
+    rating: number;
+    review_text: string;
+    status: ReviewRow["status"];
+    sentiment: ReviewRow["sentiment"];
+    generated_replies: Array<Pick<GeneratedReplyRow, "id" | "status">>;
+  }> | null = nested.data;
+
+  if (nested.error) {
+    const fallback = await supabase
+      .from("reviews")
+      .select("id,rating,review_text,status,sentiment")
+      .eq("merchant_id", currentMerchant.id);
+    if (fallback.error) {
+      if (fallback.error.message.includes("Could not find the table")) return [];
+      throw new Error(fallback.error.message);
+    }
+    data = fallback.data.map((review) => ({ ...review, generated_replies: [] }));
   }
 
-  if (data.length === 0) return [];
-
-  const { data: replies, error: repliesError } = await supabase
-    .from("generated_replies")
-    .select("id,review_id")
-    .in("review_id", data.map((review) => review.id))
-    .in("status", ["generated", "selected", "approved", "validation_required", "published", "published_auto", "published_manual", "blocked_by_safety"]);
-
-  if (repliesError && !repliesError.message.includes("Could not find the table")) {
-    throw new Error(repliesError.message);
-  }
-
-  const replyIdByReviewId = new Map((replies ?? []).map((reply) => [reply.review_id, reply.id]));
+  if (!data?.length) return [];
+  const activeReplyStatuses = new Set(["generated", "selected", "approved", "validation_required", "published", "published_auto", "published_manual", "blocked_by_safety"]);
 
   return data.map((review) => ({
     id: review.id,
@@ -189,6 +195,6 @@ export async function getShellReviews(currentMerchant: MerchantRow): Promise<Rev
     status: normalizeStatus(review.status),
     sentiment: normalizeSentiment(review.sentiment),
     text: review.review_text,
-    generatedReplyId: replyIdByReviewId.get(review.id)
+    generatedReplyId: review.generated_replies.find((reply) => activeReplyStatuses.has(reply.status))?.id
   }));
 }

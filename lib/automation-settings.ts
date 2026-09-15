@@ -41,11 +41,14 @@ export async function getAutomationSettings(merchant?: MerchantRow | null): Prom
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("merchant_automation_settings")
-    .select("*")
-    .eq("merchant_id", currentMerchant.id)
-    .maybeSingle();
+  const [{ data, error }, storedSettings] = await Promise.all([
+    supabase
+      .from("merchant_automation_settings")
+      .select("*")
+      .eq("merchant_id", currentMerchant.id)
+      .maybeSingle(),
+    getStoredAutomationSettings(currentMerchant.id).catch(() => null)
+  ]);
 
   if (error) {
     if (error.message.includes("Could not find the table") || error.message.includes("schema cache")) {
@@ -55,7 +58,6 @@ export async function getAutomationSettings(merchant?: MerchantRow | null): Prom
     throw new Error(error.message);
   }
 
-  const storedSettings = await getStoredAutomationSettings(currentMerchant.id).catch(() => null);
   return data && storedSettings
     ? { ...data, ...storedSettings, id: data.id, merchant_id: data.merchant_id, created_at: data.created_at }
     : data;

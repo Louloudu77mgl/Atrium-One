@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getGoogleConnection } from "@/lib/google-connections";
+import { getGoogleConnectionSummary } from "@/lib/google-connections";
 import { getMerchant } from "@/lib/merchants";
 import { reviews as mockReviews } from "@/lib/mock-data";
 import { getReviews, getShellReviews } from "@/lib/reviews";
@@ -35,7 +35,7 @@ export async function getAppShellData({
   }
 
   const [googleConnection, reviews] = await Promise.all([
-    google ? getGoogleConnection(merchant) : Promise.resolve(null),
+    google ? getGoogleConnectionSummary(merchant) : Promise.resolve(null),
     reviewMode === "full"
       ? getReviews(merchant)
       : reviewMode === "shell"

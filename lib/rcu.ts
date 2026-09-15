@@ -1,4 +1,5 @@
 import { createImageElement, createShapeElement, createTextElement, FORMAT_DIMENSIONS } from "@/lib/social-editor/document";
+import { getRcuConsumerBrand } from "@/lib/rcu-brand";
 import type { InstagramDesignDocument } from "@/lib/social-editor/types";
 import type { MerchantBrandSettingsRow, MerchantRow, RcuFormRow } from "@/lib/supabase/types";
 
@@ -369,15 +370,16 @@ export function createRcuPosterDocument({
   heroImageUrl?: string | null;
 }): InstagramDesignDocument {
   const definition = getRcuTypeDefinition(form.form_type);
-  const primary = brandSettings?.primary_color ?? "#4C1D95";
-  const secondary = brandSettings?.secondary_color ?? "#F3E8FF";
-  const accent = brandSettings?.accent_color ?? "#A855F7";
-  const fontFamily = brandSettings?.social_font_family ?? "Inter";
+  const brand = getRcuConsumerBrand(merchant, brandSettings);
+  const { primary, accent, ink, surface, soft, border, onPrimary } = brand;
+  const fontFamily = brand.fontName;
+  const titleFontFamily = brand.titleFontName;
   const businessName = merchant?.business_name?.trim() || "Votre boutique";
-  const qrUrl = buildRcuQrApiUrl(origin, form.slug, 480);
-  const headline = form.poster_headline?.trim() || definition.defaultPosterHeadline;
-  const body = form.poster_body?.trim() || form.incentive_text || definition.defaultPosterBody;
-  const cta = form.cta_label?.trim() || definition.defaultCtaLabel;
+  const businessDetails = [merchant?.business_type, merchant?.city].filter(Boolean).join(" · ") || "Programme de fidélité";
+  const qrUrl = buildRcuQrApiUrl(origin, form.slug, 720);
+  const headline = truncatePosterText(form.poster_headline?.trim() || definition.defaultPosterHeadline, 76);
+  const body = truncatePosterText(form.poster_body?.trim() || form.incentive_text || definition.defaultPosterBody, 200);
+  const cta = truncatePosterText(form.cta_label?.trim() || definition.defaultCtaLabel, 28);
   const dimensions = FORMAT_DIMENSIONS[format];
   const document: InstagramDesignDocument = {
     version: 2,
@@ -386,191 +388,335 @@ export function createRcuPosterDocument({
     caption: body,
     hashtags: "",
     altText: `${headline} — ${businessName}`,
-    backgroundColor: secondary,
+    backgroundColor: surface,
     backgroundImage: null,
     safetyMargin: true,
     elements: []
   };
   const motif = form.form_type === "points"
-    ? "+10 POINTS"
+    ? "+10 points par visite"
     : form.form_type === "wheel"
-      ? "TOURNEZ LA ROUE"
+      ? "Une chance à chaque visite"
       : form.form_type === "raffle"
-        ? "1 SCAN = 1 TICKET"
+        ? "1 scan = 1 ticket"
         : form.form_type === "stamps"
-          ? "1 · 2 · 3 · 4 · CADEAU"
-          : "BONUS HANS IA";
+          ? "Votre fidélité récompensée"
+          : "Des avantages personnalisés";
 
   document.elements.push({
-    ...createShapeElement("rectangle", dimensions.width, dimensions.height, secondary),
+    ...createShapeElement("rectangle", dimensions.width, dimensions.height, surface),
     name: "Fond A4",
     x: 0,
     y: 0,
     width: dimensions.width,
     height: dimensions.height,
-    fill: secondary,
-    borderColor: secondary,
+    fill: surface,
+    borderColor: surface,
     borderWidth: 0,
     borderRadius: 0,
     zIndex: 0
   });
 
-  if (heroImageUrl) {
-    document.elements.push({
-      ...createImageElement(heroImageUrl, dimensions.width, dimensions.height, "Visuel principal RCU"),
-      x: 0,
-      y: 0,
-      width: dimensions.width,
-      height: 805,
-      fit: "cover",
-      cropX: 50,
-      cropY: 50,
-      scale: 1.08,
-      borderRadius: 0,
-      shadow: false,
-      zIndex: 1
-    });
-  }
-
   document.elements.push({
-    ...createImageElement(createRcuPosterGradient(primary, accent, Boolean(heroImageUrl)), dimensions.width, dimensions.height, "Dégradé de marque"),
+    ...createShapeElement("rectangle", dimensions.width, dimensions.height, primary),
+    name: "Liseré de marque",
     x: 0,
     y: 0,
     width: dimensions.width,
-    height: 860,
-    fit: "cover",
+    height: 18,
+    fill: primary,
+    borderColor: primary,
+    borderWidth: 0,
     borderRadius: 0,
-    shadow: false,
+    zIndex: 1
+  });
+  document.elements.push({
+    ...createShapeElement("rectangle", dimensions.width, dimensions.height, "#FFFFFF"),
+    name: "Feuille éditoriale",
+    x: 46,
+    y: 48,
+    width: 1148,
+    height: 1658,
+    fill: "#FFFFFF",
+    borderColor: border,
+    borderWidth: 2,
+    borderRadius: 42,
+    shadow: true,
     zIndex: 2
   });
   document.elements.push({
-    ...createTextElement("small", dimensions.width, dimensions.height),
-    name: "Type de support",
-    text: `PROGRAMME ${definition.shortLabel.toUpperCase()}`,
-    x: 82,
-    y: 106,
-    width: 560,
-    height: 42,
-    color: "#FFFFFF",
-    fontFamily,
-    fontSize: 24,
-    fontWeight: 800,
-    letterSpacing: 1.8,
+    ...createShapeElement("circle", dimensions.width, dimensions.height, soft),
+    name: "Décor de marque",
+    x: 1000,
+    y: 74,
+    width: 160,
+    height: 160,
+    fill: soft,
+    borderColor: soft,
+    borderWidth: 0,
+    borderRadius: 999,
+    zIndex: 3
+  });
+
+  const headerTextX = merchant?.logo_url ? 230 : 88;
+  document.elements.push({
+    ...createTextElement("subtitle", dimensions.width, dimensions.height),
+    name: "Nom du commerce",
+    text: businessName,
+    x: headerTextX,
+    y: 88,
+    width: merchant?.logo_url ? 720 : 850,
+    height: 52,
+    color: ink,
+    fontFamily: titleFontFamily,
+    fontSize: 30,
+    fontWeight: 700,
     align: "left",
+    zIndex: 5
+  });
+  document.elements.push({
+    ...createTextElement("small", dimensions.width, dimensions.height),
+    name: "Informations commerce",
+    text: businessDetails.toUpperCase(),
+    x: headerTextX,
+    y: 144,
+    width: merchant?.logo_url ? 720 : 850,
+    height: 34,
+    color: primary,
+    fontFamily,
+    fontSize: 18,
+    fontWeight: 700,
+    letterSpacing: 1.4,
+    align: "left",
+    zIndex: 5
+  });
+  if (merchant?.logo_url) {
+    document.elements.push({
+      ...createImageElement(merchant.logo_url, dimensions.width, dimensions.height, `Logo ${businessName}`),
+      type: "logo",
+      x: 88,
+      y: 78,
+      width: 112,
+      height: 112,
+      fit: "contain",
+      borderRadius: 18,
+      shadow: false,
+      zIndex: 6
+    });
+  }
+  document.elements.push({
+    ...createShapeElement("divider", dimensions.width, dimensions.height, border),
+    name: "Séparateur d’en-tête",
+    x: 88,
+    y: 218,
+    width: 1064,
+    height: 2,
+    fill: border,
+    borderColor: border,
+    borderWidth: 0,
+    borderRadius: 2,
     zIndex: 4
+  });
+  document.elements.push({
+    ...createShapeElement("pill", dimensions.width, dimensions.height, soft),
+    name: "Programme fidélité",
+    x: 88,
+    y: 266,
+    width: 330,
+    height: 52,
+    fill: soft,
+    borderColor: border,
+    borderWidth: 1,
+    borderRadius: 999,
+    zIndex: 4
+  });
+  document.elements.push({
+    ...createTextElement("small", dimensions.width, dimensions.height),
+    name: "Type de programme",
+    text: `PROGRAMME ${definition.shortLabel.toUpperCase()}`,
+    x: 112,
+    y: 280,
+    width: 282,
+    height: 26,
+    color: primary,
+    fontFamily,
+    fontSize: 17,
+    fontWeight: 800,
+    letterSpacing: 1.35,
+    align: "center",
+    zIndex: 5
   });
   document.elements.push({
     ...createTextElement("title", dimensions.width, dimensions.height),
     name: "Titre de l’affiche",
     text: headline,
-    x: 78,
-    y: 230,
-    width: 980,
-    height: 360,
-    color: "#FFFFFF",
-    fontFamily,
-    fontSize: headline.length > 48 ? 76 : 92,
-    fontWeight: 900,
-    lineHeight: 1.02,
+    x: 88,
+    y: 354,
+    width: 1064,
+    height: 210,
+    color: ink,
+    fontFamily: titleFontFamily,
+    fontSize: headline.length > 48 ? 66 : 78,
+    fontWeight: 700,
+    lineHeight: 1.06,
     align: "left",
-    zIndex: 4
-  });
-  document.elements.push({
-    ...createShapeElement("rectangle", dimensions.width, dimensions.height, primary),
-    name: "Bloc explication",
-    x: 70,
-    y: 850,
-    width: 650,
-    height: 710,
-    fill: primary,
-    borderColor: primary,
-    borderWidth: 0,
-    borderRadius: 42,
-    shadow: true,
-    zIndex: 4
-  });
-  document.elements.push({
-    ...createTextElement("small", dimensions.width, dimensions.height),
-    name: "Mécanique fidélité",
-    text: motif,
-    x: 120,
-    y: 930,
-    width: 550,
-    height: 58,
-    color: "#FFFFFF",
-    fontFamily,
-    fontSize: motif.length > 18 ? 30 : 38,
-    fontWeight: 900,
-    letterSpacing: 1,
-    align: "left",
-    zIndex: 6
+    zIndex: 5
   });
   document.elements.push({
     ...createTextElement("body", dimensions.width, dimensions.height),
     name: "Texte de l’affiche",
     text: body,
-    x: 120,
-    y: 1050,
-    width: 520,
-    height: 330,
-    color: "#FFFFFF",
+    x: 88,
+    y: 590,
+    width: 950,
+    height: 120,
+    color: ink,
     fontFamily,
-    fontSize: body.length > 150 ? 31 : 36,
-    fontWeight: 600,
-    lineHeight: 1.34,
+    fontSize: body.length > 150 ? 26 : 31,
+    fontWeight: 500,
+    lineHeight: 1.42,
     align: "left",
-    zIndex: 6
+    zIndex: 5
   });
+
+  const storyPanelY = 760;
+  const storyPanelHeight = 700;
   document.elements.push({
-    ...createShapeElement("pill", dimensions.width, dimensions.height, accent),
-    name: "Pastille action",
-    x: 120,
-    y: 1430,
-    width: 410,
-    height: 74,
-    fill: accent,
-    borderColor: accent,
-    borderWidth: 0,
-    borderRadius: 999,
-    zIndex: 6
+    ...createShapeElement("rectangle", dimensions.width, dimensions.height, soft),
+    name: "Carte découverte",
+    x: 78,
+    y: storyPanelY,
+    width: 648,
+    height: storyPanelHeight,
+    fill: soft,
+    borderColor: border,
+    borderWidth: 2,
+    borderRadius: 36,
+    shadow: false,
+    zIndex: 4
   });
+  if (heroImageUrl) {
+    document.elements.push({
+      ...createImageElement(heroImageUrl, dimensions.width, dimensions.height, "Univers du commerce"),
+      x: 78,
+      y: storyPanelY,
+      width: 648,
+      height: 400,
+      fit: "cover",
+      cropX: 50,
+      cropY: 50,
+      scale: 1.04,
+      borderRadius: 36,
+      shadow: false,
+      zIndex: 5
+    });
+  }
+  const storyCopyY = heroImageUrl ? 1194 : 842;
   document.elements.push({
     ...createTextElement("small", dimensions.width, dimensions.height),
-    name: "Action fidélité",
-    text: cta,
-    x: 145,
-    y: 1447,
-    width: 360,
-    height: 40,
-    color: "#FFFFFF",
+    name: "Promesse fidélité",
+    text: motif.toUpperCase(),
+    x: 122,
+    y: storyCopyY,
+    width: 560,
+    height: 42,
+    color: primary,
     fontFamily,
-    fontSize: 24,
+    fontSize: motif.length > 24 ? 20 : 23,
     fontWeight: 800,
-    align: "center",
+    letterSpacing: 1.25,
+    align: "left",
     zIndex: 7
   });
+  if (!heroImageUrl) {
+    document.elements.push({
+      ...createTextElement("title", dimensions.width, dimensions.height),
+      name: "Invitation",
+      text: "Votre prochain avantage commence ici.",
+      x: 122,
+      y: 930,
+      width: 530,
+      height: 210,
+      color: ink,
+      fontFamily: titleFontFamily,
+      fontSize: 49,
+      fontWeight: 700,
+      lineHeight: 1.08,
+      align: "left",
+      zIndex: 7
+    });
+  }
+  const stepsY = heroImageUrl ? 1284 : 1190;
+  ["Scannez", "Inscrivez-vous", "Profitez"].forEach((label, index) => {
+    const x = 112 + index * 196;
+    document.elements.push({
+      ...createShapeElement("rectangle", dimensions.width, dimensions.height, "#FFFFFF"),
+      name: `Étape ${index + 1}`,
+      x,
+      y: stepsY,
+      width: 178,
+      height: 112,
+      fill: "#FFFFFF",
+      borderColor: border,
+      borderWidth: 1,
+      borderRadius: 18,
+      shadow: false,
+      zIndex: 7
+    });
+    document.elements.push({
+      ...createTextElement("small", dimensions.width, dimensions.height),
+      name: `Numéro étape ${index + 1}`,
+      text: `0${index + 1}`,
+      x: x + 16,
+      y: stepsY + 15,
+      width: 48,
+      height: 28,
+      color: accent,
+      fontFamily,
+      fontSize: 16,
+      fontWeight: 800,
+      align: "left",
+      zIndex: 8
+    });
+    document.elements.push({
+      ...createTextElement("small", dimensions.width, dimensions.height),
+      name: `Libellé étape ${index + 1}`,
+      text: label,
+      x: x + 16,
+      y: stepsY + 55,
+      width: 146,
+      height: 34,
+      color: ink,
+      fontFamily,
+      fontSize: 18,
+      fontWeight: 700,
+      align: "left",
+      zIndex: 8
+    });
+  });
+
   document.elements.push({
     ...createShapeElement("rectangle", dimensions.width, dimensions.height, "#FFFFFF"),
     name: "Carte QR",
-    x: 770,
-    y: 900,
+    x: 762,
+    y: storyPanelY,
     width: 400,
-    height: 570,
+    height: storyPanelHeight,
     fill: "#FFFFFF",
-    borderColor: "#FFFFFF",
-    borderWidth: 0,
-    borderRadius: 44,
+    borderColor: border,
+    borderWidth: 2,
+    borderRadius: 36,
     shadow: true,
     zIndex: 8
   });
   document.elements.push({
     ...createImageElement(qrUrl, dimensions.width, dimensions.height, "QR code"),
     type: "image",
-    x: 820,
-    y: 960,
-    width: 300,
-    height: 300,
-    borderRadius: 24,
+    x: 792,
+    y: 830,
+    width: 340,
+    height: 340,
+    borderRadius: 0,
     fit: "contain",
     cropX: 50,
     cropY: 50,
@@ -579,72 +725,117 @@ export function createRcuPosterDocument({
     zIndex: 10
   });
   document.elements.push({
-    ...createTextElement("body", dimensions.width, dimensions.height),
+    ...createTextElement("small", dimensions.width, dimensions.height),
     name: "Instruction QR",
-    text: "SCANNEZ ICI",
-    x: 810,
-    y: 1310,
-    width: 320,
-    height: 46,
+    text: "SCANNEZ POUR COMMENCER",
+    x: 794,
+    y: 1208,
+    width: 336,
+    height: 38,
     color: primary,
     fontFamily,
-    fontSize: 32,
-    fontWeight: 900,
+    fontSize: 20,
+    fontWeight: 800,
+    letterSpacing: 1.1,
     align: "center",
     zIndex: 11
   });
   document.elements.push({
-    ...createTextElement("small", dimensions.width, dimensions.height),
-    name: "CTA QR",
-    text: cta,
-    x: 810,
-    y: 1370,
-    width: 320,
-    height: 58,
-    color: primary,
+    ...createTextElement("body", dimensions.width, dimensions.height),
+    name: "Explication QR",
+    text: "Ouvrez l’appareil photo de votre téléphone et pointez-le vers le QR code.",
+    x: 806,
+    y: 1262,
+    width: 312,
+    height: 82,
+    color: ink,
     fontFamily,
-    fontSize: 22,
-    fontWeight: 700,
+    fontSize: 20,
+    fontWeight: 500,
+    lineHeight: 1.35,
     align: "center",
     zIndex: 11
   });
-
+  document.elements.push({
+    ...createShapeElement("pill", dimensions.width, dimensions.height, primary),
+    name: "Bouton d’action",
+    x: 814,
+    y: 1360,
+    width: 296,
+    height: 70,
+    fill: primary,
+    borderColor: primary,
+    borderWidth: 0,
+    borderRadius: 18,
+    shadow: false,
+    zIndex: 10
+  });
+  document.elements.push({
+    ...createTextElement("small", dimensions.width, dimensions.height),
+    name: "Action QR",
+    text: cta,
+    x: 834,
+    y: 1380,
+    width: 256,
+    height: 34,
+    color: onPrimary,
+    fontFamily,
+    fontSize: cta.length > 24 ? 17 : 20,
+    fontWeight: 800,
+    align: "center",
+    zIndex: 11
+  });
+  document.elements.push({
+    ...createShapeElement("divider", dimensions.width, dimensions.height, border),
+    name: "Séparateur de pied de page",
+    x: 88,
+    y: 1552,
+    width: 1064,
+    height: 2,
+    fill: border,
+    borderColor: border,
+    borderWidth: 0,
+    borderRadius: 2,
+    zIndex: 4
+  });
   document.elements.push({
     ...createTextElement("small", dimensions.width, dimensions.height),
     name: "Signature commerce",
-    text: businessName,
-    x: 76,
-    y: 1650,
-    width: 900,
-    height: 46,
-    color: primary,
-    fontFamily,
-    fontSize: 27,
-    fontWeight: 800,
+    text: `À bientôt chez ${businessName}`,
+    x: 88,
+    y: 1604,
+    width: 720,
+    height: 44,
+    color: ink,
+    fontFamily: titleFontFamily,
+    fontSize: 26,
+    fontWeight: 700,
     align: "left",
     zIndex: 10
   });
-
-  if (merchant?.logo_url) {
-    document.elements.push({
-      ...createImageElement(merchant.logo_url, dimensions.width, dimensions.height, "Logo du commerce"),
-      type: "logo",
-      x: 1030,
-      y: 72,
-      width: 120,
-      height: 120,
-      fit: "contain",
-      borderRadius: 18,
-      shadow: false,
-      zIndex: 12
-    });
-  }
+  document.elements.push({
+    ...createTextElement("small", dimensions.width, dimensions.height),
+    name: "Mention pratique",
+    text: "Une inscription simple, directement sur votre téléphone",
+    x: 760,
+    y: 1610,
+    width: 392,
+    height: 36,
+    color: primary,
+    fontFamily,
+    fontSize: 16,
+    fontWeight: 700,
+    align: "right",
+    zIndex: 10
+  });
 
   return document;
 }
 
-function createRcuPosterGradient(primary: string, accent: string, hasImage: boolean) {
-  const topOpacity = hasImage ? "0.42" : "1";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="860" viewBox="0 0 1240 860"><defs><linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${primary}" stop-opacity="${topOpacity}"/><stop offset="0.62" stop-color="${primary}" stop-opacity="0.72"/><stop offset="1" stop-color="${accent}" stop-opacity="0.9"/></linearGradient><linearGradient id="bottom" x1="0" y1="0" x2="0" y2="1"><stop offset="0.45" stop-color="#120E1C" stop-opacity="0"/><stop offset="1" stop-color="#120E1C" stop-opacity="0.72"/></linearGradient></defs><rect width="1240" height="860" fill="url(#brand)"/><rect width="1240" height="860" fill="url(#bottom)"/><circle cx="1100" cy="80" r="260" fill="#fff" fill-opacity="0.08"/><circle cx="980" cy="720" r="180" fill="#fff" fill-opacity="0.06"/></svg>`;
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+function truncatePosterText(value: string, maxLength: number) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  const candidate = normalized.slice(0, maxLength + 1);
+  const lastSpace = candidate.lastIndexOf(" ");
+  return `${candidate.slice(0, lastSpace > maxLength * 0.7 ? lastSpace : maxLength).trim()}…`;
 }

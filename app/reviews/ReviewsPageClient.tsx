@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AdminReviewForm } from "@/components/AdminReviewForm";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { BulkReplyModal, type BulkReplyProgress } from "@/components/BulkReplyModal";
 import { HansFloatingChat } from "@/components/HansFloatingChat";
 import { Header } from "@/components/Header";
@@ -124,7 +124,6 @@ export function ReviewsPageClient({
   automationSettings?: MerchantAutomationSettingsRow | null;
   canManageDemoReviews?: boolean;
 }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const businessName = merchant?.business_name ?? "Maison Lavigne";
   const businessType = merchant?.business_type ?? "commerce";
@@ -329,7 +328,6 @@ export function ReviewsPageClient({
       setSearch("");
       changeFilter("all");
     }
-    router.refresh();
   }
 
   async function deleteReview(review: Review) {
@@ -360,7 +358,6 @@ export function ReviewsPageClient({
         setReplyEdited(false);
       }
       showToast("Avis supprimé du compte de démo", "success");
-      router.refresh();
     } catch (error) {
       showToast(getUserErrorMessage(error, "Impossible de supprimer l’avis."), "error");
     } finally {

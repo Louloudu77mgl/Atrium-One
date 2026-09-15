@@ -20,9 +20,9 @@ function currentParisDateTime() {
   return { date: `${value.year}-${value.month}-${value.day}`, time: `${value.hour}:${value.minute}` };
 }
 
-export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: CrmLead; notes: Note[]; tasks: CrmTask[]; events: CrmEvent[]; opportunities: CrmOpportunity[]; activity: Activity[]; access: BusinessAccess | null; modules: Array<{ module_key: string; enabled: boolean }>; account: Account; candidates: Candidate[] }; returnTo?: string }) {
+export function LeadDetailWorkspace({ initial, returnTo, initialTab = "summary" }: { initial: { lead: CrmLead; notes: Note[]; tasks: CrmTask[]; events: CrmEvent[]; opportunities: CrmOpportunity[]; activity: Activity[]; access: BusinessAccess | null; modules: Array<{ module_key: string; enabled: boolean }>; account: Account; candidates: Candidate[] }; returnTo?: string; initialTab?: Tab }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("summary");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [lead, setLead] = useState(initial.lead);
   const [notes, setNotes] = useState(initial.notes);
   const [tasks, setTasks] = useState(initial.tasks);
@@ -38,6 +38,8 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
   const [message, setMessage] = useState<string | null>(null);
   const [refreshingHours, setRefreshingHours] = useState(false);
   const [loggingCall, setLoggingCall] = useState(false);
+  const [openingClientSpace, setOpeningClientSpace] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
   const [accountEnabled, setAccountEnabled] = useState(initial.access?.account_enabled ?? false);
   const [onboardingStatus, setOnboardingStatus] = useState(initial.access?.onboarding_status ?? "pending");
   const [modules, setModules] = useState<Record<string, boolean>>(Object.fromEntries(CRM_MODULES.map((key) => [key, initial.modules.find((row) => row.module_key === key)?.enabled ?? false])));
@@ -108,6 +110,51 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
 
   async function saveAccess(businessId?: string) { if (!lead.business_id && !businessId) return; if (!initial.access?.account_enabled && accountEnabled && !confirm("Activer AtriumOne pour ce client ?")) return; const manual = Boolean(businessId); if (manual && !confirm("Associer ce compte AtriumOne à ce prospect ?")) return; const response = await fetch(`/api/crm/leads/${lead.id}/access`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessId, manualConfirmed: manual, accountEnabled, onboardingStatus, modules }) }); const data = await response.json(); if (!response.ok) return setMessage(data.error?.message ?? "Accès non enregistrés."); if (data.businessId && !lead.business_id) setLead((current) => ({ ...current, business_id: data.businessId })); setAccountEnabled(data.accountEnabled); setOnboardingStatus(data.onboardingStatus); setModules(data.modules); setMessage("Accès AtriumOne enregistrés."); router.refresh(); }
 
+  async function provisionAccount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (provisioning) return;
+    setProvisioning(true);
+    setMessage(null);
+    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    try {
+      const response = await fetch(`/api/crm/leads/${lead.id}/provision`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      if (!response.ok) { setMessage(data.error?.message ?? "Préparation impossible."); return; }
+      setLead(data.lead);
+      setAccountEnabled(data.access?.account_enabled ?? false);
+      setOnboardingStatus(data.access?.onboarding_status ?? "pending");
+      setModules(Object.fromEntries(CRM_MODULES.map((key) => [key, data.modules?.find((row: { module_key: string; enabled: boolean }) => row.module_key === key)?.enabled ?? false])));
+      setMessage("L’espace du commerce est prêt. Vous pouvez maintenant activer AtriumOne et choisir ses modules.");
+      router.refresh();
+    } catch { setMessage("L’espace n’a pas pu être préparé. Réessayez."); }
+    finally { setProvisioning(false); }
+  }
+
+  async function openClientSpace() {
+    if (!lead.business_id || openingClientSpace) return;
+    setOpeningClientSpace(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/crm/impersonation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ businessId: lead.business_id, leadId: lead.id })
+      });
+      const data = await response.json() as { url?: string; error?: { message?: string } };
+      if (!response.ok || !data.url) {
+        setMessage(data.error?.message ?? "L’espace du commerce ne peut pas être ouvert.");
+        return;
+      }
+      window.location.assign(data.url);
+    } catch {
+      setMessage("L’espace du commerce ne peut pas être ouvert.");
+    } finally {
+      setOpeningClientSpace(false);
+    }
+  }
+
   async function deleteLead(permanent = false) {
     const warning = lead.business_id ? "\n\nLe compte AtriumOne associé sera conservé." : "";
     if (!confirm(`${permanent ? "Supprimer définitivement" : "Supprimer"} ce lead ?${warning}`)) return;
@@ -138,8 +185,22 @@ export function LeadDetailWorkspace({ initial, returnTo }: { initial: { lead: Cr
 
       {tab === "opportunities" ? <Section title="Opportunités" action={<button onClick={() => setShowOpportunity(!showOpportunity)} className="text-xs font-black text-[#4C1D95]">+ Créer une opportunité</button>}>{showOpportunity ? <form onSubmit={addOpportunity} className="mb-4 grid gap-3 rounded-lg bg-[#FAF9F7] p-3 sm:grid-cols-2"><label className="ao-label sm:col-span-2">Nom<input name="name" defaultValue={`AtriumOne - ${lead.name}`} className="ao-input h-9 px-2" /></label><label className="ao-label">MRR (€ / mois)<input required min="0" step="0.01" type="number" name="mrr" value={opportunityMrr || ""} onChange={(e) => setOpportunityMrr(Number(e.target.value))} className="ao-input h-9 px-2" /></label><label className="ao-label">ARR calculé<input readOnly value={`${calculateArr(opportunityMrr).toLocaleString("fr-FR")} € / an`} className="ao-input h-9 bg-gray-50 px-2" /></label><label className="ao-label">Statut<select name="status" className="ao-select h-9 px-2">{CRM_OPPORTUNITY_STATUSES.filter((status) => !['Gagnée','Perdue'].includes(status)).map((status) => <option key={status}>{status}</option>)}</select></label><label className="ao-label sm:col-span-2">Notes<textarea name="notes" className="ao-input px-2 py-2" /></label><button className="ao-btn-primary px-3 py-2 text-xs font-black sm:col-span-2">Créer l’opportunité</button></form> : null}<div className="grid gap-3 lg:grid-cols-2">{opportunities.map((item) => <article key={item.id} className={`rounded-xl border p-4 ${item.status === "Gagnée" ? "border-emerald-300 bg-emerald-50" : item.status === "Perdue" ? "border-red-200 bg-red-50" : "border-[#E8E4DB]"}`}><div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-black">{item.name}</h3><div className="mt-1 text-xl font-black text-[#4C1D95]">{Number(item.mrr).toLocaleString("fr-FR")} € <span className="text-xs text-[#8B7AA8]">MRR</span></div><div className="text-xs font-bold text-[#6B617F]">{Number(item.arr).toLocaleString("fr-FR")} € ARR</div></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-black">{item.status}</span></div>{item.notes ? <p className="mt-3 text-xs text-[#6B617F]">{item.notes}</p> : null}<div className="mt-4 flex flex-wrap gap-2">{!['Gagnée','Perdue'].includes(item.status) ? <><select value={item.status} onChange={(e) => void updateOpportunity(item, e.target.value)} className="ao-select h-8 px-2 text-[11px] font-black">{CRM_OPPORTUNITY_STATUSES.filter((status) => !['Gagnée','Perdue'].includes(status)).map((status) => <option key={status}>{status}</option>)}</select><button onClick={() => void updateOpportunity(item, "Gagnée")} className="rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-black text-white">Affaire closée</button><button onClick={() => void updateOpportunity(item, "Perdue")} className="px-2 text-[11px] font-black text-red-600">Perdue</button></> : null}<button onClick={() => void deleteOpportunity(item.id)} className="ml-auto text-[10px] font-bold text-red-600">Supprimer</button></div></article>)}{!opportunities.length ? <Empty text="Aucune opportunité." /> : null}</div></Section> : null}
 
-      {tab === "access" ? <div className="grid gap-4 lg:grid-cols-2"><Section title="Compte AtriumOne"><div className="space-y-3"><Fact label="État" value={!lead.business_id ? "Aucun compte" : onboardingStatus === "suspended" ? "Suspendu" : accountEnabled ? "Actif" : "En attente d’onboarding"} /><Fact label="Email du compte" value={initial.account?.email} /><Fact label="Date d’inscription" value={formatDateTime(initial.account?.createdAt)} /><Fact label="Dernière connexion" value={formatDateTime(initial.account?.lastSignInAt)} /></div>{lead.business_id ? <div className="mt-4 border-t border-[#E8E4DB] pt-4"><label className="flex items-center justify-between gap-3 text-sm font-black"><span>Activer AtriumOne</span><button type="button" role="switch" aria-checked={accountEnabled} onClick={() => setAccountEnabled(!accountEnabled)} className={`ao-toggle ${accountEnabled ? "ao-toggle-on" : "ao-toggle-off"}`}><span className={`ao-toggle-thumb ${accountEnabled ? "ao-toggle-thumb-on" : "ao-toggle-thumb-off"}`} /></button></label><label className="ao-label mt-3">Statut<select value={onboardingStatus} onChange={(e) => setOnboardingStatus(e.target.value as BusinessAccess["onboarding_status"])} className="ao-select h-9 px-2"><option value="pending">En attente d’onboarding</option><option value="active">Actif</option><option value="suspended">Suspendu</option></select></label><div className="mt-4 text-xs font-black">Modules activés</div><div className="mt-2 grid gap-2 sm:grid-cols-2">{CRM_MODULES.map((key) => <label key={key} className={`flex items-center gap-2 text-xs font-semibold ${!accountEnabled ? "text-[#8B7AA8]" : ""}`}><input type="checkbox" disabled={!accountEnabled} checked={modules[key]} onChange={(e) => setModules({ ...modules, [key]: e.target.checked })} />{MODULE_LABELS[key]}</label>)}</div><button onClick={() => void saveAccess()} className="ao-btn-primary mt-4 w-full px-3 py-2 text-xs font-black">Enregistrer les accès</button></div> : null}</Section>
-        {!lead.business_id ? <Section title="Comptes AtriumOne potentiels">{initial.candidates.map((candidate) => <div key={candidate.businessId} className="mb-2 rounded-lg border border-[#E8E4DB] p-3"><div className="text-sm font-black">{candidate.businessName}</div><div className="text-xs text-[#6B617F]">{candidate.email ?? "Email inconnu"} · {candidate.reason}</div><button onClick={() => void saveAccess(candidate.businessId)} className="mt-2 text-xs font-black text-[#4C1D95]">Associer</button></div>)}{!initial.candidates.length ? <Empty text="Aucun compte potentiel détecté." /> : null}</Section> : null}</div> : null}
+      {tab === "access" ? <div className="grid gap-4 lg:grid-cols-2"><Section title="Compte AtriumOne">
+        {!lead.business_id && lead.auth_user_id ? <form onSubmit={provisionAccount} className="mb-4 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-bold text-amber-900">Le client est inscrit, mais n’a pas encore renseigné son commerce. Vous pouvez le préparer ici pour gérer ses accès.</p>
+          <label className="ao-label">Nom du commerce<input required name="businessName" defaultValue={lead.name} maxLength={120} className="ao-input h-10 px-3" /></label>
+          <label className="ao-label">Activité<input required name="businessType" defaultValue={lead.business_type ?? ""} maxLength={80} className="ao-input h-10 px-3" /></label>
+          <label className="ao-label">Ville<input required name="city" defaultValue={lead.city ?? ""} maxLength={100} className="ao-input h-10 px-3" /></label>
+          <button disabled={provisioning} className="ao-btn-primary w-full px-3 py-2.5 text-xs font-black disabled:opacity-60">{provisioning ? "Préparation…" : "Préparer l’espace du commerce"}</button>
+        </form> : null}
+        <div className="space-y-3"><Fact label="État" value={!lead.business_id ? lead.auth_user_id ? "Inscrit · commerce à préparer" : "Aucun compte" : onboardingStatus === "suspended" ? "Suspendu" : accountEnabled ? "Actif" : "En attente d’onboarding"} /><Fact label="Email du compte" value={initial.account?.email} /><Fact label="Date d’inscription" value={formatDateTime(initial.account?.createdAt)} /><Fact label="Dernière connexion" value={formatDateTime(initial.account?.lastSignInAt)} /></div>
+        {lead.business_id ? <div className="mt-4 rounded-xl border border-[#D8C9F1] bg-[#F8F5FF] p-3">
+          <div className="text-xs font-black text-[#2E1065]">Interface du commerce</div>
+          <p className="mt-1 text-[11px] font-semibold leading-5 text-[#6B617F]">Ouvrez ce compte en mode administrateur, sans demander le mot de passe du client.</p>
+          <button type="button" disabled={openingClientSpace} onClick={() => void openClientSpace()} className="ao-btn-primary mt-3 w-full px-3 py-2.5 text-xs font-black disabled:cursor-wait disabled:opacity-60">{openingClientSpace ? "Ouverture…" : "Ouvrir l’espace du commerce ↗"}</button>
+        </div> : null}
+        {lead.business_id ? <div className="mt-4 border-t border-[#E8E4DB] pt-4"><label className="flex items-center justify-between gap-3 text-sm font-black"><span>Activer AtriumOne</span><button type="button" role="switch" aria-checked={accountEnabled} onClick={() => setAccountEnabled(!accountEnabled)} className={`ao-toggle ${accountEnabled ? "ao-toggle-on" : "ao-toggle-off"}`}><span className={`ao-toggle-thumb ${accountEnabled ? "ao-toggle-thumb-on" : "ao-toggle-thumb-off"}`} /></button></label><label className="ao-label mt-3">Statut<select value={onboardingStatus} onChange={(e) => setOnboardingStatus(e.target.value as BusinessAccess["onboarding_status"])} className="ao-select h-9 px-2"><option value="pending">En attente d’onboarding</option><option value="active">Actif</option><option value="suspended">Suspendu</option></select></label><div className="mt-4 text-xs font-black">Modules activés</div><div className="mt-2 grid gap-2 sm:grid-cols-2">{CRM_MODULES.map((key) => <label key={key} className={`flex items-center gap-2 text-xs font-semibold ${!accountEnabled ? "text-[#8B7AA8]" : ""}`}><input type="checkbox" disabled={!accountEnabled} checked={modules[key]} onChange={(e) => setModules({ ...modules, [key]: e.target.checked })} />{MODULE_LABELS[key]}</label>)}</div><button onClick={() => void saveAccess()} className="ao-btn-primary mt-4 w-full px-3 py-2 text-xs font-black">Enregistrer les accès</button></div> : null}</Section>
+        {!lead.business_id && !lead.auth_user_id ? <Section title="Comptes AtriumOne potentiels">{initial.candidates.map((candidate) => <div key={candidate.businessId} className="mb-2 rounded-lg border border-[#E8E4DB] p-3"><div className="text-sm font-black">{candidate.businessName}</div><div className="text-xs text-[#6B617F]">{candidate.email ?? "Email inconnu"} · {candidate.reason}</div><button onClick={() => void saveAccess(candidate.businessId)} className="mt-2 text-xs font-black text-[#4C1D95]">Associer</button></div>)}{!initial.candidates.length ? <Empty text="Aucun compte potentiel détecté." /> : null}</Section> : null}</div> : null}
     </main>
   </div>;
 }

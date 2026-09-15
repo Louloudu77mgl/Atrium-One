@@ -13,6 +13,7 @@ const READY_NODE_LIBRARY: Array<{ title: string; category: string; items: NodeLi
     title: "Déclencheurs",
     category: "trigger",
     items: [
+      item("new_week", "trigger", "Nouvelle semaine", "Au début de chaque semaine, Hans prépare le calendrier Instagram et répartit les publications sur plusieurs jours.", "refresh", purple, [{ key: "posts_per_week", label: "Publications par semaine", type: "number", min: 1, max: 7 }], { posts_per_week: 2 }, undefined, undefined, "Calendrier / Temps", ["instagram", "semaine", "planification"]),
       item("new_customer", "trigger", "Nouveau client inscrit au RCU", "Se déclenche immédiatement lors de la première inscription d’un client au RCU.", "sparkle", purple, [], { source: "RCU" }, undefined, undefined, "Clients / CRM", ["clients", "crm"]),
       item("new_visit", "trigger", "Nouvelle visite RCU validée", "Se déclenche immédiatement quand une nouvelle visite RCU est enregistrée.", "store", purple, [], {}, undefined, undefined, "Commerce", ["commerce", "clients"]),
       item("new_reward", "trigger", "Nouvelle récompense gagnée", "Quand un client gagne une récompense.", "party", purple, [], {}, undefined, undefined, "Clients / CRM", ["crm", "clients"]),
@@ -166,6 +167,7 @@ export function createNodeFromLibrary(item: NodeLibraryItem, x = 120, y = 120): 
 
 export function buildTemplates(context: TemplateContext): AutomationFlow[] {
   return [
+    templateWeeklyInstagram(context.businessName),
     templateReviews(context.businessName),
     templateWelcome(context.businessName),
     templateInstagram(context.businessName),
@@ -177,6 +179,25 @@ export function buildTemplates(context: TemplateContext): AutomationFlow[] {
     templateInstagramPilot(context.businessName),
     templateRewardReturn(context.businessName)
   ];
+}
+
+function templateWeeklyInstagram(_businessName: string) {
+  const first = node("new_week", "Nouvelle semaine", 80, 140, { posts_per_week: 2 });
+  const prepare = node("prepare_instagram", "Choisir les recommandations Hans disponibles", 400, 140, { theme: "Recommandations Hans disponibles" }, "automatic");
+  const schedule = node("schedule_instagram", "Répartir intelligemment les posts dans la semaine", 720, 140, { delay_hours: 0 }, "automatic");
+  const publish = node("publish_instagram", "Publier avec le pipeline Instagram existant", 1040, 140, {}, "automatic");
+  const recipe = flow(
+    "recipe-weekly-instagram",
+    "Publier automatiquement sur Instagram chaque semaine",
+    "Instagram",
+    "Chaque semaine, Hans choisit des recommandations encore disponibles, crée les contenus et visuels à votre image, puis répartit leur publication dans le calendrier.",
+    [first, prepare, schedule, publish],
+    chain([first, prepare, schedule, publish]),
+    "template"
+  );
+  recipe.category = "Recettes Hans";
+  recipe.installMinutes = 2;
+  return recipe;
 }
 
 function templateReputationGuardian(businessName: string) {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { calculateConversionRate, sortCalendarTasks } from "@/lib/crm/logic";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createSessionSupabaseClient as createServerSupabaseClient } from "@/lib/supabase/server";
 
 type LeadRow = { id: string; name: string; city: string | null; commercial_status: string; created_at: string };
 type RelatedLead = { id: string; name: string; deleted_at: string | null; archived_at: string | null };

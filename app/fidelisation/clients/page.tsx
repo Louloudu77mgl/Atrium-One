@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { Header } from "@/components/Header";
+import { PageContentSkeleton } from "@/components/Skeleton";
 import { Sidebar } from "@/components/Sidebar";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { appShellStyles } from "@/lib/design-system";
@@ -13,7 +15,7 @@ export default async function ClientsDatabasePage() {
   const { reviews, merchant, googleConnection } = await getAppShellData({ reviews: "shell" });
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
-  const { customers } = await getRcuDashboardData(merchant);
+  const dataPromise = getRcuDashboardData(merchant);
 
   return (
     <div className={appShellStyles.page}>
@@ -21,9 +23,16 @@ export default async function ClientsDatabasePage() {
       <div className={appShellStyles.pageInner}>
         <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
         <main className={appShellStyles.content}>
-          <ClientsDatabaseClient customers={customers} />
+          <Suspense fallback={<PageContentSkeleton variant="table" />}>
+            <ClientsPageContent dataPromise={dataPromise} />
+          </Suspense>
         </main>
       </div>
     </div>
   );
+}
+
+async function ClientsPageContent({ dataPromise }: { dataPromise: ReturnType<typeof getRcuDashboardData> }) {
+  const { customers } = await dataPromise;
+  return <ClientsDatabaseClient customers={customers} />;
 }

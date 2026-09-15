@@ -34,6 +34,8 @@ export function RcuPosterStudio({
   const [renderError, setRenderError] = useState<string | null>(null);
   const [rendering, setRendering] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [printUrl, setPrintUrl] = useState<string | null>(null);
 
   const document = useMemo(
     () => createRcuPosterDocument({ form, origin, merchant, brandSettings, format: "a4" }),
@@ -83,7 +85,7 @@ export function RcuPosterStudio({
         fileName: `affiche-rcu-${form.slug}-a4.png`,
         transparentBackground: false
       };
-      const url = await renderDocumentToDataUrl(document, settings);
+      const url = await renderDocumentToDataUrl(document, settings, { scale: 2 });
       const link = window.document.createElement("a");
       link.href = url;
       link.download = settings.fileName;
@@ -93,8 +95,33 @@ export function RcuPosterStudio({
     }
   }
 
+  async function printPoster() {
+    setPrinting(true);
+    try {
+      const url = await renderDocumentToDataUrl(document, {
+        format: "png",
+        jpegQuality: 0.92,
+        fileName: `affiche-rcu-${form.slug}-a4.png`,
+        transparentBackground: false
+      }, { scale: 2 });
+      const image = new Image();
+      image.src = url;
+      await image.decode().catch(() => undefined);
+      setPrintUrl(url);
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
+      window.print();
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
+      <style>{`@page{size:A4 portrait;margin:0}@media print{body{background:#fff!important}.rcu-poster-screen{display:none!important}.rcu-poster-print{display:block!important;position:fixed;inset:0;width:210mm;height:297mm;background:#fff}.rcu-poster-print img{display:block;width:210mm;height:297mm;object-fit:contain}}`}</style>
+      <div className="rcu-poster-print hidden" aria-hidden="true">
+        {printUrl || previewUrl ? <img src={printUrl ?? previewUrl ?? ""} alt="" /> : null}
+      </div>
+      <div className="rcu-poster-screen space-y-6">
       <section className={surfaceStyles.section}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -105,10 +132,10 @@ export function RcuPosterStudio({
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={downloadPng} disabled={exporting || rendering} className={buttonStyles.primary}>
-              {exporting ? "Export…" : "Télécharger en PNG"}
+              {exporting ? "Export…" : "Télécharger en PNG · 300 dpi"}
             </button>
-            <button type="button" onClick={() => window.print()} className={buttonStyles.secondary}>
-              Imprimer
+            <button type="button" onClick={() => void printPoster()} disabled={printing || rendering} className={buttonStyles.secondary}>
+              {printing ? "Préparation…" : "Imprimer en A4"}
             </button>
             <Link href={`/rcu/${form.slug}`} className={buttonStyles.tertiary}>
               Ouvrir la landing
@@ -121,7 +148,7 @@ export function RcuPosterStudio({
         <section className={surfaceStyles.section}>
           <div className="inline-flex rounded-full bg-[#F0E8FF] px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-[#5B2A9E]">Affiche RCU · A4</div>
           <h3 className={`${typographyStyles.h3} mt-4`}>Prête à imprimer</h3>
-          <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Le format est verrouillé en A4 pour garantir une impression nette en vitrine, sur comptoir ou près de la caisse.</p>
+          <p className="mt-2 text-sm leading-6 text-[var(--color-text-muted)]">Le format est verrouillé en A4. Le téléchargement est rendu en 2480 × 3508 px, adapté à une impression nette en vitrine, sur comptoir ou près de la caisse.</p>
           <div className="mt-6 rounded-[20px] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-4">
             <div className="text-sm font-black text-[var(--color-text)]">Support d’impression uniquement</div>
             <p className="mt-2 text-sm text-[var(--color-text-muted)]">
@@ -134,7 +161,7 @@ export function RcuPosterStudio({
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h3 className={typographyStyles.h3}>Prévisualisation</h3>
-              <p className="mt-1 text-sm text-[var(--color-text-muted)]">Aperçu du visuel généré à partir du moteur de design social.</p>
+              <p className="mt-1 text-sm text-[var(--color-text-muted)]">Une composition éditoriale inspirée des e-mails AtriumOne et personnalisée avec votre charte.</p>
             </div>
           </div>
           <div className="rounded-[32px] bg-[var(--color-surface-subtle)] p-4">
@@ -152,6 +179,7 @@ export function RcuPosterStudio({
           </div>
         </section>
       </section>
+      </div>
     </div>
   );
 }

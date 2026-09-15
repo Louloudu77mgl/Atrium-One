@@ -16,6 +16,7 @@ const instructions = `Tu es Hans, l'architecte d'automatisations d'AtriumOne. Tr
 Tu dois comprendre précisément : l'événement déclencheur, la cadence, les seuils, les conditions, les branches Oui/Non, les actions, leur contenu et le niveau d'autonomie demandé. Ne remplace jamais la demande par un template générique. Les mots « automatiquement », « sans validation » ou « publie directement » imposent mode=automatic. Les formulations « prépare », « brouillon », « je valide », « avec mon accord » ou « ne publie rien sans mon accord » imposent mode=semi_automatic ou draft_only.
 
 Blocs réellement disponibles :
+- new_week : début d'une nouvelle semaine pour piloter le calendrier Instagram. config={posts_per_week:number de 1 à 7}.
 - new_customer : première inscription d'un client au RCU.
 - new_visit : nouvelle visite RCU validée.
 - new_reward : nouvelle récompense gagnée.
@@ -69,7 +70,7 @@ Règles de construction :
 6. Toute condition possède exactement une branche yes et une branche no. Les autres liaisons utilisent default.
 7. Respecte les nombres, fréquences, tons, sujets et messages explicitement demandés.
 8. Utilise mode=automatic uniquement quand le commerçant demande réellement l'exécution sans validation.
-9. Pour une demande de SMS, webhook, Facebook, délai ou planification non disponible, conserve le déclencheur et les conditions demandés puis utilise notify_merchant comme relais opérationnel au point exact où l'action devrait intervenir. Pour une cadence sociale sans déclencheur compatible, choisis l'événement RCU le plus cohérent avec le contexte et indique cette adaptation.
+9. Pour une demande Instagram hebdomadaire, utilise new_week avec le nombre demandé, puis prepare_instagram, schedule_instagram et publish_instagram. Pour une demande de SMS, webhook, Facebook, délai ou planification non disponible, conserve le déclencheur et les conditions demandés puis utilise notify_merchant comme relais opérationnel au point exact où l'action devrait intervenir.
 10. title et summary décrivent le flow réellement construit. understanding reformule en une ou deux phrases ce que tu as compris. assumptions contient les choix ou adaptations nécessaires. warnings reste court et ne doit jamais empêcher la création du flow.
 
 Format JSON attendu : {"title":"...","summary":"...","channel":"...","understanding":"...","assumptions":[],"warnings":[],"nodes":[{"key":"trigger","type":"new_customer","title":"...","config":{},"mode":"automatic"}],"edges":[{"source":"trigger","target":"condition","branch":"default","label":""}]}.`;
@@ -180,10 +181,13 @@ function buildClosestFallbackBlueprint(prompt: string, theme: string) {
   }
 
   if (normalized.includes("instagram") || normalized.includes("publication") || normalized.includes("post")) {
-    const trigger = normalized.includes("récompense") || normalized.includes("fidel") ? "new_reward" : normalized.includes("inscri") || normalized.includes("nouveau client") ? "new_customer" : "new_visit";
+    const weekly = normalized.includes("semaine") || normalized.includes("hebdo");
+    const requestedCount = Math.max(1, Math.min(7, Number(normalized.match(/([1-7])\s*(?:post|publication)/)?.[1] ?? 2)));
+    const trigger = weekly ? "new_week" : normalized.includes("récompense") || normalized.includes("fidel") ? "new_reward" : normalized.includes("inscri") || normalized.includes("nouveau client") ? "new_customer" : "new_visit";
     const nodes = [
-      { key: "trigger", type: trigger, title: trigger === "new_reward" ? "Lorsqu’une récompense est gagnée" : trigger === "new_customer" ? "Lorsqu’un client s’inscrit" : "Lorsqu’une visite est validée", config: {} },
+      { key: "trigger", type: trigger, title: trigger === "new_week" ? "Au début de chaque semaine" : trigger === "new_reward" ? "Lorsqu’une récompense est gagnée" : trigger === "new_customer" ? "Lorsqu’un client s’inscrit" : "Lorsqu’une visite est validée", config: weekly ? { posts_per_week: requestedCount } : {} },
       { key: "prepare", type: "prepare_instagram", title: "Hans prépare la publication demandée", config: { theme: prompt.slice(0, 300) }, mode: automatic ? "automatic" : "semi_automatic" },
+      ...(weekly ? [{ key: "schedule", type: "schedule_instagram", title: "Répartir les publications dans la semaine", config: { delay_hours: 0 }, mode: "automatic" }] : []),
       automatic
         ? { key: "finish", type: "publish_instagram", title: "Publier sur Instagram", config: {}, mode: "automatic" }
         : { key: "finish", type: "notify_merchant", title: "Prévenir que la publication est prête", config: { message: "Votre publication Instagram est prête à valider." }, mode: "automatic" }
@@ -196,7 +200,9 @@ function buildClosestFallbackBlueprint(prompt: string, theme: string) {
       assumptions: trigger === "new_visit" ? ["La demande ne précisait pas de déclencheur compatible ; Hans utilise une nouvelle visite RCU."] : [],
       warnings: [],
       nodes,
-      edges: [{ source: "trigger", target: "prepare", branch: "default" }, { source: "prepare", target: "finish", branch: "default" }]
+      edges: weekly
+        ? [{ source: "trigger", target: "prepare", branch: "default" }, { source: "prepare", target: "schedule", branch: "default" }, { source: "schedule", target: "finish", branch: "default" }]
+        : [{ source: "trigger", target: "prepare", branch: "default" }, { source: "prepare", target: "finish", branch: "default" }]
     });
   }
 

@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { Header } from "@/components/Header";
+import { PageContentSkeleton } from "@/components/Skeleton";
 import { Sidebar } from "@/components/Sidebar";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { appShellStyles } from "@/lib/design-system";
@@ -13,7 +15,7 @@ export default async function RcuPage() {
   const { reviews, merchant, googleConnection } = await getAppShellData({ reviews: "shell" });
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
-  const rcuData = await getRcuDashboardData(merchant);
+  const dataPromise = getRcuDashboardData(merchant);
 
   return (
     <div className={appShellStyles.page}>
@@ -21,9 +23,22 @@ export default async function RcuPage() {
       <div className={appShellStyles.pageInner}>
         <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
         <main className={appShellStyles.content}>
-          <RcuClient merchant={merchant} customers={rcuData.customers} forms={rcuData.forms} />
+          <Suspense fallback={<PageContentSkeleton variant="campaigns" />}>
+            <RcuPageContent dataPromise={dataPromise} merchant={merchant} />
+          </Suspense>
         </main>
       </div>
     </div>
   );
+}
+
+async function RcuPageContent({
+  dataPromise,
+  merchant
+}: {
+  dataPromise: ReturnType<typeof getRcuDashboardData>;
+  merchant: Awaited<ReturnType<typeof getAppShellData>>["merchant"];
+}) {
+  const rcuData = await dataPromise;
+  return <RcuClient merchant={merchant} customers={rcuData.customers} forms={rcuData.forms} />;
 }

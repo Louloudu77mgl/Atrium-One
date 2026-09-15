@@ -22,10 +22,10 @@ async function triggerScheduledPublications() {
   if (!cronSecret || cronRunning) return;
   cronRunning = true;
   try {
-    for (const endpoint of ["social-publish", "emailing-send"]) {
+    for (const endpoint of ["social-automation", "social-publish", "emailing-send"]) {
       const response = await fetch(`${appOrigin}/api/cron/${endpoint}`, {
         headers: { Authorization: `Bearer ${cronSecret}` },
-        signal: AbortSignal.timeout(45_000)
+        signal: AbortSignal.timeout(endpoint === "social-automation" ? 300_000 : 45_000)
       });
       const payload = await response.json();
       if (!response.ok) {

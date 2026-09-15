@@ -29,12 +29,14 @@ export function EmailingClient({ merchant, brand, subscribers, initialCampaigns,
   const [campaigns, setCampaigns] = useState(initialCampaigns);
   const [editingCampaign, setEditingCampaign] = useState<EmailCampaignRecord | null>(null);
   const [notice, setNotice] = useState("");
+  const shouldAutoRefresh = campaigns.some((campaign) => campaign.status === "scheduled" || campaign.status === "sending");
 
   useEffect(() => {
     setCampaigns(initialCampaigns);
   }, [initialCampaigns]);
 
   useEffect(() => {
+    if (!shouldAutoRefresh) return;
     const refresh = () => {
       if (document.visibilityState === "visible" && !wizardOpen) router.refresh();
     };
@@ -44,7 +46,7 @@ export function EmailingClient({ merchant, brand, subscribers, initialCampaigns,
       window.clearInterval(interval);
       window.removeEventListener("focus", refresh);
     };
-  }, [router, wizardOpen]);
+  }, [router, shouldAutoRefresh, wizardOpen]);
   const totals = useMemo(() => {
     const sent = campaigns.reduce((sum, campaign) => sum + campaign.sent_count, 0);
     const opens = campaigns.reduce((sum, campaign) => sum + campaign.open_count, 0);

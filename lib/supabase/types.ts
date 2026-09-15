@@ -218,6 +218,122 @@ export type Database = {
           }
         ];
       };
+      social_recommendation_usages: {
+        Row: {
+          id: string;
+          merchant_id: string;
+          theme_key: string;
+          source_type: "positive_review" | "negative_review" | "local_event" | "calendar" | "editorial";
+          source_label: string;
+          recommendation_title: string;
+          event_date: string | null;
+          status: "reserved" | "used" | "scheduled" | "published";
+          reservation_token: string;
+          social_post_id: string | null;
+          reserved_at: string;
+          used_at: string | null;
+          scheduled_at: string | null;
+          published_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          merchant_id: string;
+          theme_key: string;
+          source_type: "positive_review" | "negative_review" | "local_event" | "calendar" | "editorial";
+          source_label: string;
+          recommendation_title: string;
+          event_date?: string | null;
+          status?: "reserved" | "used" | "scheduled" | "published";
+          reservation_token: string;
+          social_post_id?: string | null;
+          reserved_at?: string;
+          used_at?: string | null;
+          scheduled_at?: string | null;
+          published_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          merchant_id?: string;
+          theme_key?: string;
+          source_type?: "positive_review" | "negative_review" | "local_event" | "calendar" | "editorial";
+          source_label?: string;
+          recommendation_title?: string;
+          event_date?: string | null;
+          status?: "reserved" | "used" | "scheduled" | "published";
+          reservation_token?: string;
+          social_post_id?: string | null;
+          reserved_at?: string;
+          used_at?: string | null;
+          scheduled_at?: string | null;
+          published_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "social_recommendation_usages_merchant_id_fkey";
+            columns: ["merchant_id"];
+            isOneToOne: false;
+            referencedRelation: "merchants";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "social_recommendation_usages_social_post_id_fkey";
+            columns: ["social_post_id"];
+            isOneToOne: true;
+            referencedRelation: "social_posts";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      social_automation_weekly_runs: {
+        Row: {
+          id: string;
+          merchant_id: string;
+          week_start: string;
+          status: "running" | "completed" | "failed";
+          run_token: string;
+          started_at: string;
+          completed_at: string | null;
+          error_message: string | null;
+          created_posts: number;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          merchant_id: string;
+          week_start: string;
+          status?: "running" | "completed" | "failed";
+          run_token: string;
+          started_at?: string;
+          completed_at?: string | null;
+          error_message?: string | null;
+          created_posts?: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          merchant_id?: string;
+          week_start?: string;
+          status?: "running" | "completed" | "failed";
+          run_token?: string;
+          started_at?: string;
+          completed_at?: string | null;
+          error_message?: string | null;
+          created_posts?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "social_automation_weekly_runs_merchant_id_fkey";
+            columns: ["merchant_id"];
+            isOneToOne: false;
+            referencedRelation: "merchants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       social_posts: {
         Row: {
           id: string;
@@ -1327,6 +1443,8 @@ export type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 export type GeneratedReplyRow = Database["public"]["Tables"]["generated_replies"]["Row"];
 export type ReviewInsightRow = Database["public"]["Tables"]["review_insights"]["Row"];
 export type SocialPostIdeaRow = Database["public"]["Tables"]["social_post_ideas"]["Row"];
+export type SocialRecommendationUsageRow = Database["public"]["Tables"]["social_recommendation_usages"]["Row"];
+export type SocialAutomationWeeklyRunRow = Database["public"]["Tables"]["social_automation_weekly_runs"]["Row"];
 export type SocialPostRow = Database["public"]["Tables"]["social_posts"]["Row"];
 export type MerchantMediaAssetRow = Database["public"]["Tables"]["merchant_media_assets"]["Row"];
 export type DesignTemplateRow = Database["public"]["Tables"]["design_templates"]["Row"];

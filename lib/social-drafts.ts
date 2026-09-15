@@ -1,12 +1,18 @@
 import { redirect } from "next/navigation";
 import { withRecommendationOrigin } from "@/lib/social-recommendation-shared";
+import {
+  attachSocialRecommendationToPost,
+  releaseSocialRecommendationReservation,
+  reserveSocialRecommendation
+} from "@/lib/social-recommendation-usage";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
 import { getMerchant } from "@/lib/merchants";
 import { composeAndStoreSocialPostVisual, generateAndStoreSocialVisual } from "@/lib/social-visuals";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { MerchantRow, SocialPostRow } from "@/lib/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 
 export type DraftIdeaInput = {
   platform?: "instagram" | "facebook";
@@ -151,12 +157,14 @@ function validateDraft(raw: unknown, fallback: GeneratedDraftContent): Generated
 
 export async function generateDraftContent({
   merchant,
-  idea
+  idea,
+  supabaseClient
 }: {
   merchant: MerchantRow;
   idea: DraftIdeaInput;
+  supabaseClient?: SupabaseClient<Database>;
 }) {
-  const brand = await getBrandSettings(merchant);
+  const brand = await getBrandSettings(merchant, supabaseClient);
   const fallback = fallbackDraft(idea, merchant.business_name);
   const openAiApiKey = process.env.OPENAI_API_KEY;
 
@@ -223,82 +231,98 @@ export async function createSocialDraftFromIdea({
     redirect("/login");
   }
 
-  const { draft, brand } = await generateDraftContent({ merchant: currentMerchant, idea });
-  let imageUrl: string | null = null;
-  let visualUrl: string | null = null;
-  let errorMessage: string | null = null;
+  const reservation = await reserveSocialRecommendation({ merchantId: currentMerchant.id, idea, supabaseClient: supabase });
 
   try {
-    imageUrl = (await generateAndStoreSocialVisual({
-      merchant: currentMerchant,
-      title: draft.title,
-      caption: draft.caption,
-      visualPrompt: draft.visualPrompt,
-      source: [idea.source, idea.angle, idea.category, idea.localEvent, idea.eventDate, idea.seasonalMoment, idea.visualDirection].filter(Boolean).join(" · ") || null,
-      styleOverride: brand?.visual_style ?? null
-    })).imageUrl;
-  } catch (error) {
-    errorMessage = getSocialVisualFallbackMessage(error);
-  }
+    const { draft, brand } = await generateDraftContent({ merchant: currentMerchant, idea, supabaseClient: supabase });
+    let imageUrl: string | null = null;
+    let visualUrl: string | null = null;
+    let errorMessage: string | null = null;
 
-  if (imageUrl) {
     try {
-      visualUrl = await composeAndStoreSocialPostVisual({
+      imageUrl = (await generateAndStoreSocialVisual({
         merchant: currentMerchant,
-        imageUrl,
-        visualHook: draft.visualHook,
-        subtitle: draft.visualSubtitle
-      });
-    } catch {
-      errorMessage = errorMessage ?? "Le visuel est disponible, mais sa version finale avec texte n’a pas pu être préparée.";
+        title: draft.title,
+        caption: draft.caption,
+        visualPrompt: draft.visualPrompt,
+        source: [idea.source, idea.angle, idea.category, idea.localEvent, idea.eventDate, idea.seasonalMoment, idea.visualDirection].filter(Boolean).join(" · ") || null,
+        styleOverride: brand?.visual_style ?? null,
+        supabaseClient: supabase
+      })).imageUrl;
+    } catch (error) {
+      errorMessage = getSocialVisualFallbackMessage(error);
     }
-  }
 
-  const designDocument = createGeneratedDesignDocument({
-    title: draft.title,
-    caption: draft.caption,
-    visualHook: draft.visualHook,
-    visualSubtitle: draft.visualSubtitle,
-    imageUrl,
-    merchant: currentMerchant,
-    brandSettings: brand
-  });
-  const builderPreviewState = serializeDocumentToBuilderState(designDocument);
-  const visualHtml = renderBuilderStateToHtml(builderPreviewState);
-  const now = new Date().toISOString();
+    if (imageUrl) {
+      try {
+        visualUrl = await composeAndStoreSocialPostVisual({
+          merchant: currentMerchant,
+          imageUrl,
+          visualHook: draft.visualHook,
+          subtitle: draft.visualSubtitle,
+          supabaseClient: supabase
+        });
+      } catch {
+        errorMessage = errorMessage ?? "Le visuel est disponible, mais sa version finale avec texte n’a pas pu être préparée.";
+      }
+    }
 
-  const { data, error } = await supabase
-    .from("social_posts")
-    .insert({
-      merchant_id: currentMerchant.id,
-      platform: idea.platform ?? "instagram",
+    const designDocument = createGeneratedDesignDocument({
       title: draft.title,
       caption: draft.caption,
-      cta: draft.cta,
-      hashtags: draft.hashtags,
-      visual_url: visualUrl,
-      image_url: imageUrl,
-      template_id: null,
-      visual_text: draft.visualHook,
-      visual_html: visualHtml,
-      builder_state: withRecommendationOrigin(designDocument, idea),
-      error_message: errorMessage,
-      primary_color: brand?.primary_color ?? "#4C1D95",
-      secondary_color: brand?.secondary_color ?? "#F3E8FF",
-      accent_color: brand?.accent_color ?? "#A855F7",
-      status: "draft",
-      last_saved_at: now,
-      updated_at: now
-    })
-    .select("*")
-    .single();
+      visualHook: draft.visualHook,
+      visualSubtitle: draft.visualSubtitle,
+      imageUrl,
+      merchant: currentMerchant,
+      brandSettings: brand
+    });
+    const builderPreviewState = serializeDocumentToBuilderState(designDocument);
+    const visualHtml = renderBuilderStateToHtml(builderPreviewState);
+    const now = new Date().toISOString();
 
-  if (error) {
-    throw new Error(error.message);
+    const { data, error } = await supabase
+      .from("social_posts")
+      .insert({
+        merchant_id: currentMerchant.id,
+        platform: idea.platform ?? "instagram",
+        title: draft.title,
+        caption: draft.caption,
+        cta: draft.cta,
+        hashtags: draft.hashtags,
+        visual_url: visualUrl,
+        image_url: imageUrl,
+        template_id: null,
+        visual_text: draft.visualHook,
+        visual_html: visualHtml,
+        builder_state: withRecommendationOrigin(designDocument, idea),
+        error_message: errorMessage,
+        primary_color: brand?.primary_color ?? "#4C1D95",
+        secondary_color: brand?.secondary_color ?? "#F3E8FF",
+        accent_color: brand?.accent_color ?? "#A855F7",
+        status: "draft",
+        last_saved_at: now,
+        updated_at: now
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    try {
+      await attachSocialRecommendationToPost({ reservation, post: data, supabaseClient: supabase });
+    } catch (attachError) {
+      await supabase.from("social_posts").delete().eq("id", data.id).eq("merchant_id", currentMerchant.id);
+      throw attachError;
+    }
+
+    return {
+      post: data as SocialPostRow,
+      imageUrl: visualUrl ?? imageUrl
+    };
+  } catch (error) {
+    await releaseSocialRecommendationReservation(reservation, supabase);
+    throw error;
   }
-
-  return {
-    post: data as SocialPostRow,
-    imageUrl: visualUrl ?? imageUrl
-  };
 }

@@ -16,6 +16,7 @@ import type { Review } from "@/lib/mock-data";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
 import type { MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { getUserErrorMessage } from "@/lib/user-feedback";
+import type { SocialPostListRow } from "@/lib/social-posts";
 import { badgeStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 
 type InstagramConnectionLike = {
@@ -56,7 +57,7 @@ export function SocialPageClient({
   instagramSaved: boolean;
   instagramConnectRequested: boolean;
   cadence: { postsPerCycle: number; cycleWeeks: number };
-  posts: SocialPostRow[];
+  posts: SocialPostListRow[];
   ideas: ReviewSocialPostIdea[];
 }) {
   const router = useRouter();
@@ -83,12 +84,13 @@ export function SocialPageClient({
 
   useEffect(() => {
     const renderedWeek = recommendationWeek();
+    const hasPendingPosts = posts.some((post) => post.status === "scheduled" || post.status === "publishing");
     const refresh = () => {
-      if (document.visibilityState === "visible" && !busyId && !instagramModalOpen) router.refresh();
+      if (document.visibilityState === "visible" && !busyId && !instagramModalOpen && (hasPendingPosts || recommendationWeek() !== renderedWeek)) router.refresh();
     };
     window.addEventListener("focus", refresh);
     const timer = window.setInterval(() => {
-      if (posts.some((post) => post.status === "scheduled" || post.status === "publishing") || recommendationWeek() !== renderedWeek) refresh();
+      refresh();
     }, 60_000);
     return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
   }, [router, busyId, instagramModalOpen, posts]);
@@ -214,7 +216,6 @@ export function SocialPageClient({
         showToast("Publication en cours sur Instagram…", "success");
       } else {
         showToast("Post publié sur Instagram", "success");
-        router.refresh();
       }
     } catch (error) {
       showToast(getUserErrorMessage(error, "Publication impossible."), "error");
@@ -223,7 +224,7 @@ export function SocialPageClient({
     }
   }
 
-  async function downloadPost(post: SocialPostRow) {
+  async function downloadPost(post: SocialPostListRow) {
     const sourceUrl = post.visual_url ?? post.image_url;
     if (!sourceUrl) {
       showToast("Aucun visuel à télécharger pour ce post.", "error");
@@ -361,7 +362,7 @@ export function SocialPageClient({
       if (!popup.closed) popup.close();
 
       if (status === "connected") {
-        window.location.replace("/social?saved=instagram");
+        router.replace("/social?saved=instagram");
         return;
       }
 
@@ -1049,7 +1050,7 @@ function formatSocialDate(value: string) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
-function getPostThumbBackground(post: SocialPostRow, businessType?: string | null) {
+function getPostThumbBackground(post: SocialPostListRow, businessType?: string | null) {
   const base = `${post.title}-${businessType ?? ""}`.toLowerCase();
   if (base.includes("fleur") || base.includes("bouquet")) return "linear-gradient(135deg,#E8B4C8,#C97B9A)";
   if (base.includes("avis") || base.includes("attaque")) return "linear-gradient(135deg,#7C4DCB,#4B2E83)";
@@ -1065,7 +1066,7 @@ function getPostEmoji(title: string) {
   return "✨";
 }
 
-function getPostStatusClass(status: SocialPostRow["status"], post: SocialPostRow, currentTime: number) {
+function getPostStatusClass(status: SocialPostRow["status"], post: SocialPostListRow, currentTime: number) {
   if (isPublicationPending(post, currentTime)) return "bg-[#FBF0E1] text-[#9A5A16]";
   if (status === "failed") return "bg-[#FDECEC] text-[#B42318]";
   if (status === "publishing") return "bg-[#FBF0E1] text-[#9A5A16]";
@@ -1076,13 +1077,13 @@ function getPostStatusClass(status: SocialPostRow["status"], post: SocialPostRow
   return "bg-[#F2F1F6] text-[#6E6B80]";
 }
 
-function getPostCategory(post: SocialPostRow): PostCategory {
+function getPostCategory(post: SocialPostListRow): PostCategory {
   if (hasPublicationStarted(post) || post.status === "published") return "published";
   if (post.status === "scheduled" || post.status === "publishing" || post.status === "failed") return "scheduled";
   return "draft";
 }
 
-function getVisiblePostStatus(post: SocialPostRow, currentTime: number) {
+function getVisiblePostStatus(post: SocialPostListRow, currentTime: number) {
   if (isPublicationPending(post, currentTime)) return "En cours de publication…";
   if (post.status === "failed") return "Échec · à replanifier";
   if (hasPublicationStarted(post) || post.status === "published") return "Publié";
@@ -1090,11 +1091,11 @@ function getVisiblePostStatus(post: SocialPostRow, currentTime: number) {
   return getPostStatusLabel(post.status);
 }
 
-function hasPublicationStarted(post: SocialPostRow) {
+function hasPublicationStarted(post: SocialPostListRow) {
   return Boolean(post.published_at);
 }
 
-function hasFinalPng(post: SocialPostRow) {
+function hasFinalPng(post: SocialPostListRow) {
   return post.visual_html === "atrium-final-png-v1" && Boolean(post.visual_url);
 }
 
@@ -1104,7 +1105,7 @@ function buildEditorActionHref(postId: string, action: "download" | "publish" | 
   return `/social/editor/${postId}?${params.toString()}`;
 }
 
-function isPublicationPending(post: SocialPostRow, currentTime: number) {
+function isPublicationPending(post: SocialPostListRow, currentTime: number) {
   return hasPublicationStarted(post) && new Date(post.published_at!).getTime() > currentTime;
 }
 

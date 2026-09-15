@@ -10,6 +10,29 @@ export type SocialPostSummary = Pick<
   "id" | "platform" | "title" | "caption" | "status" | "builder_state" | "created_at" | "updated_at" | "published_at"
 >;
 
+export type SocialPostListRow = Pick<
+  SocialPostRow,
+  | "id"
+  | "merchant_id"
+  | "platform"
+  | "title"
+  | "caption"
+  | "source"
+  | "status"
+  | "created_at"
+  | "updated_at"
+  | "scheduled_at"
+  | "published_at"
+  | "error_message"
+  | "failure_code"
+  | "visual_url"
+  | "image_url"
+  | "visual_html"
+  | "builder_state"
+  | "visual_text"
+  | "template_id"
+>;
+
 export async function getSocialPostSummaries(merchant?: MerchantRow | null, client?: SupabaseClient<Database>): Promise<SocialPostSummary[]> {
   const currentMerchant = merchant ?? (await getMerchant());
   if (!currentMerchant) return [];
@@ -25,7 +48,10 @@ export async function getSocialPostSummaries(merchant?: MerchantRow | null, clie
       .order("id", { ascending: false })
       .range(offset, offset + pageSize - 1);
     if (error) {
-      if (error.message.includes("Could not find the table") || error.message.includes("schema cache")) return [];
+      if (error.message.includes("Could not find the table")) return [];
+      if (error.message.includes("schema cache") || error.message.includes("does not exist")) {
+        return getSocialPosts(currentMerchant, supabase);
+      }
       throw new Error(error.message);
     }
     posts.push(...data);
@@ -49,6 +75,33 @@ export async function getSocialPosts(merchant?: MerchantRow | null, client?: Sup
       .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + pageSize - 1);
     if (error) {
       if (error.message.includes("Could not find the table") || error.message.includes("schema cache")) return [];
+      throw new Error(error.message);
+    }
+    posts.push(...data);
+    if (data.length < pageSize) break;
+  }
+  return posts.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+}
+
+export async function getSocialPostList(merchant?: MerchantRow | null, client?: SupabaseClient<Database>): Promise<SocialPostListRow[]> {
+  const currentMerchant = merchant ?? (await getMerchant());
+  if (!currentMerchant) return [];
+
+  const supabase = client ?? await createServerSupabaseClient();
+  const posts: SocialPostListRow[] = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.from("social_posts")
+      .select("id,merchant_id,platform,title,caption,source,status,created_at,updated_at,scheduled_at,published_at,error_message,failure_code,visual_url,image_url,visual_html,builder_state,visual_text,template_id")
+      .eq("merchant_id", currentMerchant.id)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) {
+      if (error.message.includes("Could not find the table")) return [];
+      if (error.message.includes("schema cache") || error.message.includes("does not exist")) {
+        return getSocialPosts(currentMerchant, supabase);
+      }
       throw new Error(error.message);
     }
     posts.push(...data);

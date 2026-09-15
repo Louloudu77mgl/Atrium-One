@@ -5,11 +5,19 @@ import { getStoredReviewInsights } from "@/lib/review-insights-server";
 import { getReviews } from "@/lib/reviews";
 import { getTopSocialRecommendations } from "@/lib/social-recommendations";
 import { getSocialPosts } from "@/lib/social-posts";
-import { getRecommendationOrigin, readRecommendationOrigin, withRecommendationOrigin } from "@/lib/social-recommendation-shared";
+import { getRecommendationOrigin, readRecommendationOrigin, recommendationWeek, withRecommendationOrigin } from "@/lib/social-recommendation-shared";
+import {
+  RecommendationAlreadyUsedError,
+  attachSocialRecommendationToPost,
+  releaseSocialRecommendationForPost,
+  releaseSocialRecommendationReservation,
+  reserveSocialRecommendation,
+  syncSocialRecommendationLifecycleForPost
+} from "@/lib/social-recommendation-usage";
 import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
-import { buildAutomationSlots, getMaxPostsForCycle, normalizeSocialAutomationWindow } from "@/lib/social-automation-shared";
+import { buildAutomationSlots, normalizeSocialAutomationWindow } from "@/lib/social-automation-shared";
 import { composeAndStoreSocialPostVisual, generateAndStoreSocialVisual } from "@/lib/social-visuals";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -17,29 +25,32 @@ import type { Database, MerchantAutomationSettingsRow, MerchantRow, SocialPostRo
 
 export async function ensureAutomatedSocialDrafts({
   merchant,
-  settings
+  settings,
+  supabaseClient
 }: {
   merchant: MerchantRow;
   settings: Partial<MerchantAutomationSettingsRow>;
+  supabaseClient?: SupabaseClient<Database>;
 }) {
   if (!settings.social_auto_publish_enabled) {
     return [];
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = supabaseClient ?? await createServerSupabaseClient();
   const liveConnection = settings.social_auto_publish_live
     ? (await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase })).connection
     : null;
   const window = normalizeSocialAutomationWindow(settings);
   const start = new Date();
   start.setHours(0, 0, 0, 0);
+  const cycleStart = new Date(`${recommendationWeek(start)}T00:00:00.000Z`);
   const { data: existingPosts, error: existingError } = await supabase
     .from("social_posts")
     .select("*")
     .eq("merchant_id", merchant.id)
     .eq("source", "automation")
-    .in("status", ["draft", "scheduled"])
-    .gte("scheduled_at", start.toISOString())
+    .in("status", ["draft", "scheduled", "failed"])
+    .gte("scheduled_at", cycleStart.toISOString())
     .order("scheduled_at", { ascending: true });
 
   if (existingError) {
@@ -48,30 +59,35 @@ export async function ensureAutomatedSocialDrafts({
 
   const currentPosts = existingPosts ?? [];
   if (currentPosts.length > window.postsPerCycle) {
-    const idsToDelete = currentPosts.slice(window.postsPerCycle).map((post) => post.id);
-    if (idsToDelete.length > 0) {
-      await supabase.from("social_posts").delete().in("id", idsToDelete);
+    for (const post of currentPosts.slice(window.postsPerCycle)) {
+      await releaseSocialRecommendationForPost({ merchantId: merchant.id, postId: post.id, supabaseClient: supabase });
+      const { error: deletionError } = await supabase.from("social_posts").delete().eq("id", post.id).eq("merchant_id", merchant.id);
+      if (deletionError) {
+        await syncSocialRecommendationLifecycleForPost(post, supabase);
+        throw new Error(deletionError.message);
+      }
     }
   }
 
   const keptPosts = currentPosts.slice(0, window.postsPerCycle);
+  await Promise.all(keptPosts.map((post) => syncSocialRecommendationLifecycleForPost(post, supabase)));
   const missingCount = Math.max(0, window.postsPerCycle - keptPosts.length);
   if (missingCount === 0) {
     return keptPosts;
   }
 
-  const storedInsights = await getStoredReviewInsights(merchant);
+  const storedInsights = await getStoredReviewInsights(merchant, supabase);
   const analysis = mapInsightRow(storedInsights);
   const recentPosts = await getSocialPosts(merchant, supabase);
 
-  const reviews = await getReviews(merchant);
+  const reviews = await getReviews(merchant, supabase);
   const ideas = await getTopSocialRecommendations({
     analysis,
     reviews,
     merchant,
     posts: recentPosts ?? []
   });
-  const brand = await getBrandSettings(merchant);
+  const brand = await getBrandSettings(merchant, supabase);
   const plannedDates = buildAutomationSlots({
     cycleWeeks: window.cycleWeeks,
     postsPerCycle: window.postsPerCycle,
@@ -84,94 +100,114 @@ export async function ensureAutomatedSocialDrafts({
 
   const reservedThemes = new Set(keptPosts.map((post) => readRecommendationOrigin(post.builder_state)?.themeKey).filter(Boolean));
   const availableIdeas = ideas.filter((idea) => !reservedThemes.has(getRecommendationOrigin(idea).themeKey));
-  for (let index = 0; index < availableDates.length; index += 1) {
-    const ideaIndex = availableIdeas.findIndex((candidate) => !candidate.eventDate || candidate.eventDate >= availableDates[index].toISOString().slice(0, 10));
+  let dateIndex = 0;
+  while (dateIndex < availableDates.length && availableIdeas.length > 0) {
+    const ideaIndex = availableIdeas.findIndex((candidate) => !candidate.eventDate || candidate.eventDate >= availableDates[dateIndex].toISOString().slice(0, 10));
     if (ideaIndex < 0) break;
     const [idea] = availableIdeas.splice(ideaIndex, 1);
-    const { draft } = await generateDraftContent({
-      merchant,
-      idea: {
-        platform: "instagram",
-        title: idea.title,
-        angle: idea.angle,
-        source: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Automatisation Hans",
-        sourcePainPoint: idea.sourcePainPoint,
-        sourceStrength: idea.sourceStrength,
-        localEvent: idea.localEvent,
-        seasonalMoment: idea.seasonalMoment,
-        eventDate: idea.eventDate,
-        sourceUrl: idea.sourceUrl,
-        visualDirection: idea.visualDirection,
-        avoidTopics: (recentPosts ?? []).slice(0, 20).map((post) => `${post.title} — ${post.caption.slice(0, 140)}`)
-      }
-    });
-    let imageUrl: string | null = null;
-    let visualUrl: string | null = null;
+    const draftIdea = {
+      platform: "instagram",
+      title: idea.title,
+      angle: idea.angle,
+      source: idea.sourcePainPoint ?? idea.sourceStrength ?? idea.localEvent ?? idea.seasonalMoment ?? "Automatisation Hans",
+      sourcePainPoint: idea.sourcePainPoint,
+      sourceStrength: idea.sourceStrength,
+      localEvent: idea.localEvent,
+      seasonalMoment: idea.seasonalMoment,
+      eventDate: idea.eventDate,
+      sourceUrl: idea.sourceUrl,
+      visualDirection: idea.visualDirection,
+      avoidTopics: (recentPosts ?? []).slice(0, 20).map((post) => `${post.title} — ${post.caption.slice(0, 140)}`)
+    } satisfies Parameters<typeof reserveSocialRecommendation>[0]["idea"];
+    let reservation;
     try {
-      imageUrl = (await generateAndStoreSocialVisual({
-        merchant,
-        title: draft.title,
-        caption: draft.caption,
-        visualPrompt: draft.visualPrompt,
-        source: [idea.sourcePainPoint, idea.sourceStrength, idea.localEvent, idea.seasonalMoment, idea.angle, idea.visualDirection].filter(Boolean).join(" · ") || "Automatisation Hans",
-        styleOverride: brand?.visual_style ?? null
-      })).imageUrl;
-    } catch {
-      imageUrl = null;
+      reservation = await reserveSocialRecommendation({ merchantId: merchant.id, idea: draftIdea, supabaseClient: supabase });
+    } catch (error) {
+      if (error instanceof RecommendationAlreadyUsedError) continue;
+      throw error;
     }
-    if (imageUrl) {
-      try {
-        visualUrl = await composeAndStoreSocialPostVisual({
-          merchant,
-          imageUrl,
-          visualHook: draft.visualHook,
-          subtitle: draft.visualSubtitle
-        });
-      } catch {
-        visualUrl = null;
-      }
-    }
-    const designDocument = createGeneratedDesignDocument({
-      title: draft.title,
-      caption: draft.caption,
-      visualHook: draft.visualHook,
-      visualSubtitle: draft.visualSubtitle,
-      imageUrl,
-      merchant,
-      brandSettings: brand
-    });
-    const builderState = serializeDocumentToBuilderState(designDocument);
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("social_posts")
-      .insert({
-        merchant_id: merchant.id,
-        platform: "instagram",
-        title: draft.title,
-        caption: draft.caption,
-        cta: draft.cta,
-        hashtags: draft.hashtags,
-        visual_url: visualUrl,
-        image_url: imageUrl,
-        source: "automation",
-        status: settings.social_auto_publish_live ? "scheduled" : "draft",
-        instagram_connection_id: liveConnection?.id ?? null,
-        scheduled_at: availableDates[index].toISOString(),
-        template_id: null,
-        visual_text: draft.visualHook,
-        visual_html: renderBuilderStateToHtml(builderState),
-        builder_state: withRecommendationOrigin(designDocument, idea),
-        primary_color: brand?.primary_color ?? "#4C1D95",
-        secondary_color: brand?.secondary_color ?? "#F3E8FF",
-        accent_color: brand?.accent_color ?? "#A855F7",
-        last_saved_at: now,
-        updated_at: now
-      })
-      .select("*")
-      .single();
 
-    if (!error && data) {
+    try {
+      const { draft } = await generateDraftContent({ merchant, idea: draftIdea, supabaseClient: supabase });
+      let imageUrl: string | null = null;
+      let visualUrl: string | null = null;
+      try {
+        imageUrl = (await generateAndStoreSocialVisual({
+          merchant,
+          title: draft.title,
+          caption: draft.caption,
+          visualPrompt: draft.visualPrompt,
+          source: [idea.sourcePainPoint, idea.sourceStrength, idea.localEvent, idea.seasonalMoment, idea.angle, idea.visualDirection].filter(Boolean).join(" · ") || "Automatisation Hans",
+          styleOverride: brand?.visual_style ?? null,
+          supabaseClient: supabase
+        })).imageUrl;
+      } catch (error) {
+        if (settings.social_auto_publish_live) throw error;
+      }
+      if (imageUrl) {
+        try {
+          visualUrl = await composeAndStoreSocialPostVisual({
+            merchant,
+            imageUrl,
+            visualHook: draft.visualHook,
+            subtitle: draft.visualSubtitle,
+            supabaseClient: supabase
+          });
+        } catch (error) {
+          if (settings.social_auto_publish_live) throw error;
+        }
+      }
+      const designDocument = createGeneratedDesignDocument({
+        title: draft.title,
+        caption: draft.caption,
+        visualHook: draft.visualHook,
+        visualSubtitle: draft.visualSubtitle,
+        imageUrl,
+        merchant,
+        brandSettings: brand
+      });
+      const builderState = serializeDocumentToBuilderState(designDocument);
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("social_posts")
+        .insert({
+          merchant_id: merchant.id,
+          platform: "instagram",
+          title: draft.title,
+          caption: draft.caption,
+          cta: draft.cta,
+          hashtags: draft.hashtags,
+          visual_url: visualUrl,
+          image_url: imageUrl,
+          source: "automation",
+          status: settings.social_auto_publish_live ? "scheduled" : "draft",
+          instagram_connection_id: liveConnection?.id ?? null,
+          scheduled_at: availableDates[dateIndex].toISOString(),
+          template_id: null,
+          visual_text: draft.visualHook,
+          visual_html: renderBuilderStateToHtml(builderState),
+          builder_state: withRecommendationOrigin(designDocument, idea),
+          primary_color: brand?.primary_color ?? "#4C1D95",
+          secondary_color: brand?.secondary_color ?? "#F3E8FF",
+          accent_color: brand?.accent_color ?? "#A855F7",
+          last_saved_at: now,
+          updated_at: now
+        })
+        .select("*")
+        .single();
+
+      if (error || !data) throw new Error(error?.message ?? "La publication Instagram n’a pas pu être planifiée.");
+      try {
+        await attachSocialRecommendationToPost({ reservation, post: data, supabaseClient: supabase });
+      } catch (attachError) {
+        await supabase.from("social_posts").delete().eq("id", data.id).eq("merchant_id", merchant.id);
+        throw attachError;
+      }
       createdPosts.push(data);
+      dateIndex += 1;
+    } catch (error) {
+      await releaseSocialRecommendationReservation(reservation, supabase);
+      throw error;
     }
   }
 
@@ -207,7 +243,8 @@ export async function createTriggeredSocialDraft({
       source,
       visualDirection: editorialLens.visualDirection,
       avoidTopics: existingPosts.slice(0, 20).map((post) => `${post.title} — ${post.caption.slice(0, 140)}`)
-    }
+    },
+    supabaseClient
   });
   const generated = await generateAndStoreSocialVisual({
     merchant,

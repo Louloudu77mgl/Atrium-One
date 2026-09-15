@@ -58,8 +58,12 @@ export async function syncGoogleBusinessReviews(
     if (!response.ok) {
       const message = data.error?.message ?? "Impossible d’importer les avis Google Business.";
       const serviceDisabled = data.error?.details?.some((detail) =>
-        detail.reason === "SERVICE_DISABLED" || detail.metadata?.service === "mybusiness.googleapis.com"
+        detail.reason === "SERVICE_DISABLED"
       );
+
+      if (response.status === 403 && (message.toLowerCase().includes("insufficient authentication scopes") || data.error?.details?.some((detail) => detail.reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT"))) {
+        throw new Error("Autorisation Google Business manquante. Reconnectez Google et autorisez la gestion de vos fiches d’établissement pour importer les avis.");
+      }
 
       if (serviceDisabled) {
         throw new Error("L’API des avis Google Business (mybusiness.googleapis.com) est désactivée dans le projet Google Cloud 650116804104.");

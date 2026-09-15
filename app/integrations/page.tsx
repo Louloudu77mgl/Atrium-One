@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { Header } from "@/components/Header";
 import { GmailConnectionActions } from "@/components/GmailConnectionActions";
 import { IntegrationDisconnectButton } from "@/components/IntegrationDisconnectButton";
 import { Sidebar } from "@/components/Sidebar";
+import { PageContentSkeleton } from "@/components/Skeleton";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { getGmailConnection, isGmailConnectionReady } from "@/lib/gmail-connections";
 import { hasGmailOAuthConfig } from "@/lib/gmail-oauth";
-import { getInstagramConnection } from "@/lib/instagram-connections";
+import { getInstagramConnectionSummary } from "@/lib/instagram-connections";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
 import { getAppNotifications } from "@/lib/notifications";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
@@ -25,11 +27,37 @@ export default async function IntegrationsPage({
     getAppShellData({ reviews: "shell" })
   ]);
   const { reviews, merchant, googleConnection } = shell;
-  const [instagramConnection, gmailConnection] = merchant
-    ? await Promise.all([getInstagramConnection(merchant), getGmailConnection(merchant)])
-    : [null, null];
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
+  const dataPromise = merchant
+    ? Promise.all([getInstagramConnectionSummary(merchant), getGmailConnection(merchant)])
+    : Promise.resolve([null, null] as const);
+
+  return (
+    <div className={appShellStyles.page}>
+      <Sidebar active="integrations" merchant={merchant} counters={counters} />
+      <div className={appShellStyles.pageInner}>
+        <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
+        <main className={appShellStyles.content}>
+          <Suspense fallback={<PageContentSkeleton variant="settings" />}>
+            <IntegrationsPageContent dataPromise={dataPromise} googleConnection={googleConnection} params={params} />
+          </Suspense>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+async function IntegrationsPageContent({
+  dataPromise,
+  googleConnection,
+  params
+}: {
+  dataPromise: Promise<readonly [Awaited<ReturnType<typeof getInstagramConnectionSummary>>, Awaited<ReturnType<typeof getGmailConnection>>]>;
+  googleConnection: Awaited<ReturnType<typeof getAppShellData>>["googleConnection"];
+  params?: { error?: string; saved?: string; imported?: string; sync_error?: string };
+}) {
+  const [instagramConnection, gmailConnection] = await dataPromise;
   const instagramConfigured = hasInstagramOAuthConfig();
   const gmailConfigured = hasGmailOAuthConfig();
   const gmailConnected = isGmailConnectionReady(gmailConnection);
@@ -39,11 +67,6 @@ export default async function IntegrationsPage({
   const googleLocationConnected = Boolean(googleConnection?.google_location_id);
 
   return (
-    <div className={appShellStyles.page}>
-      <Sidebar active="integrations" merchant={merchant} counters={counters} />
-      <div className={appShellStyles.pageInner}>
-        <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
-        <main className={appShellStyles.content}>
           <div className={appShellStyles.width}>
             <section className="rounded-[28px] border border-[#E9D5FF] bg-white p-6 shadow-[0_14px_44px_rgba(76,29,149,0.08)]">
               <p className="mb-1 text-xs font-semibold uppercase tracking-[0.9px] text-[#8B7AA8]">Intégrations</p>
@@ -146,9 +169,6 @@ export default async function IntegrationsPage({
               </section>
             </div>
           </div>
-        </main>
-      </div>
-    </div>
   );
 }
 

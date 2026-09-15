@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./types";
 import { hasSupabaseEnv } from "./env";
 import { CRM_ADMIN_EMAIL, type CrmModule } from "@/lib/crm/types";
+import { ADMIN_IMPERSONATION_COOKIE } from "@/lib/crm/impersonation-constants";
 
 const publicMutationPrefixes = [
   "/auth",
@@ -71,10 +72,11 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isCrmAdmin = user.email?.toLowerCase() === CRM_ADMIN_EMAIL;
+  const isAdminImpersonating = Boolean(request.cookies.get(ADMIN_IMPERSONATION_COOKIE)?.value);
   const isCrmPath = pathname === "/crm" || pathname.startsWith("/crm/") || pathname.startsWith("/api/crm/");
   const isAuthExit = pathname === "/login" || pathname.startsWith("/auth/") || pathname === "/api/auth/logout";
 
-  if (isCrmAdmin && !isCrmPath && !isAuthExit) {
+  if (isCrmAdmin && !isAdminImpersonating && !isCrmPath && !isAuthExit) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: { code: "CRM_ADMIN_ONLY", message: "Ce compte est réservé au CRM interne." } }, { status: 403 });
     }

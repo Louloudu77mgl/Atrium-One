@@ -100,6 +100,7 @@ export function AutomationsWorkspace({
   const [deletingAutomations, setDeletingAutomations] = useState(false);
   const deletionLock = useRef(false);
   const pendingAutosave = useRef<Promise<unknown> | null>(null);
+  const autosaveReady = useRef(false);
   const [checkedAutomationIds, setCheckedAutomationIds] = useState<string[]>([]);
   const checkedAutomations = automations.filter((automation) => checkedAutomationIds.includes(automation.id));
   const allAutomationsChecked = automations.length > 0 && checkedAutomations.length === automations.length;
@@ -220,6 +221,10 @@ export function AutomationsWorkspace({
   }, [favoriteTypes, recentTypes, selectedAutomationId, storageKey, view]);
 
   useEffect(() => {
+    if (!autosaveReady.current) {
+      autosaveReady.current = true;
+      return;
+    }
     if (!merchant || !automations.length || deletingAutomations) return;
     setAutosaveLabel("Sauvegarde serveur en cours…");
     const timeout = window.setTimeout(() => {
@@ -414,27 +419,10 @@ export function AutomationsWorkspace({
       return;
     }
 
-    const hasGoogleReviewTrigger = next.nodes.some((node) => node.type === "google_review");
-    const hasReplyGeneration = next.nodes.some((node) => node.type === "generate_review_reply");
-
     setAutosaveLabel("Activation serveur en cours...");
 
     try {
-      await saveAutomationFlow(next);
-      if (hasGoogleReviewTrigger && hasReplyGeneration) {
-        const response = await fetch("/api/settings/automation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...deriveReviewAutomationSettings(next),
-            reviews_auto_reply_enabled: true
-          })
-        });
-        const data = await response.json() as { error?: string };
-        if (!response.ok) {
-          throw new Error(data.error ?? "Activation serveur impossible.");
-        }
-      }
+      await syncScenarioStatus(next, true);
       setAutosaveLabel("Automatisation active côté serveur");
       setToolbarFeedback("Automatisation active côté serveur");
     } catch (error) {
@@ -694,26 +682,37 @@ export function AutomationsWorkspace({
       item.status === "active" &&
       item.nodes.some((node) => node.type === "google_review")
     );
+    const otherActiveInstagramFlow = currentFlows.find((item) =>
+      item.id !== automation.id &&
+      item.status === "active" &&
+      item.nodes.some((node) => node.type === "publish_instagram")
+    );
+    const payload: Record<string, unknown> = {};
 
-    const payload = hasReviews
-      ? enabled
+    if (hasReviews) {
+      Object.assign(payload, enabled
         ? { ...deriveReviewAutomationSettings(automation), reviews_auto_reply_enabled: true }
         : otherActiveReviewFlow
           ? { ...deriveReviewAutomationSettings(otherActiveReviewFlow), reviews_auto_reply_enabled: true }
-        : {
-            reviews_auto_reply_enabled: false,
-            review_automation_mode: "disabled",
-            reviews_five_star_action: "disabled",
-            reviews_four_star_action: "disabled",
-            reviews_three_star_action: "disabled",
-            reviews_one_two_star_action: "disabled",
-            always_validate_negative_reviews: false,
-            block_sensitive_reviews: false,
-            sensitive_keywords: []
-          }
-      : {
-          social_auto_publish_enabled: enabled || currentFlows.some((item) => item.id !== automation.id && item.status === "active" && item.nodes.some((node) => node.type === "publish_instagram"))
-        };
+          : {
+              reviews_auto_reply_enabled: false,
+              review_automation_mode: "disabled",
+              reviews_five_star_action: "disabled",
+              reviews_four_star_action: "disabled",
+              reviews_three_star_action: "disabled",
+              reviews_one_two_star_action: "disabled",
+              always_validate_negative_reviews: false,
+              block_sensitive_reviews: false,
+              sensitive_keywords: []
+            });
+    }
+
+    if (hasInstagram) {
+      const activeInstagramFlow = enabled ? automation : otherActiveInstagramFlow;
+      Object.assign(payload, activeInstagramFlow
+        ? deriveSocialAutomationSettings(activeInstagramFlow)
+        : { social_auto_publish_enabled: false, social_auto_publish_live: false });
+    }
 
     const response = await fetch("/api/settings/automation", {
       method: "POST",
@@ -1491,6 +1490,7 @@ function materializeHansFlow(
 }
 
 function normalizeHansNodeConfig(type: string, config: Record<string, string | number | boolean>) {
+  if (type === "new_week") return { ...config, posts_per_week: Math.min(7, Math.max(1, Number(config.posts_per_week) || 2)) };
   if (type === "google_review") {
     return {
       ...config,
@@ -1533,6 +1533,21 @@ function deriveReviewAutomationSettings(flow: AutomationFlow) {
   };
 }
 
+function deriveSocialAutomationSettings(flow: AutomationFlow) {
+  const weeklyTrigger = flow.nodes.find((node) => node.type === "new_week");
+  const publish = flow.nodes.find((node) => node.type === "publish_instagram");
+  const postsPerWeek = Math.min(7, Math.max(1, Number(weeklyTrigger?.config.posts_per_week) || 1));
+  return {
+    social_auto_publish_enabled: true,
+    social_auto_publish_live: publish?.mode === "automatic",
+    ...(weeklyTrigger ? {
+      social_posts_per_week: postsPerWeek,
+      social_posts_per_cycle: postsPerWeek,
+      social_cycle_weeks: 1
+    } : {})
+  };
+}
+
 function resolveReviewActionForRating(flow: AutomationFlow, rating: number): "disabled" | "validation" | "automatic" {
   const nodes = new Map(flow.nodes.map((node) => [node.id, node]));
   let current = flow.nodes.find((node) => node.type === "google_review");
@@ -1561,6 +1576,7 @@ function resolveReviewActionForRating(flow: AutomationFlow, rating: number): "di
 }
 
 function nextRunLabel(automation: AutomationFlow) {
+  if (automation.nodes.some((node) => node.type === "new_week")) return "Chaque semaine · calendrier Hans";
   if (automation.title.includes("Instagram")) return "Lundi prochain · 09:00";
   if (automation.title.includes("Newsletter")) return "Mois prochain · 10:00";
   const reviewWatch = automation.nodes.find((node) => node.type === "google_review");

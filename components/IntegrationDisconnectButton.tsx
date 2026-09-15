@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { buttonStyles } from "@/lib/design-system";
 
 export function IntegrationDisconnectButton({ endpoint, label }: { endpoint: string; label: string }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -15,7 +17,7 @@ export function IntegrationDisconnectButton({ endpoint, label }: { endpoint: str
       const response = await fetch(endpoint, { method: "POST" });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Déconnexion impossible.");
-      window.location.reload();
+      router.refresh();
     } catch (currentError) {
       setError(currentError instanceof Error ? currentError.message : "Déconnexion impossible.");
       setBusy(false);

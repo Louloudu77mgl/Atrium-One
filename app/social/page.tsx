@@ -1,16 +1,18 @@
+import { Suspense } from "react";
 import { Header } from "@/components/Header";
+import { PageContentSkeleton } from "@/components/Skeleton";
 import { Sidebar } from "@/components/Sidebar";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { getAutomationSettings, getSocialAutomationCadence } from "@/lib/automation-settings";
 import { isDemoMode } from "@/lib/demo-mode";
-import { getInstagramConnection } from "@/lib/instagram-connections";
+import { getInstagramConnectionSummary } from "@/lib/instagram-connections";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
 import { getAppNotifications } from "@/lib/notifications";
 import { getFallbackReviewInsights, mapInsightRow } from "@/lib/review-insights";
 import { getStoredReviewInsights } from "@/lib/review-insights-server";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import { getTopSocialRecommendations } from "@/lib/social-recommendations";
-import { getSocialPosts } from "@/lib/social-posts";
+import { getSocialPostList } from "@/lib/social-posts";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { appShellStyles } from "@/lib/design-system";
 import { SocialPageClient } from "./SocialPageClient";
@@ -27,12 +29,44 @@ export default async function SocialPage({
   const { reviews, merchant, googleConnection } = shell;
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
-  const [automationSettings, instagramConnection, posts, storedInsights] = await Promise.all([
+  const dataPromise = getSocialPageData(merchant);
+
+  return (
+    <div className={appShellStyles.page}>
+      <Sidebar active="social" merchant={merchant} counters={counters} />
+      <div className={appShellStyles.pageInner}>
+        <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
+        <main className={appShellStyles.content}>
+          <Suspense fallback={<PageContentSkeleton variant="social" />}>
+            <SocialPageContent dataPromise={dataPromise} merchant={merchant} reviews={reviews} params={params} />
+          </Suspense>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function getSocialPageData(merchant: Awaited<ReturnType<typeof getAppShellData>>["merchant"]) {
+  return Promise.all([
     hasSupabaseEnv() && !isDemoMode() && merchant ? getAutomationSettings(merchant) : Promise.resolve(null),
-    merchant ? getInstagramConnection(merchant) : Promise.resolve(null),
-    hasSupabaseEnv() && !isDemoMode() ? getSocialPosts(merchant) : Promise.resolve([]),
+    merchant ? getInstagramConnectionSummary(merchant) : Promise.resolve(null),
+    hasSupabaseEnv() && !isDemoMode() ? getSocialPostList(merchant) : Promise.resolve([]),
     hasSupabaseEnv() && !isDemoMode() && merchant ? getStoredReviewInsights(merchant) : Promise.resolve(null)
   ]);
+}
+
+async function SocialPageContent({
+  dataPromise,
+  merchant,
+  reviews,
+  params
+}: {
+  dataPromise: ReturnType<typeof getSocialPageData>;
+  merchant: Awaited<ReturnType<typeof getAppShellData>>["merchant"];
+  reviews: Awaited<ReturnType<typeof getAppShellData>>["reviews"];
+  params?: { connect?: string; error?: string; saved?: string };
+}) {
+  const [automationSettings, instagramConnection, posts, storedInsights] = await dataPromise;
   const instagramConfigured = hasInstagramOAuthConfig();
   const cadence = getSocialAutomationCadence(automationSettings);
   const analysis = storedInsights
@@ -50,29 +84,21 @@ export default async function SocialPage({
   const isInstagramUnavailable = params?.error === "instagram_unavailable";
 
   return (
-    <div className={appShellStyles.page}>
-      <Sidebar active="social" merchant={merchant} counters={counters} />
-      <div className={appShellStyles.pageInner}>
-        <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
-        <main className={appShellStyles.content}>
-          <div className={appShellStyles.width}>
-            <SocialPageClient
-              merchant={merchant}
-              reviews={reviews}
-              automationSettings={automationSettings}
-              instagramConnection={instagramConnection}
-              instagramConfigured={instagramConfigured}
-              isInstagramUnavailable={isInstagramUnavailable}
-              instagramError={params?.error ?? null}
-              instagramSaved={params?.saved === "instagram"}
-              instagramConnectRequested={params?.connect === "instagram"}
-              cadence={cadence}
-              posts={posts}
-              ideas={ideas}
-            />
-          </div>
-        </main>
-      </div>
+    <div className={appShellStyles.width}>
+      <SocialPageClient
+        merchant={merchant}
+        reviews={reviews}
+        automationSettings={automationSettings}
+        instagramConnection={instagramConnection}
+        instagramConfigured={instagramConfigured}
+        isInstagramUnavailable={isInstagramUnavailable}
+        instagramError={params?.error ?? null}
+        instagramSaved={params?.saved === "instagram"}
+        instagramConnectRequested={params?.connect === "instagram"}
+        cadence={cadence}
+        posts={posts}
+        ideas={ideas}
+      />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { buildCreatePostHref, getRecommendationOrigin, isRecommendationPublished, parisDateKey, preserveRecommendationOrigin, readRecommendationOrigin, recommendationWeek, selectRecommendationMix, withRecommendationOrigin } from "../lib/social-recommendation-shared.ts";
+import { buildCreatePostHref, getRecommendationOrigin, isRecommendationPublished, isRecommendationUsed, parisDateKey, preserveRecommendationOrigin, readRecommendationOrigin, recommendationWeek, selectRecommendationMix, withRecommendationOrigin, withoutRecommendationOrigin } from "../lib/social-recommendation-shared.ts";
+import { buildAutomationSlots, getRecommendedPublishingDays } from "../lib/social-automation-shared.ts";
 import { parseLocalEventIdeas, searchLocalEventIdeas } from "../lib/social-local-event-search.ts";
 
 const idea = (theme, negative = false) => ({ platform: "instagram", title: `Découvrir ${theme}`, angle: `Un conseil concernant ${theme}`, ...(negative ? { sourcePainPoint: theme } : { sourceStrength: theme }) });
@@ -20,24 +21,36 @@ test("le thème d'origine survit au renommage, à l'éditeur et à la transforma
   assert.match(read("../app/api/social/visuals/transform/route.ts"), /preserveRecommendationOrigin\(designDocument, existingPost.builder_state\)/);
 });
 
-test("seule une publication Instagram réussie consomme le thème", () => {
+test("une recommandation associée à un post disparaît dès le brouillon, tout en distinguant la publication", () => {
   const source = idea("Délais d'attente", true);
   for (const status of ["draft", "editing", "scheduled", "publishing", "failed", "cancelled", "exported"]) {
     assert.equal(isRecommendationPublished(source, [post(source, status)]), false, status);
+    assert.equal(isRecommendationUsed(source, [post(source, status)]), true, status);
   }
   assert.equal(isRecommendationPublished(source, [post(source)]), true);
+  assert.equal(isRecommendationUsed(source, [post(source)]), true);
   assert.equal(isRecommendationPublished(source, [{ ...post(source), platform: "facebook" }]), false);
+  assert.equal(isRecommendationUsed(source, [{ ...post(source), platform: "facebook" }]), false);
   assert.equal(isRecommendationPublished(idea("Choix des fleurs"), [post(source)]), false);
+  assert.equal(readRecommendationOrigin(withoutRecommendationOrigin(post(source).builder_state)), null);
 });
 
-test("un post publié libère une place pour un autre thème de la réserve", () => {
+test("un post planifié libère une place pour un autre thème de la réserve", () => {
   const insights = Array.from({ length: 14 }, (_, index) => idea(`Sujet numéro ${index}`));
   const before = selectRecommendationMix([insights, [], []], [], 10);
-  const after = selectRecommendationMix([insights, [], []], [post(before[0])], 10);
+  const after = selectRecommendationMix([insights, [], []], [post(before[0], "scheduled")], 10);
   assert.equal(after.length, 10);
   assert.equal(after.some((item) => item.title === before[0].title), false);
   assert.equal(after.some((item) => item.title === insights[10].title), true);
   assert.deepEqual(selectRecommendationMix([[insights[0]], [], []], [post(insights[0])]), []);
+});
+
+test("deux posts hebdomadaires sont répartis le mardi et le vendredi sans doublon", () => {
+  assert.deepEqual(getRecommendedPublishingDays("Restaurant", 2), [2, 5]);
+  const slots = buildAutomationSlots({ cycleWeeks: 1, postsPerCycle: 2, businessType: "Restaurant", fromDate: new Date("2026-09-14T08:00:00Z") });
+  assert.deepEqual(slots.map((slot) => slot.getDay()), [2, 5]);
+  const denseSlots = buildAutomationSlots({ cycleWeeks: 1, postsPerCycle: 7, fromDate: new Date("2026-09-14T08:00:00Z") });
+  assert.equal(new Set(denseSlots.map((slot) => slot.getTime())).size, 7);
 });
 
 test("les événements ont des places réservées même avec une grande réserve Insights", () => {
@@ -111,6 +124,22 @@ test("les créations manuelles et automatiques conservent la même origine", () 
   assert.match(read("../lib/social-automation.ts"), /withRecommendationOrigin\(designDocument, idea\)/);
   assert.doesNotMatch(read("../lib/social-automation.ts"), /ideas\[index %/);
   assert.match(read("../lib/social-publish.ts"), /revalidatePath\("\/social\/create"\)/);
+  assert.match(read("../lib/social-automation.ts"), /reserveSocialRecommendation/);
+  assert.match(read("../lib/social-publish.ts"), /syncSocialRecommendationLifecycleForPost/);
+  assert.match(read("../app/api/social/posts/[postId]/duplicate/route.ts"), /withoutRecommendationOrigin/);
+  assert.match(read("../app/api/cron/social-publish/route.ts"), /\["scheduled", "failed"\]/);
+  assert.match(read("../app/api/cron/social-publish/route.ts"), /\.eq\("status", row.status\)/);
+  assert.match(read("../vercel.json"), /social-automation/);
   assert.doesNotMatch(read("../app/reviews/ReviewsPageClient.tsx"), /automationSummary|getAutomationSummary/);
   assert.match(read("../app/social/SocialPageClient.tsx"), /setPosts\(initialPosts\)/);
+});
+
+test("la migration verrouille un thème par commerce et une exécution par semaine", () => {
+  const migration = read("../supabase/social-recommendation-lifecycle.sql");
+  const lifecycle = read("../lib/social-recommendation-usage.ts");
+  assert.match(migration, /unique \(merchant_id, theme_key\)/);
+  assert.match(migration, /unique \(merchant_id, week_start\)/);
+  assert.match(migration, /status in \('reserved', 'used', 'scheduled', 'published'\)/);
+  assert.match(lifecycle, /STALE_RESERVATION_MS/);
+  assert.match(lifecycle, /\.eq\("reservation_token", existing.reservation_token\)/);
 });

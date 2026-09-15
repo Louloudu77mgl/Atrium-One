@@ -102,10 +102,14 @@ export async function GET(request: Request) {
 
   const userInfo = userInfoResponse.ok ? ((await userInfoResponse.json()) as GoogleUserInfo) : {};
   const email = userInfo.email ?? null;
-  const grantedScopes = (tokenData.scope ?? "openid email https://www.googleapis.com/auth/business.manage")
+  const grantedScopes = (tokenData.scope ?? "")
     .split(/\s+/)
     .map((scope) => scope.trim())
     .filter(Boolean);
+
+  if (!grantedScopes.includes("https://www.googleapis.com/auth/business.manage")) {
+    return redirectToIntegrations(origin, { error: "Autorisation Google Business manquante. Reconnectez Google et autorisez la gestion de vos fiches d’établissement pour importer les avis." });
+  }
 
   await setTemporaryGoogleTokens({
     accessToken: tokenData.access_token,
@@ -142,7 +146,11 @@ export async function GET(request: Request) {
   try {
     const locations = await getGoogleBusinessLocations(tokenData.access_token);
 
-    if (locations.length > 0) {
+    if (locations.length > 1) {
+      return NextResponse.redirect(new URL("/settings/google-business/select-location", origin));
+    }
+
+    if (locations.length === 1) {
       const result = await connectGoogleBusinessLocation({
         merchant,
         location: locations[0],

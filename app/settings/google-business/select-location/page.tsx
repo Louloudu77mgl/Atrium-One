@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { clearTemporaryGoogleTokens, getTemporaryGoogleTokens } from "@/lib/google-oauth";
 import { connectGoogleBusinessLocation } from "@/lib/google-business-connect";
 import { getGoogleConnection } from "@/lib/google-connections";
+import { getFreshGoogleAccessToken } from "@/lib/google-tokens";
 import { getGoogleBusinessLocations } from "@/lib/google-business-profile";
 import { getMerchant } from "@/lib/merchants";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -16,7 +17,9 @@ async function selectGoogleLocation(formData: FormData) {
     getTemporaryGoogleTokens()
   ]);
   const googleConnection = merchant ? await getGoogleConnection(merchant) : null;
-  const accessToken = temporaryTokens.accessToken ?? googleConnection?.access_token_encrypted;
+  const accessToken = googleConnection && merchant
+    ? await getFreshGoogleAccessToken(googleConnection, merchant)
+    : temporaryTokens.accessToken;
   const refreshToken = temporaryTokens.refreshToken ?? googleConnection?.refresh_token_encrypted ?? null;
   const email = temporaryTokens.email ?? googleConnection?.google_account_email ?? null;
 
@@ -25,21 +28,18 @@ async function selectGoogleLocation(formData: FormData) {
   }
 
   const locationId = String(formData.get("location_id") ?? "");
-  const locationName = String(formData.get("location_name") ?? "");
   const scopes = String(formData.get("granted_scopes") ?? "openid,email,https://www.googleapis.com/auth/business.manage")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
 
+  const locations = await getGoogleBusinessLocations(accessToken);
+  const selectedLocation = locations.find((location) => location.locationId === locationId);
+  if (!selectedLocation) redirect("/integrations?error=La%20fiche%20choisie%20n’est%20pas%20accessible%20avec%20ce%20compte%20Google.");
+
   const result = await connectGoogleBusinessLocation({
     merchant,
-    location: {
-      accountName: locationId.split("/locations/")[0],
-      locationId,
-      locationName,
-      address: null,
-      status: null
-    },
+    location: selectedLocation,
     accessToken,
     refreshToken,
     email,
@@ -75,7 +75,10 @@ export default async function SelectGoogleLocationPage() {
   let errorMessage: string | null = null;
 
   try {
-    locations = await getGoogleBusinessLocations(accessToken);
+    const freshAccessToken = googleConnection
+      ? await getFreshGoogleAccessToken(googleConnection, merchant)
+      : accessToken;
+    locations = await getGoogleBusinessLocations(freshAccessToken);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "Impossible de récupérer vos fiches Google Business pour le moment.";
   }
@@ -90,9 +93,10 @@ export default async function SelectGoogleLocationPage() {
             <p className="text-sm font-semibold text-[#B42318]">Connexion Google incomplète</p>
             <p className="mt-1 text-sm leading-6 text-[#7A271A]">{errorMessage}</p>
             <p className="mt-2 text-sm leading-6 text-[#7A271A]">
-              Votre compte Google est déjà autorisé. Cette étape sert seulement à récupérer la liste des fiches ; inutile de refaire toute la connexion OAuth si Google limite temporairement les requêtes.
+              Si une autorisation manque ou si la connexion a expiré, reconnectez Google en autorisant l’accès à vos fiches d’établissement. En cas de limitation temporaire, réessayez dans quelques minutes.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
+              <a href="/api/google/connect" className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white">Reconnecter Google</a>
               <a
                 href="/settings/google-business/select-location"
                 className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]"

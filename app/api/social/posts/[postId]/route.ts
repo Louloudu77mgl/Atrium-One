@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { preserveRecommendationOrigin } from "@/lib/social-recommendation-shared";
+import { releaseSocialRecommendationForPost, syncSocialRecommendationLifecycleForPost } from "@/lib/social-recommendation-usage";
 import { NextResponse } from "next/server";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { getInstagramFailureCode } from "@/lib/instagram-errors";
@@ -105,7 +106,7 @@ export async function PATCH(
   const now = new Date().toISOString();
   const { data: existingPost } = await supabase
     .from("social_posts")
-    .select("status,published_at,scheduled_at,builder_state,visual_text,visual_url,image_url")
+    .select("id,merchant_id,status,published_at,scheduled_at,builder_state,visual_text,visual_url,image_url")
     .eq("id", postId)
     .eq("merchant_id", merchant.id)
     .maybeSingle();
@@ -175,6 +176,15 @@ export async function PATCH(
     return NextResponse.json({ error: "Impossible d’enregistrer le post." }, { status: 500 });
   }
 
+  try {
+    await syncSocialRecommendationLifecycleForPost(data, supabase);
+  } catch (lifecycleError) {
+    console.error("[social/posts] recommendation_lifecycle_sync_failed", {
+      postId,
+      error: lifecycleError instanceof Error ? lifecycleError.message : String(lifecycleError)
+    });
+  }
+
   revalidatePath("/social");
 
   return NextResponse.json({ post: data });
@@ -200,6 +210,25 @@ export async function DELETE(
     return NextResponse.json({ error: "Commerce introuvable." }, { status: 404 });
   }
 
+  const { data: existingPost } = await supabase
+    .from("social_posts")
+    .select("id,merchant_id,status,published_at,scheduled_at,builder_state")
+    .eq("id", postId)
+    .eq("merchant_id", merchant.id)
+    .maybeSingle();
+
+  if (!existingPost) {
+    return NextResponse.json({ error: "Post introuvable." }, { status: 404 });
+  }
+
+  if (existingPost.status !== "published") {
+    try {
+      await releaseSocialRecommendationForPost({ merchantId: merchant.id, postId, supabaseClient: supabase });
+    } catch {
+      return NextResponse.json({ error: "Impossible de libérer la recommandation Hans associée." }, { status: 500 });
+    }
+  }
+
   const { error } = await supabase
     .from("social_posts")
     .delete()
@@ -207,6 +236,9 @@ export async function DELETE(
     .eq("merchant_id", merchant.id);
 
   if (error) {
+    if (existingPost.status !== "published") {
+      await syncSocialRecommendationLifecycleForPost(existingPost, supabase).catch(() => undefined);
+    }
     return NextResponse.json({ error: "Impossible de supprimer le post." }, { status: 500 });
   }
 

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getGoogleConnection, upsertGoogleConnection } from "@/lib/google-connections";
+import { after } from "next/server";
+import { getGoogleConnection, toPublicGoogleConnection, upsertGoogleConnection } from "@/lib/google-connections";
 import { syncGoogleBusinessReviews } from "@/lib/google-review-sync";
 import { runReviewAutomationsForMerchant } from "@/lib/review-automation-runner";
 import { getOrRefreshReviewInsights } from "@/lib/review-insights-server";
@@ -113,8 +114,14 @@ export async function syncAllConnectedGoogleReviews(limit = 20) {
 
 export async function getGoogleConnectionWithAutoSync(merchant: MerchantRow) {
   const connection = await getGoogleConnection(merchant);
-  const result = await syncGoogleReviewsIfStale({ connection, merchant });
+  const latestAttempt = connection?.last_sync_at ?? connection?.connected_at;
+  const isFresh = latestAttempt && Date.now() - new Date(latestAttempt).getTime() < AUTO_SYNC_MAX_AGE_MS;
 
-  if (!result.attempted) return connection;
-  return getGoogleConnection(merchant);
+  if (connection?.status === "connected" && connection.google_location_id && !isFresh) {
+    after(async () => {
+      await syncGoogleReviewsIfStale({ connection, merchant });
+    });
+  }
+
+  return toPublicGoogleConnection(connection);
 }
