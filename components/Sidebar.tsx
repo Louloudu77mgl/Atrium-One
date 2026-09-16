@@ -63,6 +63,7 @@ const groups: SidebarGroup[] = [
     label: "Paramètres",
     items: [
       { href: "/automations", icon: "sparkle", label: "Automatisations" },
+      { href: "/articles", icon: "document", label: "Articles du site" },
       { href: "/integrations", icon: "store", label: "Intégrations" },
       { href: "/settings", icon: "gear", label: "Réglages" }
     ]
@@ -87,7 +88,7 @@ export function Sidebar({
   counters,
   navigationOnly = false
 }: {
-  active?: "dashboard" | "reviews" | "insights" | "social" | "sms" | "emailing" | "rcu" | "clients" | "automations" | "integrations" | "settings";
+  active?: "dashboard" | "reviews" | "insights" | "social" | "sms" | "emailing" | "rcu" | "clients" | "automations" | "articles" | "integrations" | "settings";
   merchant?: MerchantRow | null;
   pendingReviews?: number;
   counters?: ReviewCounters;
