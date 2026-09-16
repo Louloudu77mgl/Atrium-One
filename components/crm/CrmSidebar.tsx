@@ -10,6 +10,8 @@ const links = [
   { href: "/crm/leads", label: "Base de données", icon: "▦" },
   { href: "/crm/calendar", label: "Calendrier", icon: "□" },
   { href: "/crm/onboarding-test", label: "Onboarding test", icon: "✓" },
+  { href: "/crm/releases", label: "Releases", icon: "✦" },
+  { href: "/crm/settings", label: "Réglages", icon: "⚙" },
   { href: "/crm/archives", label: "Archives", icon: "◇" }
 ];
 

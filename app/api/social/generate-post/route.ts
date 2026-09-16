@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getMerchant } from "@/lib/merchants";
 import { generateDraftContent, type DraftIdeaInput } from "@/lib/social-drafts";
-import { composeAndStoreSocialPostVisual, generateAndStoreSocialVisual } from "@/lib/social-visuals";
+import { composeAndStoreSocialPostVisual } from "@/lib/social-visuals";
+import { resolveHansVisual } from "@/lib/hans-visual-source";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -43,19 +44,22 @@ export async function POST(request: Request) {
 
   const payload = (await request.json()) as DraftIdeaInput;
   const { draft } = await generateDraftContent({ merchant, idea: payload });
-  const visual = await generateAndStoreSocialVisual({
+  const visual = await resolveHansVisual({
     merchant,
     title: draft.title,
     caption: draft.caption,
     visualPrompt: draft.visualPrompt,
-    source: payload.source ?? payload.angle ?? null
+    subject: payload.source ?? payload.angle ?? draft.title,
+    preferredCategoryName: draft.mediaCategory,
+    format: "social",
+    supabaseClient: supabase
   });
-  const readyVisualUrl = await composeAndStoreSocialPostVisual({
+  const readyVisualUrl = visual.imageUrl ? await composeAndStoreSocialPostVisual({
     merchant,
     imageUrl: visual.imageUrl,
     visualHook: draft.visualHook,
     subtitle: draft.visualSubtitle
-  });
+  }) : "";
 
   return NextResponse.json({ post: draft, imageUrl: readyVisualUrl } satisfies GeneratePostResponse);
 }

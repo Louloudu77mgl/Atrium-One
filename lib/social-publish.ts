@@ -39,6 +39,7 @@ export async function publishPostToInstagram({
   supabaseClient?: Awaited<ReturnType<typeof createServerSupabaseClient>>;
 }) {
   await assertBusinessFeatureAccessAdmin(merchant.id, "instagram");
+  if (post.status === "published") return post;
   if (!canPublishSocialDesignToInstagram(post)) {
     throw new Error("Une affiche RCU est un document A4 destiné à l’impression et ne peut pas être publiée sur Instagram.");
   }
@@ -57,6 +58,7 @@ export async function publishPostToInstagram({
   }
 
   const version = process.env.INSTAGRAM_GRAPH_API_VERSION ?? "v23.0";
+  const isStory = post.media_kind === "story";
   const caption = [post.caption, post.cta, post.hashtags.map((tag) => tag.startsWith("#") ? tag : `#${tag}`).join(" ")].filter(Boolean).join("\n\n");
   const supabase = supabaseClient ?? await createServerSupabaseClient();
   let activePost = post;
@@ -76,48 +78,65 @@ export async function publishPostToInstagram({
       })
       .eq("id", post.id)
       .eq("merchant_id", merchant.id)
+      .eq("status", post.status)
       .select("*")
-      .single();
+      .maybeSingle();
     if (publishingError) throw new Error(publishingError.message);
+    if (!publishingPost) throw new Error("Cette publication est déjà en cours de traitement.");
     activePost = publishingPost;
   }
 
   let publishData: GraphResponse;
   try {
     const { accessToken, connection } = await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase });
-    const createData = await requestInstagramGraph({
-      url: `https://graph.instagram.com/${version}/${connection.instagram_account_id}/media`,
-      method: "POST",
-      endpoint: "/{instagram-user-id}/media",
-      action: "instagram_create_media",
-      failureCode: "media_container_failed",
-      body: new URLSearchParams({ image_url: imageUrl, caption, access_token: accessToken }),
-      fallbackMessage: "Instagram n’a pas accepté ce média."
-    });
-    if (!createData.id) {
-      throw createInstagramError("Instagram n’a pas renvoyé l’identifiant du média.", {
-        action: "instagram_create_media",
+    if (isStory && connection.instagram_account_type !== "BUSINESS") {
+      throw createInstagramError("Meta autorise la publication de Stories par API uniquement pour les comptes Instagram Business. Reconnectez un compte Business dans Intégrations.", {
+        action: "instagram_create_story",
         method: "POST",
         endpoint: "/{instagram-user-id}/media",
-        failureCode: "media_container_failed"
+        failureCode: "story_account_unsupported"
       });
     }
+    let containerId = activePost.meta_container_id;
+    if (!containerId) {
+      const createData = await requestInstagramGraph({
+        url: `https://graph.instagram.com/${version}/${connection.instagram_account_id}/media`,
+        method: "POST",
+        endpoint: "/{instagram-user-id}/media",
+        action: isStory ? "instagram_create_story" : "instagram_create_media",
+        failureCode: "media_container_failed",
+        body: new URLSearchParams({ image_url: imageUrl, ...(isStory ? { media_type: "STORIES" } : { caption }), access_token: accessToken }),
+        fallbackMessage: isStory ? "Instagram n’a pas accepté cette Story." : "Instagram n’a pas accepté ce média."
+      });
+      if (!createData.id) {
+        throw createInstagramError("Instagram n’a pas renvoyé l’identifiant du média.", {
+          action: isStory ? "instagram_create_story" : "instagram_create_media",
+          method: "POST",
+          endpoint: "/{instagram-user-id}/media",
+          failureCode: "media_container_failed"
+        });
+      }
+      containerId = createData.id;
+      const { error: containerSaveError } = await supabase.from("social_posts").update({ meta_container_id: containerId, updated_at: new Date().toISOString() }).eq("id", activePost.id).eq("merchant_id", merchant.id);
+      if (containerSaveError) throw new Error("Impossible de sauvegarder la préparation Instagram. Aucun envoi effectué ; réessayez.");
+    }
 
-    await waitForInstagramContainer({
-      containerId: createData.id,
+    const containerStatus = await waitForInstagramContainer({
+      containerId,
       accessToken,
       version
     });
-
-    publishData = await requestInstagramGraph({
-      url: `https://graph.instagram.com/${version}/${connection.instagram_account_id}/media_publish`,
-      method: "POST",
-      endpoint: "/{instagram-user-id}/media_publish",
-      action: "instagram_publish",
-      failureCode: "media_publish_failed",
-      body: new URLSearchParams({ creation_id: createData.id, access_token: accessToken }),
-      fallbackMessage: "Instagram n’a pas pu publier ce post."
-    });
+    publishData = containerStatus === "PUBLISHED"
+      ? { id: activePost.instagram_media_id ?? containerId }
+      : await requestInstagramGraph({
+          url: `https://graph.instagram.com/${version}/${connection.instagram_account_id}/media_publish`,
+          method: "POST",
+          endpoint: "/{instagram-user-id}/media_publish",
+          action: isStory ? "instagram_publish_story" : "instagram_publish",
+          failureCode: "media_publish_failed",
+          body: new URLSearchParams({ creation_id: containerId, access_token: accessToken }),
+          fallbackMessage: isStory ? "Instagram n’a pas pu publier cette Story." : "Instagram n’a pas pu publier ce post."
+        });
     if (!publishData.id) {
       throw createInstagramError("Instagram n’a pas renvoyé l’identifiant de la publication.", {
         action: "instagram_publish",
@@ -137,6 +156,9 @@ export async function publishPostToInstagram({
         failed_at: failedAt,
         failure_code: details?.failure_code ?? "graph_api_error",
         error_message: error instanceof Error ? error.message : "Publication Instagram impossible.",
+        // Only discard a container that Meta explicitly says cannot publish.
+        // A timeout/ambiguous publish failure must retain it for reconciliation.
+        ...(details?.failure_code === "media_container_unusable" ? { meta_container_id: null } : {}),
         updated_at: failedAt
       })
       .eq("id", activePost.id)
@@ -221,13 +243,13 @@ async function waitForInstagramContainer({
       failureCode: "media_processing_failed",
       fallbackMessage: "Instagram n’a pas pu vérifier le média."
     });
-    if (data.status_code === "FINISHED" || data.status_code === "PUBLISHED") return;
+    if (data.status_code === "FINISHED" || data.status_code === "PUBLISHED") return data.status_code;
     if (data.status_code === "ERROR" || data.status_code === "EXPIRED") {
       throw createInstagramError(data.status || "Instagram n’a pas pu préparer le média.", {
         action: "instagram_check_media",
         method: "GET",
         endpoint: "/{creation-id}?fields=status_code,status",
-        failureCode: "media_processing_failed"
+        failureCode: "media_container_unusable"
       });
     }
     await new Promise((resolve) => setTimeout(resolve, 1_500));

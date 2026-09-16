@@ -1,4 +1,6 @@
 import sharp from "sharp";
+import { buildStoryTemplate } from "@/lib/story-template";
+import { defaultStoryEditorial, type StoryEditorial, type StoryLayout } from "@/lib/story-editorial";
 import { randomUUID } from "node:crypto";
 import { emailImagePrompt } from "@/lib/emailing-image-prompt";
 import { createElement } from "react";
@@ -212,6 +214,64 @@ export async function composeAndStoreSocialPostVisual({
   return publicUrl.publicUrl;
 }
 
+export async function composeAndStoreInstagramStoryVisual({
+  merchant, imageUrl, visualHook, subtitle, cta, editorial, layout = "editorial", postId, supabaseClient
+}: {
+  merchant: MerchantRow;
+  imageUrl: string;
+  visualHook: string;
+  subtitle?: string | null;
+  cta?: string | null;
+  editorial?: StoryEditorial;
+  layout?: StoryLayout;
+  postId?: string | null;
+  supabaseClient?: SupabaseClient<Database>;
+}) {
+  const supabase = supabaseClient ?? await createServerSupabaseClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const response = await fetch(imageUrl, { signal: AbortSignal.timeout(20_000) });
+  if (!response.ok) throw new Error("La photo choisie pour la Story est inaccessible.");
+  const brand = await getBrandSettings(merchant, supabaseClient);
+  const fontFamily = brand?.social_font_family ?? "Georgia";
+  const photoBuffer = await sharp(Buffer.from(await response.arrayBuffer())).rotate().resize(1000, 1000, { fit: "inside" }).jpeg({ quality: 90 }).toBuffer();
+  const photo = `data:image/jpeg;base64,${photoBuffer.toString("base64")}`;
+  let logo: string | null = null;
+  if (brand?.show_logo_on_social_posts && merchant.logo_url) {
+    try {
+      const logoResponse = await fetch(merchant.logo_url, { signal: AbortSignal.timeout(10_000) });
+      if (logoResponse.ok) {
+        const buffer = await sharp(Buffer.from(await logoResponse.arrayBuffer())).resize(128, 128, { fit: "inside" }).png().toBuffer();
+        logo = `data:image/png;base64,${buffer.toString("base64")}`;
+      }
+    } catch { /* A missing logo must not prevent creating the Story. */ }
+  }
+  const [bodyRegular, bodyBold, heading] = await Promise.all([
+    getSocialFontData("Inter", 400), getSocialFontData("Inter", 700), getSocialFontData(fontFamily, 400)
+  ]);
+  const tree = buildStoryTemplate({
+    merchantName: merchant.business_name,
+    title: sanitizeOverlayText(visualHook) || "À découvrir",
+    cta: sanitizeOverlayText(cta ?? "Venez nous voir"),
+    editorial: editorial ?? defaultStoryEditorial(subtitle ?? ""),
+    photo, logo, layout,
+    primary: brand?.primary_color, secondary: brand?.secondary_color, accent: brand?.accent_color,
+    edition: new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "Europe/Paris" }).format(new Date())
+  });
+  const rendered = new ImageResponse(tree, {
+    width: 1080, height: 1920,
+    fonts: [
+      { name: "StoryBody", data: bodyRegular, weight: 400, style: "normal" },
+      { name: "StoryBody", data: bodyBold, weight: 700, style: "normal" },
+      { name: "StoryHeading", data: heading, weight: 400, style: "normal" }
+    ]
+  });
+  const ready = await sharp(Buffer.from(await rendered.arrayBuffer())).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+  const path = `${user?.id ?? merchant.user_id}/${postId ?? "story"}/story-${randomUUID()}.jpg`;
+  const { error } = await supabase.storage.from("social-visuals").upload(path, ready, { contentType: "image/jpeg", upsert: false });
+  if (error) throw new Error(error.message);
+  return supabase.storage.from("social-visuals").getPublicUrl(path).data.publicUrl;
+}
+
 async function renderSocialTypography({
   fontFamily,
   hookLines,
@@ -327,7 +387,7 @@ export async function generateAndStoreSocialVisual({
   source?: string | null;
   styleOverride?: string | null;
   supabaseClient?: SupabaseClient<Database>;
-  format?: "social" | "email";
+  format?: "social" | "story" | "email" | "rcu";
   brandSettings?: MerchantBrandSettingsRow | null;
   signal?: AbortSignal;
 }) {
@@ -354,7 +414,7 @@ export async function generateAndStoreSocialVisual({
   const creativeDirection = pickCreativeDirection(clientRequest);
   const posterDirection = format === "email" ? "Photographie éditoriale naturelle, cadrage horizontal généreux, un sujet clair, lumière soignée, pas de texte ni de mise en page intégrée." : "Traite l’image comme une affiche photographique ou illustrée haut de gamme : idée visuelle forte, mise en scène créative, cadrage assumé et détails mémorables, tout en restant crédible pour ce commerce.";
   const prompt = format === "email" ? emailImagePrompt({ merchant, brand, brief: source || caption || title, visualPrompt }) : [
-    `Crée une image carrée premium pour un post Instagram d'un commerce local.`,
+    format === "story" ? `Crée une image verticale 9:16 premium pour une Story Instagram d'un commerce local.` : format === "rcu" ? `Crée une image verticale éditoriale premium destinée à une affiche A4 d'un commerce local.` : `Crée une image carrée premium pour un post Instagram d'un commerce local.`,
     clientRequest ? `DEMANDE ORIGINALE DU CLIENT — PRIORITÉ ABSOLUE : ${clientRequest}.` : "",
     "FIDÉLITÉ CLIENT : respecte exactement tous les éléments explicitement demandés — personnes, apparence, nombre, posture, action, objets, produits, lieux, cadre, époque, couleurs et détails. Ne remplace, ne retire et ne transpose jamais un élément précis de la demande.",
     `Secteur : ${merchant.business_type}. Ville : ${merchant.city}.`,
@@ -388,7 +448,7 @@ export async function generateAndStoreSocialVisual({
     body: JSON.stringify({
       model: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2",
       prompt,
-      size: format === "email" ? "1536x1024" : "1024x1024",
+      size: format === "email" ? "1536x1024" : format === "story" || format === "rcu" ? "1024x1536" : "1024x1024",
       ...(format === "email" ? { quality: "medium", output_format: "png", n: 1 } : {})
     })
   });
@@ -400,7 +460,7 @@ export async function generateAndStoreSocialVisual({
   }
 
   signal?.throwIfAborted();
-  const path = format === "email" ? `${user?.id ?? merchant.id}/email-campaigns/ai-${randomUUID()}.png` : `${user?.id ?? merchant.id}/${postId ?? "social-visual"}/ai-${Date.now()}.png`;
+  const path = format === "email" ? `${user?.id ?? merchant.id}/email-campaigns/ai-${randomUUID()}.png` : `${user?.id ?? merchant.id}/${postId ?? format}/ai-${Date.now()}.png`;
   const { error: uploadError } = await supabase.storage
     .from("social-visuals")
     .upload(path, Buffer.from(base64, "base64"), {

@@ -50,7 +50,7 @@ export async function getValidInstagramAccessToken({
       storedConnection.status === "expired" ? "token_expired" : "token_revoked"
     );
   }
-  if (["disconnected", "pending_configuration", "error"].includes(storedConnection.status)) {
+  if (["disconnected", "pending_configuration"].includes(storedConnection.status)) {
     throw connectionStateError("Reconnectez Instagram avant de publier.", "connection_invalid");
   }
 
@@ -134,7 +134,7 @@ export async function getValidInstagramAccessToken({
 
   return {
     accessToken: validAccessToken,
-    connection: { ...connection, status: healthyStatus, instagram_username: profile.username, last_checked_at: checkedAt, last_error: null }
+    connection: { ...connection, status: healthyStatus, instagram_account_type: profile.account_type ?? null, instagram_username: profile.username, last_checked_at: checkedAt, last_error: null }
   };
 }
 

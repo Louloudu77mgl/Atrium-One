@@ -16,6 +16,8 @@ import { appShellStyles } from "@/lib/design-system";
 import { mapUserFacingError } from "@/lib/user-feedback";
 import { logout } from "@/lib/auth/actions";
 import { BrandStyleForm, MerchantIdentityForm } from "./SettingsClientForms";
+import { MediaLibrarySettings } from "./MediaLibrarySettings";
+import { getMerchantMediaLibrary } from "@/lib/merchant-media";
 
 export const dynamic = "force-dynamic";
 
@@ -42,16 +44,17 @@ export default async function SettingsPage({
     redirect("/onboarding");
   }
 
-  const [googleConnection, reviews, brandSettings, automationSettings] = await Promise.all([
+  const [googleConnection, reviews, brandSettings, automationSettings, mediaLibrary] = await Promise.all([
     getGoogleConnectionSummary(merchant),
     getShellReviews(merchant),
     getBrandSettings(merchant),
-    getAutomationSettings(merchant)
+    getAutomationSettings(merchant),
+    getMerchantMediaLibrary(merchant.id)
   ]);
 
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
-  const fullAutomationEnabled = Boolean(automationSettings?.reviews_auto_reply_enabled || automationSettings?.social_auto_publish_enabled);
+  const fullAutomationEnabled = Boolean(automationSettings?.reviews_auto_reply_enabled || automationSettings?.social_auto_publish_enabled || automationSettings?.social_stories_auto_publish_enabled);
 
   return (
     <div className={appShellStyles.page}>
@@ -119,6 +122,15 @@ export default async function SettingsPage({
                   <p className="mt-1 text-[13.5px] text-[#6E6A76]">Choisissez les couleurs, la police et le ton que Hans utilisera dans vos prochaines créations.</p>
                 </div>
                 <BrandStyleForm brandSettings={brandSettings} businessName={merchant.business_name} logoUrl={merchant.logo_url} action={updateBrandSettings} />
+              </section>
+
+              <section className={shellCard}>
+                <div className="px-[30px] pb-[4px] pt-[26px]">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-[#9A96A1]">Hans · contenus visuels</span>
+                  <h2 className="mt-1 text-[21px] font-extrabold text-[#17131F]">Mes photos</h2>
+                  <p className="mt-1 max-w-[760px] text-[13.5px] leading-6 text-[#6E6A76]">Classez les vraies photos de votre commerce. Hans choisira seul la bonne catégorie pour vos publications, Stories, e-mails et supports RCU.</p>
+                </div>
+                <MediaLibrarySettings initialLibrary={mediaLibrary} />
               </section>
 
               <section className={`${shellCard} flex flex-col gap-4 px-[30px] py-[24px] sm:flex-row sm:items-center sm:justify-between`}>

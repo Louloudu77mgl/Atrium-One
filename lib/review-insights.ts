@@ -32,6 +32,7 @@ export type ReviewPriorityAction = {
 
 export type ReviewSocialPostIdea = {
   platform: SocialPlatform;
+  contentType?: "post" | "story";
   title: string;
   angle: string;
   sourcePainPoint?: string;

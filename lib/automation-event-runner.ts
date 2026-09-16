@@ -5,6 +5,7 @@ import { dispatchEmailCampaign } from "@/lib/emailing-provider";
 import { createEmailCampaign, createEmailRecipients } from "@/lib/emailing-store";
 import type { EmailCampaignRecord } from "@/lib/emailing-types";
 import { createTriggeredSocialDraft } from "@/lib/social-automation";
+import { createInstagramStoryDraft } from "@/lib/social-stories";
 import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
 import { getInstagramPublishErrorDetails, publishPostToInstagram } from "@/lib/social-publish";
 import { createMerchantNotification } from "@/lib/merchant-notifications";
@@ -118,6 +119,15 @@ async function executeEventFlow({ merchant, flow, event }: { merchant: MerchantR
       } else if (current.type === "prepare_instagram") {
         socialPost = await createTriggeredSocialDraft({ merchant, theme: String(current.config.theme ?? "Actualité client"), source: eventSummary(event), supabaseClient: supabase });
         steps.push(toStep(current, "success", `Brouillon Instagram « ${socialPost.title} » créé.`));
+      } else if (current.type === "generate_instagram_story") {
+        const theme = String(current.config.theme ?? "Actualité du commerce");
+        socialPost = await createInstagramStoryDraft({
+          merchant,
+          idea: { platform: "instagram", title: theme.slice(0, 64), angle: `${theme}. ${eventSummary(event)}`, source: "Automatisation Hans" },
+          source: "automation",
+          supabaseClient: supabase
+        });
+        steps.push(toStep(current, "success", `Story Instagram « ${socialPost.title} » créée.`));
       } else if (current.type === "publish_instagram") {
         if (!socialPost) throw new Error("Ajoutez une card de préparation Instagram avant la publication.");
         if (current.mode !== "automatic") {
@@ -126,6 +136,14 @@ async function executeEventFlow({ merchant, flow, event }: { merchant: MerchantR
         }
         socialPost = await publishPostToInstagram({ merchant, post: socialPost, supabaseClient: supabase });
         steps.push(toStep(current, "success", "Publication publiée sur Instagram."));
+      } else if (current.type === "publish_instagram_story") {
+        if (!socialPost || socialPost.media_kind !== "story") throw new Error("Ajoutez une card de génération de Story avant sa publication.");
+        if (current.mode !== "automatic") {
+          steps.push(toStep(current, "waiting", "Story Instagram conservée en brouillon."));
+          return { status: "drafted" as const, message: "Story Instagram prête à valider.", steps };
+        }
+        socialPost = await publishPostToInstagram({ merchant, post: socialPost, supabaseClient: supabase });
+        steps.push(toStep(current, "success", "Story publiée sur Instagram."));
       } else if (current.type === "notify_merchant") {
         const body = String(current.config.message ?? `${flow.title} vient de s’exécuter.`);
         const storage = await createMerchantNotification({ supabase, merchantId: merchant.id, title: flow.title, body });
@@ -141,9 +159,10 @@ async function executeEventFlow({ merchant, flow, event }: { merchant: MerchantR
         await createMerchantNotification({ supabase, merchantId: merchant.id, title: `Validation · ${flow.title}`, body });
         steps.push(toStep(current, "waiting", "Validation demandée au commerçant."));
         return { status: "drafted" as const, message: "Le scénario attend une validation humaine.", steps };
-      } else if (current.type === "schedule_instagram") {
+      } else if (current.type === "schedule_instagram" || current.type === "schedule_instagram_story") {
         if (!socialPost) throw new Error("Ajoutez une card de préparation Instagram avant la planification.");
         const { connection } = await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase });
+        if (current.type === "schedule_instagram_story" && connection.instagram_account_type !== "BUSINESS") throw new Error("La planification de Stories via Meta nécessite un compte Instagram Business.");
         const delayHours = Math.max(1, Number(current.config.delay_hours ?? 24));
         const scheduledAt = new Date(Date.now() + delayHours * 3_600_000).toISOString();
         const scheduleResult = await supabase.from("social_posts").update({

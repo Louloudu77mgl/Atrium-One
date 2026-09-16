@@ -673,9 +673,10 @@ export function AutomationsWorkspace({
   async function syncScenarioStatus(automation: AutomationFlow, enabled: boolean, currentFlows = automations) {
     const hasReviews = automation.nodes.some((node) => node.type === "google_review");
     const hasInstagram = automation.nodes.some((node) => node.type === "publish_instagram");
+    const hasInstagramStories = automation.nodes.some((node) => node.type === "publish_instagram_story");
     const storedFlow = { ...automation, status: enabled ? "active" as const : "paused" as const, updatedAt: new Date().toISOString() };
     await saveAutomationFlow(storedFlow);
-    if (!hasReviews && !hasInstagram) return;
+    if (!hasReviews && !hasInstagram && !hasInstagramStories) return;
 
     const otherActiveReviewFlow = currentFlows.find((item) =>
       item.id !== automation.id &&
@@ -686,6 +687,11 @@ export function AutomationsWorkspace({
       item.id !== automation.id &&
       item.status === "active" &&
       item.nodes.some((node) => node.type === "publish_instagram")
+    );
+    const otherActiveStoryFlow = currentFlows.find((item) =>
+      item.id !== automation.id &&
+      item.status === "active" &&
+      item.nodes.some((node) => node.type === "publish_instagram_story")
     );
     const payload: Record<string, unknown> = {};
 
@@ -712,6 +718,13 @@ export function AutomationsWorkspace({
       Object.assign(payload, activeInstagramFlow
         ? deriveSocialAutomationSettings(activeInstagramFlow)
         : { social_auto_publish_enabled: false, social_auto_publish_live: false });
+    }
+
+    if (hasInstagramStories) {
+      const activeStoryFlow = enabled ? automation : otherActiveStoryFlow;
+      Object.assign(payload, activeStoryFlow
+        ? deriveStoryAutomationSettings(activeStoryFlow)
+        : { social_stories_auto_publish_enabled: false, social_stories_auto_publish_live: false });
     }
 
     const response = await fetch("/api/settings/automation", {
@@ -1545,6 +1558,16 @@ function deriveSocialAutomationSettings(flow: AutomationFlow) {
       social_posts_per_cycle: postsPerWeek,
       social_cycle_weeks: 1
     } : {})
+  };
+}
+
+function deriveStoryAutomationSettings(flow: AutomationFlow) {
+  const weeklyTrigger = flow.nodes.find((node) => node.type === "new_week");
+  const publish = flow.nodes.find((node) => node.type === "publish_instagram_story");
+  return {
+    social_stories_auto_publish_enabled: true,
+    social_stories_auto_publish_live: publish?.mode === "automatic",
+    social_stories_per_week: Math.min(7, Math.max(1, Number(weeklyTrigger?.config.posts_per_week) || 1))
   };
 }
 

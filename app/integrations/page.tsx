@@ -145,13 +145,10 @@ async function IntegrationsPageContent({
                   </div>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <Link href={instagramReady ? "/social#instagram-connection" : "/social?connect=instagram"} className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]">
-                    {instagramReconnectRequired ? "Reconnecter Instagram" : instagramReady ? "Gérer la connexion Instagram" : "Configurer Instagram"}
+                  <Link href={instagramReady ? "/social" : "/social?connect=instagram"} className="inline-flex items-center justify-center rounded-lg bg-[#4C1D95] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#6D28D9]">
+                    {instagramReconnectRequired ? "Reconnecter Instagram" : instagramReady ? "✓ Compte Instagram connecté" : "Connecter Instagram"}
                   </Link>
-                  <Link href="/social" className="inline-flex items-center justify-center rounded-lg bg-[#F3E8FF] px-4 py-2.5 text-sm font-semibold text-[#4C1D95] transition hover:bg-[#E9D5FF]">
-                    Ouvrir Instagram
-                  </Link>
-                  {instagramConnection ? <IntegrationDisconnectButton endpoint="/api/instagram/disconnect" label="Instagram" /> : null}
+                  {instagramReady ? <a href="https://www.instagram.com/accounts/manage_access/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center rounded-lg border border-[#D8CAEE] bg-white px-4 py-2.5 text-sm font-semibold text-[#4C1D95] transition hover:bg-[#F7F2FF]">Gérer l’accès AtriumOne sur Instagram ↗</a> : null}
                 </div>
               </section>
 

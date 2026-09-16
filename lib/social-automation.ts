@@ -18,7 +18,8 @@ import { getValidInstagramAccessToken } from "@/lib/instagram-tokens";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
 import { buildAutomationSlots, normalizeSocialAutomationWindow } from "@/lib/social-automation-shared";
-import { composeAndStoreSocialPostVisual, generateAndStoreSocialVisual } from "@/lib/social-visuals";
+import { composeAndStoreSocialPostVisual } from "@/lib/social-visuals";
+import { resolveHansVisual } from "@/lib/hans-visual-source";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, MerchantAutomationSettingsRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
@@ -131,16 +132,21 @@ export async function ensureAutomatedSocialDrafts({
       const { draft } = await generateDraftContent({ merchant, idea: draftIdea, supabaseClient: supabase });
       let imageUrl: string | null = null;
       let visualUrl: string | null = null;
+      let sourceAssetId: string | null = null;
       try {
-        imageUrl = (await generateAndStoreSocialVisual({
+        const visual = await resolveHansVisual({
           merchant,
           title: draft.title,
           caption: draft.caption,
           visualPrompt: draft.visualPrompt,
-          source: [idea.sourcePainPoint, idea.sourceStrength, idea.localEvent, idea.seasonalMoment, idea.angle, idea.visualDirection].filter(Boolean).join(" · ") || "Automatisation Hans",
+          subject: [idea.sourcePainPoint, idea.sourceStrength, idea.localEvent, idea.seasonalMoment, idea.angle, idea.visualDirection].filter(Boolean).join(" · ") || "Automatisation Hans",
+          preferredCategoryName: draft.mediaCategory,
           styleOverride: brand?.visual_style ?? null,
+          format: "social",
           supabaseClient: supabase
-        })).imageUrl;
+        });
+        imageUrl = visual.imageUrl;
+        sourceAssetId = visual.sourceAssetId;
       } catch (error) {
         if (settings.social_auto_publish_live) throw error;
       }
@@ -190,6 +196,7 @@ export async function ensureAutomatedSocialDrafts({
           primary_color: brand?.primary_color ?? "#4C1D95",
           secondary_color: brand?.secondary_color ?? "#F3E8FF",
           accent_color: brand?.accent_color ?? "#A855F7",
+          source_asset_id: sourceAssetId,
           last_saved_at: now,
           updated_at: now
         })
@@ -246,22 +253,24 @@ export async function createTriggeredSocialDraft({
     },
     supabaseClient
   });
-  const generated = await generateAndStoreSocialVisual({
+  const generated = await resolveHansVisual({
     merchant,
     title: draft.title,
     caption: draft.caption,
     visualPrompt: draft.visualPrompt,
-    source,
+    subject: source,
+    preferredCategoryName: draft.mediaCategory,
     styleOverride: brand?.visual_style ?? null,
+    format: "social",
     supabaseClient
   });
-  const visualUrl = await composeAndStoreSocialPostVisual({
+  const visualUrl = generated.imageUrl ? await composeAndStoreSocialPostVisual({
     merchant,
     imageUrl: generated.imageUrl,
     visualHook: draft.visualHook,
     subtitle: draft.visualSubtitle,
     supabaseClient
-  });
+  }) : null;
   const designDocument = createGeneratedDesignDocument({
     title: draft.title,
     caption: draft.caption,
@@ -294,6 +303,7 @@ export async function createTriggeredSocialDraft({
       primary_color: brand?.primary_color ?? "#4C1D95",
       secondary_color: brand?.secondary_color ?? "#F3E8FF",
       accent_color: brand?.accent_color ?? "#A855F7",
+      source_asset_id: generated.sourceAssetId,
       last_saved_at: now,
       updated_at: now
     })

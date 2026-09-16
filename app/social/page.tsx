@@ -11,7 +11,7 @@ import { getAppNotifications } from "@/lib/notifications";
 import { getFallbackReviewInsights, mapInsightRow } from "@/lib/review-insights";
 import { getStoredReviewInsights } from "@/lib/review-insights-server";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
-import { getTopSocialRecommendations } from "@/lib/social-recommendations";
+import { getTopSocialRecommendations, getTopStoryRecommendations } from "@/lib/social-recommendations";
 import { getSocialPostList } from "@/lib/social-posts";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { appShellStyles } from "@/lib/design-system";
@@ -74,13 +74,11 @@ async function SocialPageContent({
     : !hasSupabaseEnv() || isDemoMode()
       ? getFallbackReviewInsights(reviews)
       : null;
-  const ideas = await getTopSocialRecommendations({
-    analysis,
-    reviews,
-    merchant,
-    posts,
-    enrichWithExternalSources: false
-  });
+  const recommendationInput = { analysis, reviews, merchant, posts, enrichWithExternalSources: false };
+  const [ideas, storyIdeas] = await Promise.all([
+    getTopSocialRecommendations(recommendationInput),
+    getTopStoryRecommendations(recommendationInput)
+  ]);
   const isInstagramUnavailable = params?.error === "instagram_unavailable";
 
   return (
@@ -98,6 +96,7 @@ async function SocialPageContent({
         cadence={cadence}
         posts={posts}
         ideas={ideas}
+        storyIdeas={storyIdeas}
       />
     </div>
   );

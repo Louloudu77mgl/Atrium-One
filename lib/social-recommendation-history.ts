@@ -27,12 +27,14 @@ const matchPublishedThemes = unstable_cache(async (merchantId: string, themes: {
 }, ["hans-published-themes-v1"], { revalidate: 7 * 24 * 60 * 60 });
 
 export async function getPreviouslyPublishedThemes(merchantId: string, ideas: ReviewSocialPostIdea[], posts: RecommendationPost[]) {
+  const contentType = ideas.some((idea) => idea.contentType === "story") ? "story" : "post";
   const themes = [...new Map(ideas.map((idea) => {
     const origin = getRecommendationOrigin(idea);
     return [origin.themeKey, { key: origin.themeKey, label: origin.sourceLabel }];
   })).values()].sort((left, right) => left.key.localeCompare(right.key));
   const candidates = posts.filter((post) => {
     if (post.platform !== "instagram" || post.status !== "published") return false;
+    if (contentType === "story" ? post.media_kind !== "story" : post.media_kind === "story") return false;
     const origin = readRecommendationOrigin(post.builder_state);
     return !origin || !themes.some((theme) => theme.key === origin.themeKey);
   }).sort((left, right) => (right.published_at || right.updated_at).localeCompare(left.published_at || left.updated_at));

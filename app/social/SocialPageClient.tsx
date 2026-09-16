@@ -10,7 +10,7 @@ import { useFailureSupport } from "@/components/FailureSupportProvider";
 import { Toast } from "@/components/Toast";
 import { useToast } from "@/hooks/useToast";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import { buildCreatePostHref, getRecommendationOrigin, isRecommendationPublished, recommendationWeek } from "@/lib/social-recommendation-shared";
+import { buildCreatePostHref, buildCreateStoryHref, getRecommendationOrigin, isRecommendationPublished, recommendationWeek } from "@/lib/social-recommendation-shared";
 import { canPublishSocialDesignToInstagram, getInstagramPostFailureMessage, getPostStatusLabel, getPublishableInstagramImageUrl } from "@/lib/social-post-utils";
 import type { Review } from "@/lib/mock-data";
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
@@ -45,7 +45,8 @@ export function SocialPageClient({
   instagramConnectRequested,
   cadence,
   posts: initialPosts,
-  ideas
+  ideas,
+  storyIdeas
 }: {
   merchant?: MerchantRow | null;
   reviews: Review[];
@@ -59,6 +60,7 @@ export function SocialPageClient({
   cadence: { postsPerCycle: number; cycleWeeks: number };
   posts: SocialPostListRow[];
   ideas: ReviewSocialPostIdea[];
+  storyIdeas: ReviewSocialPostIdea[];
 }) {
   const router = useRouter();
   const [posts, setPosts] = useState(initialPosts);
@@ -68,6 +70,7 @@ export function SocialPageClient({
   const [shareMenuId, setShareMenuId] = useState<string | null>(null);
   const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({});
   const [recommendationStart, setRecommendationStart] = useState(0);
+  const [recommendationKind, setRecommendationKind] = useState<"post" | "story">("post");
   const [postCategory, setPostCategory] = useState<PostCategory>("draft");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [instagramModalOpen, setInstagramModalOpen] = useState(
@@ -166,7 +169,8 @@ export function SocialPageClient({
     [orderedPosts, postCategory]
   );
   const draftToResume = orderedPosts.find((post) => post.status !== "published");
-  const availableIdeas = useMemo(() => ideas.filter((idea) => !isRecommendationPublished(idea, posts)), [ideas, posts]);
+  const activeIdeas = recommendationKind === "story" ? storyIdeas : ideas;
+  const availableIdeas = useMemo(() => activeIdeas.filter((idea) => !isRecommendationPublished(idea, posts)), [activeIdeas, posts]);
   const recommendationCount = availableIdeas.length;
   const maxRecommendationStart = Math.max(0, Math.floor((recommendationCount - 1) / 2) * 2);
   const visibleStart = Math.min(recommendationStart, maxRecommendationStart);
@@ -471,6 +475,9 @@ export function SocialPageClient({
                   <Link href="/social/create" className={buttonStyles.primary}>
                     Créer un post
                   </Link>
+                  <Link href="/social/stories/create" className="inline-flex items-center rounded-full border border-[#D8CAEE] bg-white px-5 py-2.5 text-[13px] font-bold text-[#5B2A9E] transition hover:border-[#7C4DCB] hover:bg-[#F8F3FF]">
+                    Créer une Story
+                  </Link>
                   <a href="#recommendations" className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
                     Voir les idées de Hans
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
@@ -520,8 +527,8 @@ export function SocialPageClient({
           <div className="section-head mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="eyebrow mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[#5B2A9E]">Ce que Hans recommande</p>
-              <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Vos prochaines idées de posts</h2>
-              <p className="mt-1 max-w-[620px] text-[13px] leading-5 text-[#777287]">Une fois publié, un thème laisse sa place à une autre idée de vos Insights IA. Hans consulte aussi chaque semaine les événements de votre ville et le calendrier.</p>
+              <h2 className="text-[19px] font-extrabold tracking-[-0.01em] text-[#1E1B2E]">Vos prochaines idées Instagram</h2>
+              <p className="mt-1 max-w-[620px] text-[13px] leading-5 text-[#777287]">Choisissez un post ou une Story. Hans génère le contenu, choisit la photo et applique automatiquement la charte de votre commerce.</p>
             </div>
             <Link href="/reviews/insights" className="link inline-flex items-center gap-1 text-[13px] font-semibold text-[#5B2A9E] hover:underline">
               Voir l&apos;analyse du jour
@@ -530,7 +537,19 @@ export function SocialPageClient({
           </div>
 
           <div className="reco-toolbar mb-4 flex flex-wrap items-center justify-between gap-[10px]">
-            <span className="count-chip text-[12.5px] text-[#6E6B80]"><b className="text-[#1E1B2E]">{recommendationCount}</b> recommandations disponibles</span>
+            <div className="flex items-center gap-2 rounded-full border border-[#E5DDF0] bg-[#F8F5FC] p-1">
+              {(["post", "story"] as const).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => { setRecommendationKind(kind); setRecommendationStart(0); }}
+                  className={`rounded-full px-4 py-2 text-[12.5px] font-bold transition ${recommendationKind === kind ? "bg-white text-[#4B2E83] shadow-sm" : "text-[#777287] hover:text-[#4B2E83]"}`}
+                >
+                  {kind === "story" ? "Stories" : "Posts"}
+                </button>
+              ))}
+            </div>
+            <span className="count-chip text-[12.5px] text-[#6E6B80]"><b className="text-[#1E1B2E]">{recommendationCount}</b> recommandations {recommendationKind === "story" ? "Story" : "Post"} disponibles</span>
             {recommendationCount > 0 ? (
               <span className="text-[12px] font-semibold text-[#8B87A0]">
                 {visibleStart + 1}–{Math.min(visibleStart + 2, recommendationCount)} sur {recommendationCount}
@@ -540,7 +559,7 @@ export function SocialPageClient({
 
           {recommendationCount === 0 ? (
             <div className="rounded-[20px] border border-[#ECE9F4] bg-white p-6 text-sm text-[#6E6B80] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)]">
-              Aucune recommandation disponible pour le moment. Analysez davantage d’avis pour générer de nouvelles idées de posts.
+              Aucune recommandation {recommendationKind === "story" ? "Story" : "Post"} disponible pour le moment. Analysez davantage d’avis pour renouveler les idées de Hans.
             </div>
           ) : (
             <div className="flex items-center gap-3">
@@ -563,7 +582,7 @@ export function SocialPageClient({
                 return (
                   <div key={`${idea.title}-${ideaIndex}`} className="reco-card flex min-w-0 flex-col gap-[10px] rounded-[20px] border border-[#ECE9F4] bg-white px-[18px] pb-4 pt-[18px] shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)] transition hover:-translate-y-[2px] hover:shadow-[0_10px_28px_rgba(46,26,84,0.1)]">
                     <div className="reco-top-row flex items-center justify-between">
-                      <span className="pill pill-purple inline-flex rounded-full bg-[#F1EAFB] px-[10px] py-1 text-[11.5px] font-semibold text-[#4B2E83]">{idea.platform === "instagram" ? "Instagram" : "Facebook"}</span>
+                      <span className="pill pill-purple inline-flex rounded-full bg-[#F1EAFB] px-[10px] py-1 text-[11.5px] font-semibold text-[#4B2E83]">{recommendationKind === "story" ? "Story Instagram · 9:16" : idea.platform === "instagram" ? "Post Instagram" : "Facebook"}</span>
                       <span className="reco-by text-[11.5px] font-semibold text-[#9895A8]">{sourceKind}</span>
                     </div>
                     <h3 className="reco-title text-[14px] font-bold leading-[1.35] text-[#1E1B2E]">{idea.title}</h3>
@@ -583,9 +602,9 @@ export function SocialPageClient({
                       </div>
                     ) : null}
                     <CreatePostButton
-                      href={buildCreatePostHref(idea)}
+                      href={recommendationKind === "story" ? buildCreateStoryHref(idea) : buildCreatePostHref(idea)}
                       className="btn btn-primary sm inline-flex items-center justify-center rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[14px] py-[9px] text-[12.8px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)] transition hover:shadow-[0_8px_22px_rgba(75,46,131,0.36)]"
-                      label="Créer avec cette idée"
+                      label={recommendationKind === "story" ? "Créer cette Story avec Hans" : "Créer ce post avec Hans"}
                     />
                   </div>
                 );
@@ -664,11 +683,11 @@ export function SocialPageClient({
                     key={post.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => router.push(`/social/editor/${post.id}`)}
+                    onClick={() => router.push(post.media_kind === "story" ? `/social/stories/${post.id}` : `/social/editor/${post.id}`)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        router.push(`/social/editor/${post.id}`);
+                        router.push(post.media_kind === "story" ? `/social/stories/${post.id}` : `/social/editor/${post.id}`);
                       }
                     }}
                     className="post-row grid cursor-pointer grid-cols-[88px_minmax(0,1fr)_110px_auto] items-center gap-4 border-b border-[#F1EEF8] px-5 py-4 transition hover:bg-[#FCFBFF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#7C4DCB] last:border-b-0 max-md:grid-cols-1 max-md:items-start"
@@ -685,7 +704,7 @@ export function SocialPageClient({
                     </div>
                     <div className="post-main min-w-0 self-center">
                       <div className="post-date mb-[3px] text-[11px] font-semibold text-[#9895A8]">
-                        {canPublishSocialDesignToInstagram(post) ? (post.scheduled_at ? formatSocialDate(post.scheduled_at) : "Non planifié") : "Support d’impression"}
+                        {canPublishSocialDesignToInstagram(post) ? `${post.media_kind === "story" ? "Story · " : ""}${post.scheduled_at ? formatSocialDate(post.scheduled_at) : "Non planifié"}` : "Support d’impression"}
                       </div>
                       <p className="post-title mb-[3px] text-[13.5px] font-bold text-[#1E1B2E]">{post.title}</p>
                       <p className="post-desc line-clamp-2 max-w-[640px] text-[12.8px] leading-[1.5] text-[#6E6B80]">{post.caption}</p>
@@ -758,9 +777,9 @@ export function SocialPageClient({
                           </button>
                         </div>
                       </div> : null}
-                      <button type="button" aria-label="Dupliquer" title="Dupliquer" onClick={() => void duplicatePost(post.id)} disabled={busyId === post.id} className="flex h-9 w-9 items-center justify-center rounded-full border border-[#DED7EA] bg-white text-[#5B2A9E] shadow-sm transition hover:border-[#7C4DCB] hover:bg-[#F5F0FF] disabled:cursor-not-allowed disabled:opacity-40">
+                      {post.media_kind !== "story" ? <button type="button" aria-label="Dupliquer" title="Dupliquer" onClick={() => void duplicatePost(post.id)} disabled={busyId === post.id} className="flex h-9 w-9 items-center justify-center rounded-full border border-[#DED7EA] bg-white text-[#5B2A9E] shadow-sm transition hover:border-[#7C4DCB] hover:bg-[#F5F0FF] disabled:cursor-not-allowed disabled:opacity-40">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
-                      </button>
+                      </button> : null}
                       <button type="button" aria-label="Supprimer" title="Supprimer" onClick={() => void deletePost(post.id)} disabled={busyId === post.id} className="flex h-9 w-9 items-center justify-center rounded-full border border-[#F3CACA] bg-[#FFF7F7] text-[#D64545] shadow-sm transition hover:border-[#D64545] hover:bg-[#FDECEC] disabled:cursor-not-allowed disabled:opacity-40">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                       </button>

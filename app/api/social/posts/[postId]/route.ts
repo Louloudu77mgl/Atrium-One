@@ -106,7 +106,7 @@ export async function PATCH(
   const now = new Date().toISOString();
   const { data: existingPost } = await supabase
     .from("social_posts")
-    .select("id,merchant_id,status,published_at,scheduled_at,builder_state,visual_text,visual_url,image_url")
+    .select("id,merchant_id,status,published_at,scheduled_at,builder_state,visual_text,visual_url,image_url,media_kind")
     .eq("id", postId)
     .eq("merchant_id", merchant.id)
     .maybeSingle();
@@ -128,6 +128,9 @@ export async function PATCH(
 
     try {
       const { connection } = await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase });
+      if (existingPost.media_kind === "story" && connection.instagram_account_type !== "BUSINESS") {
+        return NextResponse.json({ error: "La planification de Stories via Meta nécessite un compte Instagram Business. Passez votre compte en Entreprise, puis vérifiez à nouveau la connexion. Vous pouvez aussi télécharger votre Story.", failureCode: "story_account_unsupported", reconnectRequired: false, supportRequired: false }, { status: 409 });
+      }
       payload.instagram_connection_id = connection.id;
       payload.error_message = null;
       payload.failed_at = null;

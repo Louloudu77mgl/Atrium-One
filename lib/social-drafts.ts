@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { defaultStoryEditorial, normalizeStoryEditorial, type StoryEditorial } from "@/lib/story-editorial";
 import { withRecommendationOrigin } from "@/lib/social-recommendation-shared";
 import {
   attachSocialRecommendationToPost,
@@ -9,13 +10,16 @@ import { getBrandSettings } from "@/lib/brand-settings";
 import { renderBuilderStateToHtml } from "@/lib/social-builder";
 import { createGeneratedDesignDocument, serializeDocumentToBuilderState } from "@/lib/social-editor/document";
 import { getMerchant } from "@/lib/merchants";
-import { composeAndStoreSocialPostVisual, generateAndStoreSocialVisual } from "@/lib/social-visuals";
+import { composeAndStoreSocialPostVisual } from "@/lib/social-visuals";
+import { resolveHansVisual } from "@/lib/hans-visual-source";
+import { getMerchantMediaCategories } from "@/lib/merchant-media";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 
 export type DraftIdeaInput = {
   platform?: "instagram" | "facebook";
+  contentType?: "post" | "story";
   title?: string;
   angle?: string;
   source?: string;
@@ -39,6 +43,8 @@ type GeneratedDraftContent = {
   visualHook: string;
   visualSubtitle: string;
   format: "carré" | "story" | "carrousel simple";
+  mediaCategory: string | null;
+  storyEditorial?: StoryEditorial;
 };
 
 type OpenAIResponseBody = {
@@ -110,7 +116,9 @@ function fallbackDraft(payload: DraftIdeaInput, merchantName: string): Generated
     visualPrompt: "Une seule scène forte, chaleureuse et lumineuse, avec un sujet principal clairement identifiable et beaucoup d’espace négatif pour une accroche courte.",
     visualHook: limitWords(payload.title || "À découvrir", 6, 40),
     visualSubtitle,
-    format: payload.platform === "facebook" ? "carrousel simple" : "carré"
+    format: payload.contentType === "story" ? "story" : payload.platform === "facebook" ? "carrousel simple" : "carré",
+    mediaCategory: null,
+    ...(payload.contentType === "story" ? { storyEditorial: defaultStoryEditorial(visualSubtitle) } : {})
   };
 }
 
@@ -151,7 +159,9 @@ function validateDraft(raw: unknown, fallback: GeneratedDraftContent): Generated
     visualPrompt: limitText(typeof candidate.visualPrompt === "string" && candidate.visualPrompt.trim() ? candidate.visualPrompt : fallback.visualPrompt, 360),
     visualHook: limitWords(typeof candidate.visualHook === "string" && candidate.visualHook.trim() && !soundsLikeReviewReply(candidate.visualHook) ? candidate.visualHook : fallback.visualHook, 6, 40),
     visualSubtitle,
-    format: candidate.format === "story" || candidate.format === "carrousel simple" ? candidate.format : fallback.format
+    format: fallback.format === "story" ? "story" : candidate.format === "story" || candidate.format === "carrousel simple" ? candidate.format : fallback.format,
+    mediaCategory: typeof candidate.mediaCategory === "string" && candidate.mediaCategory.trim() ? candidate.mediaCategory.trim().slice(0, 60) : fallback.mediaCategory,
+    ...(fallback.format === "story" ? { storyEditorial: normalizeStoryEditorial(candidate.storyEditorial, fallback.storyEditorial ?? defaultStoryEditorial(visualSubtitle)) } : {})
   };
 }
 
@@ -165,7 +175,9 @@ export async function generateDraftContent({
   supabaseClient?: SupabaseClient<Database>;
 }) {
   const brand = await getBrandSettings(merchant, supabaseClient);
+  const mediaCategories = await getMerchantMediaCategories(merchant.id, supabaseClient);
   const fallback = fallbackDraft(idea, merchant.business_name);
+  const isStory = idea.contentType === "story";
   const openAiApiKey = process.env.OPENAI_API_KEY;
 
   if (!openAiApiKey) {
@@ -181,7 +193,8 @@ export async function generateDraftContent({
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
       instructions:
-        "Tu crées un post social immédiatement publiable pour un commerce local. Retourne uniquement un JSON valide avec title, caption, cta, hashtags, visualPrompt, visualHook, visualSubtitle, format. DIVERSITÉ OBLIGATOIRE : si idea.avoidTopics est présent, ne reprends ni le même sujet, ni le même angle, ni la même accroche, ni la même structure narrative que ces publications récentes. Une simple reformulation est interdite. DISTINCTION ABSOLUE : un post Instagram n’est jamais une réponse à un avis. Si idea ou source contient un avis client, utilise-le uniquement comme signal éditorial interne pour choisir un sujet ; ne t’adresse jamais à l’auteur de l’avis et ne remercie jamais pour un retour. Interdictions strictes dans title, caption, visualHook et visualSubtitle : « merci pour votre retour », « merci pour votre avis », « merci pour votre commentaire », « merci pour votre témoignage », « merci d’avoir partagé », « nous sommes ravis d’apprendre », « votre satisfaction est notre priorité », ainsi que toute variante équivalente. La caption doit parler au public Instagram du commerce, comme une publication autonome, jamais comme une conversation avec un client ayant laissé un avis. La demande explicite du commerçant dans idea est la priorité absolue : conserve exactement les personnes, sujets, lieux, cadres, objets, actions, quantités, couleurs et détails demandés. Si une personne, un visage, une main, une équipe ou une foule est explicitement demandé, prévois-le clairement dans visualPrompt au lieu de le remplacer. Quand Hans invente seul une publication sans demande visuelle explicite, reste cohérent avec le commerce : une présence humaine naturelle est autorisée si elle sert vraiment la scène, mais évite de l’imposer systématiquement. Si idea contient un événement ou une date, ne présente jamais le commerce comme partenaire ou participant sans information explicite. title : 64 caractères maximum. caption : légende Instagram naturelle de 2 ou 3 phrases, 320 caractères maximum, avec au plus 1 emoji. visualHook : accroche de 3 à 6 mots, 40 caractères maximum. visualSubtitle : une seule phrase éditoriale complète de 55 à 110 caractères, avec sujet, verbe et ponctuation finale. Elle doit être différente de la caption et ne jamais se terminer par des points de suspension. Il est interdit de couper ou tronquer cette phrase. visualPrompt : direction visuelle concrète et originale, fidèle à l’intention du commerçant ; précise le sujet, l’action, le décor/cadre, le cadrage, la lumière et l’ambiance. Respecte la piste visualDirection lorsqu’elle existe et varie franchement les cadrages et les concepts. Évite les compositions génériques répétitives et n'impose pas systématiquement un produit centré. Aucun texte intégré dans l'image. Le résultat doit pouvoir être publié sans réécriture.",
+        (isStory ? "Direction éditoriale Story : reprends un journal de marque premium, fond papier clair, grand titre, carte photo et deux petits blocs complémentaires. Ajoute au JSON storyEditorial avec eyebrow (26 caractères max), introduction (100 max), photoBadge (24 max), featureTitle (48 max), featureDescription (110 max) et blocks: [{label (20 max), text (64 max)}, {label, text}]. Chaque bloc apporte une information différente, ancrée dans le contexte fourni. Pas de faux témoignage, prix, promo, horaire, date ou résultat inventé. Ni placeholders, ni URL, ni emoji dans les textes visibles. Les phrases doivent être complètes et courtes, les titres lisibles. Le CTA doit inviter à écrire ou venir, sans prétendre qu’un bouton dessiné est cliquable. " : "") +
+        `${isStory ? "Tu crées une Story Instagram immédiatement publiable" : "Tu crées un post social immédiatement publiable"} pour un commerce local. Retourne uniquement un JSON valide avec title, caption, cta, hashtags, visualPrompt, visualHook, visualSubtitle, format et mediaCategory. ${isStory ? "Le format doit obligatoirement être story. La Story est mobile-first, verticale 9:16, comprise en moins de 3 secondes, avec un message unique, une accroche très courte et un CTA naturel. Prévois une composition premium avec des zones sûres en haut et en bas pour l’interface Instagram." : "Le format doit être adapté au réseau demandé."} Utilise précisément la charte transmise dans brand : couleurs, ton, style visuel et police. mediaCategory doit reprendre exactement la catégorie photo disponible la plus pertinente pour le sujet, ou null si aucune ne convient. DIVERSITÉ OBLIGATOIRE : si idea.avoidTopics est présent, ne reprends ni le même sujet, ni le même angle, ni la même accroche, ni la même structure narrative que ces publications récentes. Une simple reformulation est interdite. DISTINCTION ABSOLUE : un contenu Instagram n’est jamais une réponse à un avis. Si idea ou source contient un avis client, utilise-le uniquement comme signal éditorial interne pour choisir un sujet ; ne t’adresse jamais à l’auteur de l’avis et ne remercie jamais pour un retour. Interdictions strictes dans title, caption, visualHook et visualSubtitle : « merci pour votre retour », « merci pour votre avis », « merci pour votre commentaire », « merci pour votre témoignage », « merci d’avoir partagé », « nous sommes ravis d’apprendre », « votre satisfaction est notre priorité », ainsi que toute variante équivalente. La caption doit parler au public Instagram du commerce, comme une publication autonome, jamais comme une conversation avec un client ayant laissé un avis. La demande explicite du commerçant dans idea est la priorité absolue : conserve exactement les personnes, sujets, lieux, cadres, objets, actions, quantités, couleurs et détails demandés. Si une personne, un visage, une main, une équipe ou une foule est explicitement demandé, prévois-le clairement dans visualPrompt au lieu de le remplacer. Quand Hans invente seul une publication sans demande visuelle explicite, reste cohérent avec le commerce : une présence humaine naturelle est autorisée si elle sert vraiment la scène, mais évite de l’imposer systématiquement. Si idea contient un événement ou une date, ne présente jamais le commerce comme partenaire ou participant sans information explicite. title : 64 caractères maximum. caption : légende Instagram naturelle de 2 ou 3 phrases, 320 caractères maximum, avec au plus 1 emoji. visualHook : accroche de 3 à 6 mots, 40 caractères maximum. visualSubtitle : une seule phrase éditoriale complète de 55 à 110 caractères, avec sujet, verbe et ponctuation finale. Elle doit être différente de la caption et ne jamais se terminer par des points de suspension. Il est interdit de couper ou tronquer cette phrase. visualPrompt : direction visuelle concrète et originale, fidèle à l’intention du commerçant ; précise le sujet, l’action, le décor/cadre, le cadrage, la lumière et l’ambiance. Respecte la piste visualDirection lorsqu’elle existe et varie franchement les cadrages et les concepts. Évite les compositions génériques répétitives et n'impose pas systématiquement un produit centré. Aucun texte intégré dans l'image. Le résultat doit pouvoir être publié sans réécriture.`,
       input: JSON.stringify({
         merchant: {
           businessName: merchant.business_name,
@@ -190,9 +203,10 @@ export async function generateDraftContent({
           description: merchant.description
         },
         brand,
-        idea
+        idea,
+        availableMediaCategories: mediaCategories.map((category) => ({ name: category.name, description: category.description }))
       }),
-      max_output_tokens: 900
+      max_output_tokens: isStory ? 1600 : 900
     })
   });
 
@@ -237,18 +251,23 @@ export async function createSocialDraftFromIdea({
     const { draft, brand } = await generateDraftContent({ merchant: currentMerchant, idea, supabaseClient: supabase });
     let imageUrl: string | null = null;
     let visualUrl: string | null = null;
+    let sourceAssetId: string | null = null;
     let errorMessage: string | null = null;
 
     try {
-      imageUrl = (await generateAndStoreSocialVisual({
+      const resolvedVisual = await resolveHansVisual({
         merchant: currentMerchant,
         title: draft.title,
         caption: draft.caption,
         visualPrompt: draft.visualPrompt,
-        source: [idea.source, idea.angle, idea.category, idea.localEvent, idea.eventDate, idea.seasonalMoment, idea.visualDirection].filter(Boolean).join(" · ") || null,
+        subject: [idea.source, idea.angle, idea.category, idea.localEvent, idea.eventDate, idea.seasonalMoment, idea.visualDirection].filter(Boolean).join(" · ") || draft.title,
+        preferredCategoryName: draft.mediaCategory,
         styleOverride: brand?.visual_style ?? null,
+        format: "social",
         supabaseClient: supabase
-      })).imageUrl;
+      });
+      imageUrl = resolvedVisual.imageUrl;
+      sourceAssetId = resolvedVisual.sourceAssetId;
     } catch (error) {
       errorMessage = getSocialVisualFallbackMessage(error);
     }
@@ -299,6 +318,7 @@ export async function createSocialDraftFromIdea({
         primary_color: brand?.primary_color ?? "#4C1D95",
         secondary_color: brand?.secondary_color ?? "#F3E8FF",
         accent_color: brand?.accent_color ?? "#A855F7",
+        source_asset_id: sourceAssetId,
         status: "draft",
         last_saved_at: now,
         updated_at: now

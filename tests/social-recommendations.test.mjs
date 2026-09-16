@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { buildCreatePostHref, getRecommendationOrigin, isRecommendationPublished, isRecommendationUsed, parisDateKey, preserveRecommendationOrigin, readRecommendationOrigin, recommendationWeek, selectRecommendationMix, withRecommendationOrigin, withoutRecommendationOrigin } from "../lib/social-recommendation-shared.ts";
+import { buildCreatePostHref, buildCreateStoryHref, getRecommendationOrigin, isRecommendationPublished, isRecommendationUsed, parisDateKey, preserveRecommendationOrigin, readRecommendationOrigin, recommendationWeek, selectRecommendationMix, withRecommendationOrigin, withoutRecommendationOrigin } from "../lib/social-recommendation-shared.ts";
 import { buildAutomationSlots, getRecommendedPublishingDays } from "../lib/social-automation-shared.ts";
 import { parseLocalEventIdeas, searchLocalEventIdeas } from "../lib/social-local-event-search.ts";
 
@@ -73,6 +73,17 @@ test("les champs de source positifs/négatifs et événementiels traversent le C
   assert.equal(getRecommendationOrigin(idea("Accueil")).sourceType, "positive_review");
   assert.equal(getRecommendationOrigin(negative).sourceType, "negative_review");
   assert.equal(getRecommendationOrigin(idea("Qualité, été !")).themeKey, getRecommendationOrigin(idea("qualite ete")).themeKey);
+});
+
+test("les recommandations Story ont leur propre parcours Hans sans consommer le post du même thème", () => {
+  const postIdea = idea("Accueil chaleureux");
+  const storyIdea = { ...postIdea, contentType: "story", visualDirection: "Composition verticale" };
+  assert.notEqual(getRecommendationOrigin(storyIdea).themeKey, getRecommendationOrigin(postIdea).themeKey);
+  assert.match(getRecommendationOrigin(storyIdea).themeKey, /^story:/);
+  const href = new URL(buildCreateStoryHref(storyIdea), "https://app.atrium-one.fr");
+  assert.equal(href.pathname, "/social/stories/create");
+  assert.equal(href.searchParams.get("contentType"), "story");
+  assert.equal(href.searchParams.get("sourceStrength"), storyIdea.sourceStrength);
 });
 
 test("la semaine change le lundi à minuit Paris, été comme hiver", () => {

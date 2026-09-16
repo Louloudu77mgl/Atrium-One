@@ -1,6 +1,7 @@
 import { getMerchant } from "@/lib/merchants";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { MerchantMediaAssetRow, MerchantRow } from "@/lib/supabase/types";
+import { resolveMerchantAssetUrl } from "@/lib/merchant-media";
 
 export async function getMerchantMediaAssets(merchant?: MerchantRow | null): Promise<MerchantMediaAssetRow[]> {
   const currentMerchant = merchant ?? await getMerchant();
@@ -24,7 +25,10 @@ export async function getMerchantMediaAssets(merchant?: MerchantRow | null): Pro
     throw new Error(error.message);
   }
 
-  return data;
+  return Promise.all(data.map(async (asset) => ({
+    ...asset,
+    url: await resolveMerchantAssetUrl(asset, supabase)
+  })));
 }
 
 export function buildAutomaticAltText({

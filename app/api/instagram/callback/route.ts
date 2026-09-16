@@ -204,6 +204,7 @@ export async function GET(request: Request) {
       merchant_id: merchant.id,
       instagram_account_id: accountId || null,
       instagram_username: username,
+      instagram_account_type: profileData.account_type ?? null,
       access_token_encrypted: userAccessToken,
       status: connectionReady ? "connected" : "pending_configuration",
       connected_at: new Date().toISOString(),

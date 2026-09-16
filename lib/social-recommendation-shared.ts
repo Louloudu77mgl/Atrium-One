@@ -1,7 +1,7 @@
 import type { ReviewSocialPostIdea } from "@/lib/review-insights";
 import type { Json, SocialPostRow } from "@/lib/supabase/types";
 
-export type RecommendationPost = Pick<SocialPostRow, "id" | "platform" | "status" | "builder_state" | "title" | "caption" | "published_at" | "updated_at">;
+export type RecommendationPost = Pick<SocialPostRow, "id" | "platform" | "media_kind" | "status" | "builder_state" | "title" | "caption" | "published_at" | "updated_at">;
 
 export type RecommendationOrigin = {
   version: 1;
@@ -10,6 +10,7 @@ export type RecommendationOrigin = {
   sourceLabel: string;
   title: string;
   eventDate: string | null;
+  contentType?: "post" | "story";
 };
 
 const stopWords = new Set(["avec", "dans", "pour", "vous", "votre", "notre", "chez", "plus", "post", "instagram", "client", "clients", "faire", "cette", "comme", "tout", "sans", "une", "des", "les", "sur"]);
@@ -23,7 +24,9 @@ export function getRecommendationOrigin(idea: Partial<ReviewSocialPostIdea>): Re
   const sourceLabel = idea.localEvent || idea.seasonalMoment || idea.sourcePainPoint || idea.sourceStrength || idea.title || "";
   const kind = sourceType.endsWith("_review") ? "insight" : sourceType;
   const eventDate = idea.localEvent || idea.seasonalMoment ? idea.eventDate || null : null;
-  return { version: 1, themeKey: `${kind}:${normalizeTheme(sourceLabel)}${eventDate ? `:${eventDate}` : ""}`, sourceType, sourceLabel, title: idea.title || "", eventDate };
+  const contentType = idea.contentType === "story" ? "story" : "post";
+  const baseKey = `${kind}:${normalizeTheme(sourceLabel)}${eventDate ? `:${eventDate}` : ""}`;
+  return { version: 1, themeKey: contentType === "story" ? `story:${baseKey}` : baseKey, sourceType, sourceLabel, title: idea.title || "", eventDate, contentType };
 }
 
 export function readRecommendationOrigin(state: Json | null | undefined): RecommendationOrigin | null {
@@ -67,6 +70,7 @@ export function isRecommendationPublished(idea: ReviewSocialPostIdea, posts: Rec
   const origin = getRecommendationOrigin(idea);
   return posts.some((post) => {
     if (post.platform !== "instagram" || post.status !== "published") return false;
+    if (idea.contentType === "story" ? post.media_kind !== "story" : post.media_kind === "story") return false;
     const saved = readRecommendationOrigin(post.builder_state);
     if (saved) return saved.themeKey === origin.themeKey;
     const text = `${post.title} ${post.caption}`;
@@ -80,6 +84,7 @@ export function isRecommendationUsed(idea: ReviewSocialPostIdea, posts: Recommen
   const origin = getRecommendationOrigin(idea);
   return posts.some((post) => {
     if (post.platform !== "instagram") return false;
+    if (idea.contentType === "story" ? post.media_kind !== "story" : post.media_kind === "story") return false;
     const saved = readRecommendationOrigin(post.builder_state);
     if (saved) return saved.themeKey === origin.themeKey;
     if (post.status !== "published") return false;
@@ -96,6 +101,20 @@ export function buildCreatePostHref(idea: ReviewSocialPostIdea) {
     if (idea[field]) params.set(field, idea[field]);
   }
   return `/social/create?${params.toString()}`;
+}
+
+export function buildCreateStoryHref(idea: ReviewSocialPostIdea) {
+  const params = new URLSearchParams({
+    platform: "instagram",
+    contentType: "story",
+    title: idea.title,
+    angle: idea.angle,
+    source: getRecommendationOrigin(idea).sourceLabel
+  });
+  for (const field of ["sourcePainPoint", "sourceStrength", "category", "seasonalMoment", "localEvent", "eventDate", "sourceUrl", "visualDirection"] as const) {
+    if (idea[field]) params.set(field, idea[field]);
+  }
+  return `/social/stories/create?${params.toString()}`;
 }
 
 export function parisDateKey(date = new Date()) {

@@ -17,7 +17,7 @@ export function AutomationTemplates({
       <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => {
           const requiresBackend = template.nodes.some((node) => node.status === "warning");
-          const highlighted = template.id === "recipe-weekly-instagram";
+          const highlighted = ["recipe-weekly-instagram", "recipe-weekly-instagram-story", "recipe-regular-instagram-stories"].includes(template.id);
           return (
           <article key={template.id} className={`rounded-[24px] border p-4 ${highlighted ? "border-[#BDA9ED] bg-[#F9F6FF] shadow-[0_14px_35px_rgba(76,29,149,0.12)] md:col-span-2 xl:col-span-1" : "border-[#EBE6DF] bg-[#FCFBF9]"}`}>
             <div className={`rounded-[18px] p-4 ${highlighted ? "bg-[linear-gradient(135deg,#EDE3FF_0%,#FFF4EA_100%)]" : "bg-[linear-gradient(135deg,#F4EEFF_0%,#FFF8F3_100%)]"}`}>

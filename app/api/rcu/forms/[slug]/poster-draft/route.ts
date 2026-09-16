@@ -5,7 +5,7 @@ import { getMerchant } from "@/lib/merchants";
 import { createRcuPosterDocument } from "@/lib/rcu";
 import { getStoredRcuForm } from "@/lib/rcu-store";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { generateAndStoreSocialVisual } from "@/lib/social-visuals";
+import { resolveHansVisual } from "@/lib/hans-visual-source";
 import type { Json } from "@/lib/supabase/types";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
@@ -22,13 +22,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ sl
     getBrandSettings(merchant).catch(() => null),
     getAppOriginFromHeaders()
   ]);
-  const generatedVisual = await generateAndStoreSocialVisual({
+  const generatedVisual = await resolveHansVisual({
     merchant,
     title: form.poster_headline || form.title,
     caption: form.poster_body || form.incentive_text,
-    source: "Affiche A4 premium pour inviter les clients en boutique à scanner un QR code et rejoindre le programme de fidélité.",
+    subject: `${form.poster_headline || form.title}. ${form.poster_body || form.incentive_text}. Affiche A4 premium pour inviter les clients en boutique à rejoindre le programme de fidélité.`,
     visualPrompt: "Créer une photographie ou illustration éditoriale élégante liée au commerce, avec une composition verticale, une zone calme pour le titre et sans texte intégré.",
     styleOverride: brandSettings?.visual_style,
+    format: "rcu"
   }).catch(() => null);
   const document = createRcuPosterDocument({
     form,
@@ -51,6 +52,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ sl
     status: "editing",
     visual_text: form.poster_headline || form.title,
     image_url: generatedVisual?.imageUrl ?? null,
+    source_asset_id: generatedVisual?.sourceAssetId ?? null,
     builder_state: document as unknown as Json,
     primary_color: brandSettings?.primary_color ?? "#4C1D95",
     secondary_color: brandSettings?.secondary_color ?? "#F3E8FF",

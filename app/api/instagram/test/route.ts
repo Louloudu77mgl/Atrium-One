@@ -27,8 +27,18 @@ export async function POST() {
 
   try {
     const supabase = await createServerSupabaseClient();
-    await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase });
-    return NextResponse.json({ ok: true, message: "Connexion Instagram vérifiée." });
+    const { connection } = await getValidInstagramAccessToken({ merchantId: merchant.id, supabaseClient: supabase });
+    const storyEligible = connection.instagram_account_type === "BUSINESS";
+    return NextResponse.json({
+      ok: true,
+      message: "Connexion Instagram vérifiée.",
+      accountType: connection.instagram_account_type,
+      username: connection.instagram_username,
+      storyEligible,
+      storyMessage: storyEligible
+        ? "Compte Business vérifié. Vous pouvez tenter la publication ; Instagram vérifiera aussi les autorisations et le média lors de l’envoi."
+        : "Instagram exige un compte Business pour les Stories via API. Passez votre compte en Entreprise dans Instagram, puis vérifiez à nouveau. Vous pouvez aussi télécharger la Story et la publier depuis Instagram."
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Impossible de vérifier la connexion Instagram pour le moment.";
     console.error("[instagram/test] failed", { merchantId: merchant.id, failureCode: getInstagramFailureCode(error) });

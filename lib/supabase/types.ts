@@ -305,6 +305,7 @@ export type Database = {
           error_message: string | null;
           created_posts: number;
           updated_at: string;
+          automation_kind: "feed" | "story";
         };
         Insert: {
           id?: string;
@@ -317,6 +318,7 @@ export type Database = {
           error_message?: string | null;
           created_posts?: number;
           updated_at?: string;
+          automation_kind?: "feed" | "story";
         };
         Update: {
           id?: string;
@@ -329,6 +331,7 @@ export type Database = {
           error_message?: string | null;
           created_posts?: number;
           updated_at?: string;
+          automation_kind?: "feed" | "story";
         };
         Relationships: [
           {
@@ -372,6 +375,9 @@ export type Database = {
           primary_color: string | null;
           secondary_color: string | null;
           accent_color: string | null;
+          media_kind: "feed" | "story";
+          source_asset_id: string | null;
+          meta_container_id: string | null;
         };
         Insert: {
           id?: string;
@@ -404,6 +410,9 @@ export type Database = {
           primary_color?: string | null;
           secondary_color?: string | null;
           accent_color?: string | null;
+          media_kind?: "feed" | "story";
+          source_asset_id?: string | null;
+          meta_container_id?: string | null;
         };
         Update: {
           id?: string;
@@ -436,6 +445,9 @@ export type Database = {
           primary_color?: string | null;
           secondary_color?: string | null;
           accent_color?: string | null;
+          media_kind?: "feed" | "story";
+          source_asset_id?: string | null;
+          meta_container_id?: string | null;
         };
         Relationships: [
           {
@@ -586,6 +598,9 @@ export type Database = {
           social_posts_per_week: number;
           social_posts_per_cycle: number;
           social_cycle_weeks: number;
+          social_stories_auto_publish_enabled: boolean;
+          social_stories_auto_publish_live: boolean;
+          social_stories_per_week: number;
           created_at: string;
           updated_at: string;
         };
@@ -606,6 +621,9 @@ export type Database = {
           social_posts_per_week?: number;
           social_posts_per_cycle?: number;
           social_cycle_weeks?: number;
+          social_stories_auto_publish_enabled?: boolean;
+          social_stories_auto_publish_live?: boolean;
+          social_stories_per_week?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -626,6 +644,9 @@ export type Database = {
           social_posts_per_week?: number;
           social_posts_per_cycle?: number;
           social_cycle_weeks?: number;
+          social_stories_auto_publish_enabled?: boolean;
+          social_stories_auto_publish_live?: boolean;
+          social_stories_per_week?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -1157,6 +1178,14 @@ export type Database = {
           category: string | null;
           source: "upload" | "website_scrape" | "generated_ai";
           created_at: string;
+          category_id: string | null;
+          storage_path: string | null;
+          original_filename: string | null;
+          mime_type: string | null;
+          byte_size: number | null;
+          use_count: number;
+          last_used_at: string | null;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -1166,6 +1195,14 @@ export type Database = {
           category?: string | null;
           source?: "upload" | "website_scrape" | "generated_ai";
           created_at?: string;
+          category_id?: string | null;
+          storage_path?: string | null;
+          original_filename?: string | null;
+          mime_type?: string | null;
+          byte_size?: number | null;
+          use_count?: number;
+          last_used_at?: string | null;
+          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -1175,6 +1212,14 @@ export type Database = {
           category?: string | null;
           source?: "upload" | "website_scrape" | "generated_ai";
           created_at?: string;
+          category_id?: string | null;
+          storage_path?: string | null;
+          original_filename?: string | null;
+          mime_type?: string | null;
+          byte_size?: number | null;
+          use_count?: number;
+          last_used_at?: string | null;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -1183,8 +1228,295 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "merchants";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "merchant_media_assets_category_id_fkey";
+            columns: ["category_id"];
+            isOneToOne: false;
+            referencedRelation: "merchant_media_categories";
+            referencedColumns: ["id"];
           }
         ];
+      };
+      merchant_media_categories: {
+        Row: {
+          id: string;
+          merchant_id: string;
+          name: string;
+          description: string | null;
+          is_system: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          merchant_id: string;
+          name: string;
+          description?: string | null;
+          is_system?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          merchant_id?: string;
+          name?: string;
+          description?: string | null;
+          is_system?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "merchant_media_categories_merchant_id_fkey";
+            columns: ["merchant_id"];
+            isOneToOne: false;
+            referencedRelation: "merchants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      merchant_visual_preferences: {
+        Row: {
+          merchant_id: string;
+          image_source_mode: "ai" | "merchant" | "mixed";
+          next_mixed_source: "ai" | "merchant";
+          sequence_version: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          merchant_id: string;
+          image_source_mode?: "ai" | "merchant" | "mixed";
+          next_mixed_source?: "ai" | "merchant";
+          sequence_version?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          merchant_id?: string;
+          image_source_mode?: "ai" | "merchant" | "mixed";
+          next_mixed_source?: "ai" | "merchant";
+          sequence_version?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "merchant_visual_preferences_merchant_id_fkey";
+            columns: ["merchant_id"];
+            isOneToOne: true;
+            referencedRelation: "merchants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      crm_releases: {
+        Row: {
+          id: string;
+          title: string;
+          release_date: string;
+          version: string | null;
+          summary: string;
+          description: string;
+          highlights: Json;
+          improvements: Json;
+          fixes: Json;
+          category: string;
+          status: "draft" | "published";
+          email_subject: string | null;
+          email_intro: string | null;
+          published_at: string | null;
+          sent_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          release_date?: string;
+          version?: string | null;
+          summary: string;
+          description?: string;
+          highlights?: Json;
+          improvements?: Json;
+          fixes?: Json;
+          category?: string;
+          status?: "draft" | "published";
+          email_subject?: string | null;
+          email_intro?: string | null;
+          published_at?: string | null;
+          sent_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          release_date?: string;
+          version?: string | null;
+          summary?: string;
+          description?: string;
+          highlights?: Json;
+          improvements?: Json;
+          fixes?: Json;
+          category?: string;
+          status?: "draft" | "published";
+          email_subject?: string | null;
+          email_intro?: string | null;
+          published_at?: string | null;
+          sent_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      crm_gmail_connections: {
+        Row: {
+          id: string;
+          google_account_id: string | null;
+          gmail_address: string | null;
+          access_token_encrypted: string | null;
+          refresh_token_encrypted: string | null;
+          granted_scopes: string[];
+          token_expires_at: string | null;
+          connected_at: string | null;
+          last_checked_at: string | null;
+          last_error: string | null;
+          status: "connected" | "disconnected" | "error";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          google_account_id?: string | null;
+          gmail_address?: string | null;
+          access_token_encrypted?: string | null;
+          refresh_token_encrypted?: string | null;
+          granted_scopes?: string[];
+          token_expires_at?: string | null;
+          connected_at?: string | null;
+          last_checked_at?: string | null;
+          last_error?: string | null;
+          status?: "connected" | "disconnected" | "error";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          google_account_id?: string | null;
+          gmail_address?: string | null;
+          access_token_encrypted?: string | null;
+          refresh_token_encrypted?: string | null;
+          granted_scopes?: string[];
+          token_expires_at?: string | null;
+          connected_at?: string | null;
+          last_checked_at?: string | null;
+          last_error?: string | null;
+          status?: "connected" | "disconnected" | "error";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      crm_release_sends: {
+        Row: {
+          id: string;
+          release_id: string;
+          idempotency_key: string;
+          status: "pending" | "sending" | "sent" | "partial" | "failed";
+          audience_count: number;
+          sent_count: number;
+          failed_count: number;
+          started_at: string | null;
+          completed_at: string | null;
+          error_message: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          release_id: string;
+          idempotency_key: string;
+          status?: "pending" | "sending" | "sent" | "partial" | "failed";
+          audience_count?: number;
+          sent_count?: number;
+          failed_count?: number;
+          started_at?: string | null;
+          completed_at?: string | null;
+          error_message?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          release_id?: string;
+          idempotency_key?: string;
+          status?: "pending" | "sending" | "sent" | "partial" | "failed";
+          audience_count?: number;
+          sent_count?: number;
+          failed_count?: number;
+          started_at?: string | null;
+          completed_at?: string | null;
+          error_message?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      crm_release_recipients: {
+        Row: {
+          id: string;
+          send_id: string;
+          release_id: string;
+          merchant_id: string;
+          email: string;
+          business_name: string;
+          status: "pending" | "sending" | "sent" | "failed";
+          gmail_message_id: string | null;
+          error_message: string | null;
+          sent_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          send_id: string;
+          release_id: string;
+          merchant_id: string;
+          email: string;
+          business_name: string;
+          status?: "pending" | "sending" | "sent" | "failed";
+          gmail_message_id?: string | null;
+          error_message?: string | null;
+          sent_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          send_id?: string;
+          release_id?: string;
+          merchant_id?: string;
+          email?: string;
+          business_name?: string;
+          status?: "pending" | "sending" | "sent" | "failed";
+          gmail_message_id?: string | null;
+          error_message?: string | null;
+          sent_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       google_connections: {
         Row: {
@@ -1256,6 +1588,7 @@ export type Database = {
           page_id: string | null;
           last_checked_at: string | null;
           updated_at: string;
+          instagram_account_type: string | null;
         };
         Insert: {
           id?: string;
@@ -1273,6 +1606,7 @@ export type Database = {
           page_id?: string | null;
           last_checked_at?: string | null;
           updated_at?: string;
+          instagram_account_type?: string | null;
         };
         Update: {
           id?: string;
@@ -1290,6 +1624,7 @@ export type Database = {
           page_id?: string | null;
           last_checked_at?: string | null;
           updated_at?: string;
+          instagram_account_type?: string | null;
         };
         Relationships: [
           {
@@ -1438,7 +1773,17 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      crm_active_release_audience: {
+        Args: Record<PropertyKey, never>;
+        Returns: Array<{
+          merchant_id: string;
+          user_id: string;
+          email: string;
+          business_name: string;
+        }>;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
@@ -1453,6 +1798,12 @@ export type SocialRecommendationUsageRow = Database["public"]["Tables"]["social_
 export type SocialAutomationWeeklyRunRow = Database["public"]["Tables"]["social_automation_weekly_runs"]["Row"];
 export type SocialPostRow = Database["public"]["Tables"]["social_posts"]["Row"];
 export type MerchantMediaAssetRow = Database["public"]["Tables"]["merchant_media_assets"]["Row"];
+export type MerchantMediaCategoryRow = Database["public"]["Tables"]["merchant_media_categories"]["Row"];
+export type MerchantVisualPreferenceRow = Database["public"]["Tables"]["merchant_visual_preferences"]["Row"];
+export type CrmReleaseRow = Database["public"]["Tables"]["crm_releases"]["Row"];
+export type CrmGmailConnectionRow = Database["public"]["Tables"]["crm_gmail_connections"]["Row"];
+export type CrmReleaseSendRow = Database["public"]["Tables"]["crm_release_sends"]["Row"];
+export type CrmReleaseRecipientRow = Database["public"]["Tables"]["crm_release_recipients"]["Row"];
 export type DesignTemplateRow = Database["public"]["Tables"]["design_templates"]["Row"];
 export type MediaAssetRow = Database["public"]["Tables"]["media_assets"]["Row"];
 export type MerchantBrandSettingsRow = Database["public"]["Tables"]["merchant_brand_settings"]["Row"];

@@ -15,14 +15,54 @@ export async function getTopSocialRecommendations({ analysis, merchant, posts = 
   posts?: RecommendationPost[];
   enrichWithExternalSources?: boolean;
 }) {
-  const insightIdeas = buildInsightReserve(analysis);
+  return getTopRecommendations({ analysis, merchant, posts, enrichWithExternalSources, contentType: "post" });
+}
+
+export async function getTopStoryRecommendations({ analysis, merchant, posts = [], enrichWithExternalSources = true }: {
+  analysis: ReviewInsightsAnalysis | null;
+  reviews: Review[];
+  merchant?: MerchantRow | null;
+  posts?: RecommendationPost[];
+  enrichWithExternalSources?: boolean;
+}) {
+  return getTopRecommendations({ analysis, merchant, posts, enrichWithExternalSources, contentType: "story" });
+}
+
+async function getTopRecommendations({
+  analysis,
+  merchant,
+  posts,
+  enrichWithExternalSources,
+  contentType
+}: {
+  analysis: ReviewInsightsAnalysis | null;
+  merchant?: MerchantRow | null;
+  posts: RecommendationPost[];
+  enrichWithExternalSources: boolean;
+  contentType: "post" | "story";
+}) {
+  const adapt = (ideas: ReviewSocialPostIdea[]) => contentType === "story" ? ideas.map(toStoryRecommendation) : ideas;
+  const insightIdeas = adapt(buildInsightReserve(analysis));
   const [localIdeas, retired] = enrichWithExternalSources
     ? await Promise.all([
-        merchant ? getUpcomingLocalSocialIdeas(merchant) : Promise.resolve([]),
+        merchant ? getUpcomingLocalSocialIdeas(merchant).then(adapt) : Promise.resolve([]),
         merchant ? getPreviouslyPublishedThemes(merchant.id, insightIdeas, posts) : Promise.resolve(new Set<string>())
       ])
     : [[], new Set<string>()];
-  return selectRecommendationMix([insightIdeas.filter((idea) => !retired.has(getRecommendationOrigin(idea).themeKey)), localIdeas, buildSeasonalIdeas(merchant)], posts);
+  return selectRecommendationMix([insightIdeas.filter((idea) => !retired.has(getRecommendationOrigin(idea).themeKey)), localIdeas, adapt(buildSeasonalIdeas(merchant))], posts);
+}
+
+function toStoryRecommendation(idea: ReviewSocialPostIdea): ReviewSocialPostIdea {
+  return {
+    ...idea,
+    platform: "instagram",
+    contentType: "story",
+    angle: `${idea.angle} Hans en fait une Story courte, immersive et immédiatement compréhensible.`,
+    visualDirection: [
+      idea.visualDirection,
+      "Composition verticale 9:16 premium, un message unique, sujet fort, zones sûres Instagram et CTA lisible."
+    ].filter(Boolean).join(" ")
+  };
 }
 
 function buildInsightReserve(analysis: ReviewInsightsAnalysis | null): ReviewSocialPostIdea[] {

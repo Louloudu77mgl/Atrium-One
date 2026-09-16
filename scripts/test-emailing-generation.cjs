@@ -84,14 +84,13 @@ test("generated primary CTA retains click tracking without changing secondary or
   assert.doesNotMatch(render(edited), /api\/emailing\/track\/click/); assert.match(render(edited), /https:\/\/changed.example/);
 });
 
-test("generate API always creates a new campaign image, ignores gallery and refuses unauthenticated requests", async () => {
+test("generate API uses the centralized Hans visual source and refuses unauthenticated requests", async () => {
   let imageCalls = 0;
   function handler(loggedOut = false) { return load("app/api/emailing/generate/route.ts", {
     "next/server": { NextResponse: { json: (body, init) => Response.json(body, init) } },
     "@/lib/merchants": { getMerchant: async () => loggedOut ? null : { id: "merchant", business_name: "Test" } },
     "@/lib/brand-settings": { getBrandSettings: async () => null },
-    "@/lib/emailing-generation-assets": { getEmailGenerationImages: async () => { assert.fail("The gallery must not replace freshly generated images"); } },
-    "@/lib/social-visuals": { generateAndStoreSocialVisual: async (input) => { imageCalls++; assert.equal(input.format, "email"); assert.equal(input.source, "Nouveautés"); return { imageUrl: `https://assets.example/ai-${imageCalls}.png` }; } },
+    "@/lib/hans-visual-source": { resolveHansVisual: async (input) => { imageCalls++; assert.equal(input.format, "email"); assert.equal(input.subject, "Nouveautés"); return { imageUrl: `https://assets.example/ai-${imageCalls}.png`, imageSource: "ai", sourceAssetId: null }; } },
     "@/lib/emailing-hans": { generateEmailWithHans: async (input) => { assert.equal(input.images.length, 1); assert.equal(input.images[0].url, `https://assets.example/ai-${imageCalls}.png`); return { subject: "Test", editorMode: "html", html: "<p>Test</p>" }; } }
   }).POST; }
   const request = () => new Request("https://app.atrium-one.fr/api/emailing/generate", { method: "POST", body: JSON.stringify({ brief: "Nouveautés", campaignType: "newsletter" }) });
@@ -136,7 +135,7 @@ test("image failure returns an actionable API error, no stock image and no email
     "next/server": { NextResponse: { json: (body, init) => Response.json(body, init) } },
     "@/lib/merchants": { getMerchant: async () => ({ id: "merchant", business_name: "Test" }) },
     "@/lib/brand-settings": { getBrandSettings: async () => null },
-    "@/lib/social-visuals": { generateAndStoreSocialVisual: async () => { throw new Error("provider secret diagnostic"); } },
+    "@/lib/hans-visual-source": { resolveHansVisual: async () => { throw new Error("provider secret diagnostic"); } },
     "@/lib/emailing-hans": { generateEmailWithHans: async () => assert.fail("No email without generated image") }
   });
   const response = await POST(new Request("https://app.atrium-one.fr/api/emailing/generate", { method: "POST", body: JSON.stringify({ brief: "Notre nouveau pain", campaignType: "newsletter" }) }));

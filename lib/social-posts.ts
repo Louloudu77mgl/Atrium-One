@@ -7,7 +7,7 @@ export { getPostStatusLabel } from "@/lib/social-post-utils";
 
 export type SocialPostSummary = Pick<
   SocialPostRow,
-  "id" | "platform" | "title" | "caption" | "status" | "builder_state" | "created_at" | "updated_at" | "published_at"
+  "id" | "platform" | "media_kind" | "title" | "caption" | "status" | "builder_state" | "created_at" | "updated_at" | "published_at"
 >;
 
 export type SocialPostListRow = Pick<
@@ -31,6 +31,7 @@ export type SocialPostListRow = Pick<
   | "builder_state"
   | "visual_text"
   | "template_id"
+  | "media_kind"
 >;
 
 export async function getSocialPostSummaries(merchant?: MerchantRow | null, client?: SupabaseClient<Database>): Promise<SocialPostSummary[]> {
@@ -42,7 +43,7 @@ export async function getSocialPostSummaries(merchant?: MerchantRow | null, clie
   const pageSize = 500;
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase.from("social_posts")
-      .select("id,platform,title,caption,status,builder_state,created_at,updated_at,published_at")
+      .select("id,platform,media_kind,title,caption,status,builder_state,created_at,updated_at,published_at")
       .eq("merchant_id", currentMerchant.id)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -92,7 +93,7 @@ export async function getSocialPostList(merchant?: MerchantRow | null, client?: 
   const pageSize = 500;
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase.from("social_posts")
-      .select("id,merchant_id,platform,title,caption,source,status,created_at,updated_at,scheduled_at,published_at,error_message,failure_code,visual_url,image_url,visual_html,builder_state,visual_text,template_id")
+      .select("id,merchant_id,platform,title,caption,source,status,created_at,updated_at,scheduled_at,published_at,error_message,failure_code,visual_url,image_url,visual_html,builder_state,visual_text,template_id,media_kind")
       .eq("merchant_id", currentMerchant.id)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })

@@ -30,7 +30,10 @@ export const DEFAULT_AUTOMATION_SETTINGS = {
   social_auto_publish_live: false,
   social_posts_per_week: 1,
   social_posts_per_cycle: 1,
-  social_cycle_weeks: 1
+  social_cycle_weeks: 1,
+  social_stories_auto_publish_enabled: false,
+  social_stories_auto_publish_live: false,
+  social_stories_per_week: 1
 } as const;
 
 export async function getAutomationSettings(merchant?: MerchantRow | null): Promise<MerchantAutomationSettingsRow | null> {
@@ -126,6 +129,9 @@ type UpsertPayload = Partial<
     | "social_posts_per_week"
     | "social_posts_per_cycle"
     | "social_cycle_weeks"
+    | "social_stories_auto_publish_enabled"
+    | "social_stories_auto_publish_live"
+    | "social_stories_per_week"
   >
 >;
 
@@ -181,6 +187,9 @@ export async function upsertAutomationSettings(partial: UpsertPayload, merchant?
     social_posts_per_week: normalizeInteger(partial.social_posts_per_week ?? existing?.social_posts_per_week ?? cadence.postsPerCycle, 1, 7, DEFAULT_AUTOMATION_SETTINGS.social_posts_per_week),
     social_posts_per_cycle: Math.min(cadence.postsPerCycle, getMaxPostsForCycle(cadence.cycleWeeks)),
     social_cycle_weeks: cadence.cycleWeeks,
+    social_stories_auto_publish_enabled: partial.social_stories_auto_publish_enabled ?? existing?.social_stories_auto_publish_enabled ?? DEFAULT_AUTOMATION_SETTINGS.social_stories_auto_publish_enabled,
+    social_stories_auto_publish_live: partial.social_stories_auto_publish_live ?? existing?.social_stories_auto_publish_live ?? DEFAULT_AUTOMATION_SETTINGS.social_stories_auto_publish_live,
+    social_stories_per_week: normalizeInteger(partial.social_stories_per_week ?? existing?.social_stories_per_week ?? DEFAULT_AUTOMATION_SETTINGS.social_stories_per_week, 1, 7, DEFAULT_AUTOMATION_SETTINGS.social_stories_per_week),
     updated_at: new Date().toISOString()
   };
 

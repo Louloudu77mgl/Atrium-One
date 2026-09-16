@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getBrandSettings } from "@/lib/brand-settings";
 import { getMerchant } from "@/lib/merchants";
-import { generateAndStoreSocialVisual } from "@/lib/social-visuals";
+import { resolveHansVisual } from "@/lib/hans-visual-source";
 
 export const maxDuration = 120;
 
@@ -15,17 +15,18 @@ export async function POST(request: Request) {
   const body = (typeof payload.body === "string" ? payload.body.trim().slice(0, 6000) : "") || heading;
   try {
     const brand = await getBrandSettings(merchant);
-    const visual = await generateAndStoreSocialVisual({
+    const visual = await resolveHansVisual({
       merchant,
       title: heading,
       caption: body,
-      source: `${heading}. ${body}`,
+      subject: `${heading}. ${body}`,
       visualPrompt: "Créer une image éditoriale premium, chaleureuse et facilement recadrable en bandeau horizontal. Mettre en avant l’objet réel du message sans texte ni logo intégré.",
       styleOverride: brand?.visual_style,
       format: "email", brandSettings: brand, signal: AbortSignal.any([request.signal, AbortSignal.timeout(75_000)])
     });
 
-    return NextResponse.json({ url: visual.imageUrl });
+    if (!visual.imageUrl) return NextResponse.json({ error: "Aucune photo n’est disponible dans votre médiathèque." }, { status: 409 });
+    return NextResponse.json({ url: visual.imageUrl, source: visual.imageSource });
   } catch {
     return NextResponse.json({ error: "Hans n’a pas pu générer cette image. Votre photo actuelle est conservée. Réessayez dans un instant." }, { status: 502 });
   }

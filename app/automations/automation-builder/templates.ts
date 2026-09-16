@@ -63,6 +63,9 @@ const READY_NODE_LIBRARY: Array<{ title: string; category: string; items: NodeLi
       item("generate_email", "action", "Préparer un e-mail avec Hans", "Hans crée un e-mail personnalisé pour le client du flow.", "sparkle", amber, [{ key: "goal", label: "Objectif", type: "text" }], { goal: "Souhaiter la bienvenue au client" }, "automatic", undefined, "Hans / IA", ["ia", "emails"]),
       item("prepare_instagram", "action", "Préparer une publication Instagram", "Hans rédige le texte et prépare le visuel.", "sparkle", amber, [{ key: "theme", label: "Thème", type: "text" }], { theme: "Nouveautés" }, "semi_automatic", undefined, "Instagram", ["instagram", "ia"]),
       item("publish_instagram", "action", "Publier sur Instagram", "Publie le contenu sur Instagram.", "phone", amber, [], {}, "automatic", undefined, "Instagram", ["instagram"]),
+      item("generate_instagram_story", "action", "Générer une Story Instagram", "Hans crée une Story verticale 9:16 avec votre identité visuelle et la photo la plus pertinente.", "image", amber, [{ key: "theme", label: "Thème", type: "text" }], { theme: "Actualité du commerce" }, "automatic", undefined, "Instagram", ["instagram", "story", "ia"]),
+      item("schedule_instagram_story", "action", "Planifier une Story Instagram", "Planifie la Story préparée après le délai choisi.", "phone", amber, [{ key: "delay_hours", label: "Publier dans X heures", type: "number" }], { delay_hours: 24 }, "automatic", undefined, "Instagram", ["instagram", "story", "planification"]),
+      item("publish_instagram_story", "action", "Publier la Story Instagram", "Publie la Story via le pipeline Meta existant.", "phone", amber, [], {}, "automatic", undefined, "Instagram", ["instagram", "story"]),
       item("generate_review_reply", "action", "Générer une réponse à un avis", "Hans prépare une réponse adaptée à l’avis.", "sparkle", amber, [{ key: "tone", label: "Ton", type: "select", options: ["Chaleureux", "Professionnel", "Premium"] }], { tone: "Chaleureux" }, "semi_automatic", undefined, "Google", ["google", "avis", "ia"]),
       item("publish_review_reply", "action", "Publier une réponse à un avis", "Publie la réponse sur Google.", "message", amber, [], {}, "automatic", undefined, "Google", ["google", "avis"]),
       item("notify_merchant", "action", "Notifier le commerçant", "Crée une notification réelle dans AtriumOne.", "bell", amber, [{ key: "message", label: "Message", type: "text" }], { message: "Une automatisation vient de s’exécuter" }, "automatic", undefined, "Notifications", ["notifications"]),
@@ -168,6 +171,8 @@ export function createNodeFromLibrary(item: NodeLibraryItem, x = 120, y = 120): 
 export function buildTemplates(context: TemplateContext): AutomationFlow[] {
   return [
     templateWeeklyInstagram(context.businessName),
+    templateWeeklyInstagramStory(context.businessName),
+    templateRegularInstagramStories(context.businessName),
     templateReviews(context.businessName),
     templateWelcome(context.businessName),
     templateInstagram(context.businessName),
@@ -179,6 +184,27 @@ export function buildTemplates(context: TemplateContext): AutomationFlow[] {
     templateInstagramPilot(context.businessName),
     templateRewardReturn(context.businessName)
   ];
+}
+
+function templateWeeklyInstagramStory(_businessName: string) {
+  const first = node("new_week", "Nouvelle semaine", 80, 140, { posts_per_week: 1 });
+  const generate = node("generate_instagram_story", "Hans génère une Story", 400, 140, { theme: "Meilleure recommandation Hans disponible" }, "automatic");
+  const publish = node("publish_instagram_story", "Publier la Story Instagram", 720, 140, {}, "automatic");
+  const recipe = flow("recipe-weekly-instagram-story", "Story Instagram hebdomadaire", "Instagram Stories", "Chaque semaine, Hans choisit un sujet pertinent, compose une Story 9:16 à votre image et la publie automatiquement.", [first, generate, publish], chain([first, generate, publish]), "template");
+  recipe.category = "Recettes Hans";
+  recipe.installMinutes = 2;
+  return recipe;
+}
+
+function templateRegularInstagramStories(_businessName: string) {
+  const first = node("new_week", "Nouvelle semaine", 80, 140, { posts_per_week: 3 });
+  const generate = node("generate_instagram_story", "Générer les Stories avec Hans", 400, 140, { theme: "Recommandations Hans disponibles" }, "automatic");
+  const schedule = node("schedule_instagram_story", "Répartir les Stories dans la semaine", 720, 140, { delay_hours: 0 }, "automatic");
+  const publish = node("publish_instagram_story", "Publier automatiquement", 1040, 140, {}, "automatic");
+  const recipe = flow("recipe-regular-instagram-stories", "Stories Instagram régulières", "Instagram Stories", "Choisissez le nombre de Stories : Hans les crée puis les répartit intelligemment dans la semaine.", [first, generate, schedule, publish], chain([first, generate, schedule, publish]), "template");
+  recipe.category = "Recettes Hans";
+  recipe.installMinutes = 2;
+  return recipe;
 }
 
 function templateWeeklyInstagram(_businessName: string) {

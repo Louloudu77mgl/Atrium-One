@@ -40,6 +40,9 @@ export async function POST(request: Request) {
     social_posts_per_week?: number;
     social_posts_per_cycle?: number;
     social_cycle_weeks?: number;
+    social_stories_auto_publish_enabled?: boolean;
+    social_stories_auto_publish_live?: boolean;
+    social_stories_per_week?: number;
   };
 
   try {
@@ -57,7 +60,10 @@ export async function POST(request: Request) {
       social_auto_publish_live: payload.social_auto_publish_live,
       social_posts_per_week: payload.social_posts_per_week,
       social_posts_per_cycle: payload.social_posts_per_cycle,
-      social_cycle_weeks: payload.social_cycle_weeks
+      social_cycle_weeks: payload.social_cycle_weeks,
+      social_stories_auto_publish_enabled: payload.social_stories_auto_publish_enabled,
+      social_stories_auto_publish_live: payload.social_stories_auto_publish_live,
+      social_stories_per_week: payload.social_stories_per_week
     }, merchant);
 
     const shouldRunReviewAutomation = payload.reviews_auto_reply_enabled === true

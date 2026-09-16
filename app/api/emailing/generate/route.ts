@@ -3,7 +3,7 @@ import { getBrandSettings } from "@/lib/brand-settings";
 import { generateEmailWithHans } from "@/lib/emailing-hans";
 import { EMAIL_CAMPAIGN_TYPES, type EmailCampaignType } from "@/lib/emailing-types";
 import { getMerchant } from "@/lib/merchants";
-import { generateAndStoreSocialVisual } from "@/lib/social-visuals";
+import { resolveHansVisual } from "@/lib/hans-visual-source";
 import { EmailGenerationError, emailHttpUrl } from "@/lib/emailing-generation";
 
 export const maxDuration = 180;
@@ -20,22 +20,19 @@ export async function POST(request: Request) {
   let stage: "image" | "email" = "image";
   try {
     const brand = await getBrandSettings(merchant);
-    // Every new campaign gets a freshly generated hero. The gallery is deliberately
-    // not consulted: no stock photo or previous campaign can silently replace it.
-    const visual = await generateAndStoreSocialVisual({
+    const visual = await resolveHansVisual({
       merchant,
       title: `Campagne ${payload.campaignType} — ${merchant.business_name}`,
       caption: brief,
-      source: brief,
+      subject: brief,
       visualPrompt: "Interpréter le brief pour illustrer son sujet commercial. Générer une photographie originale horizontale pour cette campagne, centrée sur le produit, le service ou l’ambiance demandés. Ne pas représenter la demande de rédaction, une interface, une newsletter ou une affiche. Aucun texte intégré.",
       styleOverride: brand?.visual_style,
       format: "email", brandSettings: brand, signal: AbortSignal.any([request.signal, AbortSignal.timeout(75_000)])
     });
-    if (!emailHttpUrl(visual?.imageUrl)) throw new Error("Visuel généré indisponible.");
-    const images = [{ url: visual.imageUrl, alt: `Illustration de campagne pour ${merchant.business_name}`, category: "Visuel généré par Hans pour cette campagne" }];
+    const images = emailHttpUrl(visual.imageUrl) ? [{ url: visual.imageUrl!, alt: `Illustration de campagne pour ${merchant.business_name}`, category: visual.imageSource === "merchant" ? "Photo du commerce choisie par Hans" : "Visuel généré par Hans pour cette campagne" }] : [];
     stage = "email";
     const content = await generateEmailWithHans({ merchant, brand, brief, campaignType: payload.campaignType as EmailCampaignType, segmentLabel: typeof payload.segmentLabel === "string" ? payload.segmentLabel.trim().slice(0, 300) : "Tous les clients", images, signal: request.signal });
-    return NextResponse.json({ content, imageSource: "generated" });
+    return NextResponse.json({ content, imageSource: visual.imageSource === "ai" ? "generated" : visual.imageSource });
   } catch (error) {
     // Never return a successful fake generation, nor provider diagnostics/secrets.
     const code = error instanceof EmailGenerationError ? error.code : `${stage}_generation_failed`;
