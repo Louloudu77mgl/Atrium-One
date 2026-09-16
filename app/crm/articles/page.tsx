@@ -1,13 +1,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Header } from "@/components/Header";
-import { Sidebar } from "@/components/Sidebar";
 import { requireAdminUser } from "@/lib/admin";
 import { articleSelect, getArticlesForAdmin, slugifyArticleTitle } from "@/lib/articles";
-import { getAppShellData } from "@/lib/app-shell-data";
 import { appShellStyles } from "@/lib/design-system";
 import { getAppNotifications } from "@/lib/notifications";
-import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +14,8 @@ async function createArticle() {
   const supabase = await createServerSupabaseClient();
   const slug = `nouvel-article-${Date.now().toString(36)}`;
   const { data, error } = await supabase.from("articles").insert({ title: "Nouvel article", slug, author_id: user.id }).select("id").single();
-  if (error || !data) redirect("/articles?error=creation");
-  redirect(`/articles?article=${data.id}`);
+  if (error || !data) redirect("/crm/articles?error=creation");
+  redirect(`/crm/articles?article=${data.id}`);
 }
 
 async function updateArticle(formData: FormData) {
@@ -27,13 +23,13 @@ async function updateArticle(formData: FormData) {
   await requireAdminUser();
   const id = String(formData.get("id") ?? "");
   const intent = String(formData.get("intent") ?? "draft");
-  if (!id) redirect("/articles");
+  if (!id) redirect("/crm/articles");
   const supabase = await createServerSupabaseClient();
 
   if (intent === "delete") {
     await supabase.from("articles").delete().eq("id", id);
-    revalidatePath("/articles");
-    redirect("/articles");
+    revalidatePath("/crm/articles");
+    redirect("/crm/articles");
   }
 
   const title = String(formData.get("title") ?? "").trim() || "Sans titre";
@@ -49,9 +45,9 @@ async function updateArticle(formData: FormData) {
     status,
     published_at: status === "published" ? existing?.published_at ?? new Date().toISOString() : null
   }).eq("id", id);
-  if (error) redirect(`/articles?article=${id}&error=save`);
-  revalidatePath("/articles");
-  redirect(`/articles?article=${id}&saved=${status}`);
+  if (error) redirect(`/crm/articles?article=${id}&error=save`);
+  revalidatePath("/crm/articles");
+  redirect(`/crm/articles?article=${id}&saved=${status}`);
 }
 
 function formatDate(value: string | null) {
@@ -62,19 +58,15 @@ function formatDate(value: string | null) {
 export default async function ArticlesPage({ searchParams }: { searchParams: Promise<{ article?: string; saved?: string; error?: string }> }) {
   await requireAdminUser();
   const params = await searchParams;
-  const [{ merchant, reviews, googleConnection }, result] = await Promise.all([
-    getAppShellData({ reviews: "shell" }),
-    getArticlesForAdmin().then((articles) => ({ articles, schemaError: false })).catch(() => ({ articles: [], schemaError: true }))
-  ]);
-  const counters = getReviewCountersFromReviews(reviews);
-  const notifications = getAppNotifications(reviews, googleConnection);
+  const result = await getArticlesForAdmin()
+    .then((articles) => ({ articles, schemaError: false }))
+    .catch(() => ({ articles: [], schemaError: true }));
   const selected = result.articles.find((article) => article.id === params.article) ?? result.articles[0] ?? null;
 
   return (
     <div className={appShellStyles.page}>
-      <Sidebar active="articles" merchant={merchant} counters={counters} />
+      
       <div className={appShellStyles.pageInner}>
-        <Header merchant={merchant} googleConnection={googleConnection} counters={counters} notifications={notifications} />
         <main className={appShellStyles.content}>
           <div className={appShellStyles.width}>
             <div className="mx-auto max-w-[1380px]">
@@ -86,7 +78,7 @@ export default async function ArticlesPage({ searchParams }: { searchParams: Pro
                 <aside className="border-b border-[#E8E3DD] bg-[#FAF9F7] p-4 lg:border-b-0 lg:border-r">
                   <form action={createArticle}><button className="min-h-11 w-full rounded-xl bg-[#4C1D95] px-4 text-sm font-black text-white hover:bg-[#5D28AF]">+ Nouvel article</button></form>
                   <div className="mt-5 px-1 text-[11px] font-black uppercase tracking-[.08em] text-[#8F8997]">Vos articles · {result.articles.length}</div>
-                  <div className="mt-2 space-y-2">{result.articles.map((article) => <a key={article.id} href={`/articles?article=${article.id}`} className={`block rounded-xl border p-3 ${selected?.id === article.id ? "border-[#B894F2] bg-white shadow-sm" : "border-transparent hover:border-[#DED6E5] hover:bg-white"}`}><strong className="line-clamp-2 block text-[13px] leading-5 text-[#211936]">{article.title}</strong><span className="mt-2 flex items-center justify-between text-[10px] text-[#8A8391]"><b className={`rounded-full px-2 py-1 ${article.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-[#F1ECF8] text-[#6B547D]"}`}>{article.status === "published" ? "Publié" : "Brouillon"}</b><span>{formatDate(article.updated_at).split(" à ")[0]}</span></span></a>)}</div>
+                  <div className="mt-2 space-y-2">{result.articles.map((article) => <a key={article.id} href={`/crm/articles?article=${article.id}`} className={`block rounded-xl border p-3 ${selected?.id === article.id ? "border-[#B894F2] bg-white shadow-sm" : "border-transparent hover:border-[#DED6E5] hover:bg-white"}`}><strong className="line-clamp-2 block text-[13px] leading-5 text-[#211936]">{article.title}</strong><span className="mt-2 flex items-center justify-between text-[10px] text-[#8A8391]"><b className={`rounded-full px-2 py-1 ${article.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-[#F1ECF8] text-[#6B547D]"}`}>{article.status === "published" ? "Publié" : "Brouillon"}</b><span>{formatDate(article.updated_at).split(" à ")[0]}</span></span></a>)}</div>
                 </aside>
                 {!selected ? <section className="grid place-items-center p-8 text-center"><div><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#F1ECFB] text-2xl text-[#5C22C5]">✎</div><h2 className="mt-4 text-xl font-black text-[#211936]">Créez votre premier article</h2><p className="mt-2 text-sm text-[#756E7C]">Préparez-le ici, puis choisissez quand le publier.</p></div></section> :
                 <form action={updateArticle} className="min-w-0"><input type="hidden" name="id" value={selected.id}/><div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#ECE7E2] px-5 py-4 md:px-7"><div><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${selected.status === "published" ? "bg-emerald-50 text-emerald-700" : "bg-[#F1ECF8] text-[#6B547D]"}`}>{selected.status === "published" ? "Publié" : "Brouillon"}</span><p className="mt-1 text-[10px] text-[#99919F]">Modifié {formatDate(selected.updated_at)}</p></div><div className="flex flex-wrap gap-2"><button name="intent" value="delete" className="min-h-10 rounded-xl border border-red-200 px-3 text-xs font-black text-red-700">Supprimer</button>{selected.status === "published" ? <a href={`https://atrium-one.fr/articles/${selected.slug}`} target="_blank" rel="noreferrer" className="flex min-h-10 items-center rounded-xl border border-[#DED6E5] px-3 text-xs font-black text-[#4C1D95]">Voir en ligne ↗</a> : null}<button name="intent" value="draft" className="min-h-10 rounded-xl border border-[#D9D0E1] px-4 text-xs font-black text-[#4C1D95]">Enregistrer</button><button name="intent" value="publish" className="min-h-10 rounded-xl bg-[#4C1D95] px-4 text-xs font-black text-white">{selected.status === "published" ? "Mettre à jour" : "Publier"}</button></div></div>

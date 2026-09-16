@@ -11,6 +11,7 @@ const links = [
   { href: "/crm/calendar", label: "Calendrier", icon: "□" },
   { href: "/crm/onboarding-test", label: "Onboarding test", icon: "✓" },
   { href: "/crm/releases", label: "Releases", icon: "✦" },
+  { href: "/crm/articles", label: "Articles", icon: "▤" },
   { href: "/crm/settings", label: "Réglages", icon: "⚙" },
   { href: "/crm/archives", label: "Archives", icon: "◇" }
 ];
