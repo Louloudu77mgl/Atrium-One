@@ -2,11 +2,13 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Header } from "@/components/Header";
 import { GmailConnectionActions } from "@/components/GmailConnectionActions";
+import { SmtpConnectionActions } from "@/components/SmtpConnectionActions";
 import { IntegrationDisconnectButton } from "@/components/IntegrationDisconnectButton";
 import { Sidebar } from "@/components/Sidebar";
 import { PageContentSkeleton } from "@/components/Skeleton";
 import { getAppShellData } from "@/lib/app-shell-data";
 import { getGmailConnection, isGmailConnectionReady } from "@/lib/gmail-connections";
+import { getSmtpConnection, isSmtpConnectionReady } from "@/lib/smtp-connections";
 import { hasGmailOAuthConfig } from "@/lib/gmail-oauth";
 import { getInstagramConnectionSummary } from "@/lib/instagram-connections";
 import { hasInstagramOAuthConfig } from "@/lib/instagram-oauth";
@@ -30,8 +32,12 @@ export default async function IntegrationsPage({
   const counters = getReviewCountersFromReviews(reviews);
   const notifications = getAppNotifications(reviews, googleConnection);
   const dataPromise = merchant
-    ? Promise.all([getInstagramConnectionSummary(merchant), getGmailConnection(merchant)])
-    : Promise.resolve([null, null] as const);
+    ? Promise.all([
+        getInstagramConnectionSummary(merchant),
+        getGmailConnection(merchant),
+        getSmtpConnection(merchant)
+      ])
+    : Promise.resolve([null, null, null] as const);
 
   return (
     <div className={appShellStyles.page}>
@@ -53,14 +59,19 @@ async function IntegrationsPageContent({
   googleConnection,
   params
 }: {
-  dataPromise: Promise<readonly [Awaited<ReturnType<typeof getInstagramConnectionSummary>>, Awaited<ReturnType<typeof getGmailConnection>>]>;
+  dataPromise: Promise<readonly [
+    Awaited<ReturnType<typeof getInstagramConnectionSummary>>,
+    Awaited<ReturnType<typeof getGmailConnection>>,
+    Awaited<ReturnType<typeof getSmtpConnection>>
+  ]>;
   googleConnection: Awaited<ReturnType<typeof getAppShellData>>["googleConnection"];
   params?: { error?: string; saved?: string; imported?: string; sync_error?: string };
 }) {
-  const [instagramConnection, gmailConnection] = await dataPromise;
+  const [instagramConnection, gmailConnection, smtpConnection] = await dataPromise;
   const instagramConfigured = hasInstagramOAuthConfig();
   const gmailConfigured = hasGmailOAuthConfig();
   const gmailConnected = isGmailConnectionReady(gmailConnection);
+  const smtpConnected = isSmtpConnectionReady(smtpConnection);
   const instagramReady = instagramConnection?.status === "connected" || instagramConnection?.status === "expiring";
   const instagramReconnectRequired = instagramConnection?.status === "expired" || instagramConnection?.status === "revoked" || instagramConnection?.status === "error";
   const googleConnected = googleConnection?.status === "connected";
@@ -72,7 +83,7 @@ async function IntegrationsPageContent({
               <p className="mb-1 text-xs font-semibold uppercase tracking-[0.9px] text-[#8B7AA8]">Intégrations</p>
               <h1 className="text-3xl font-black tracking-[-0.05em] text-[#211432]">Quels comptes sont connectés&nbsp;?</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#6B617F]">
-                Connectez vos comptes pour importer les avis Google, publier sur Instagram et envoyer vos campagnes depuis votre propre Gmail.
+                Connectez vos comptes pour importer les avis Google, publier sur Instagram et envoyer vos campagnes depuis votre propre adresse e-mail.
               </p>
             </section>
 
@@ -153,16 +164,75 @@ async function IntegrationsPageContent({
               </section>
 
               <section className="rounded-[22px] border border-[#E9D5FF] bg-white p-5 shadow-[0_10px_30px_rgba(76,29,149,0.07)] lg:col-span-2">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.9px] text-[#8B7AA8]">Gmail</p>
-                <h2 className="text-xl font-black text-[#211432]">{gmailConnected ? "Gmail connecté" : "Gmail non connecté"}</h2>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-[0.9px] text-[#8B7AA8]">E-mail</p>
+
+                <h2 className="text-xl font-black text-[#211432]">
+                  {smtpConnected
+                    ? "Adresse e-mail professionnelle connectée"
+                    : gmailConnected
+                      ? "Gmail connecté"
+                      : "Aucune adresse d’envoi connectée"}
+                </h2>
+
                 <p className="mt-2 text-sm leading-6 text-[#6B617F]">
-                  {gmailConnected
-                    ? `Les campagnes e-mail partent directement depuis ${gmailConnection?.gmail_address}.`
-                    : "Connectez l’adresse Gmail du commerce. AtriumOne pourra uniquement envoyer des e-mails, jamais lire la boîte de réception."}
+                  {smtpConnected
+                    ? `Les campagnes partent depuis ${smtpConnection?.email_address}.`
+                    : gmailConnected
+                      ? `Les campagnes partent directement depuis ${gmailConnection?.gmail_address}.`
+                      : "Connectez Gmail ou l’adresse e-mail professionnelle du commerce pour envoyer les campagnes AtriumOne."}
                 </p>
-                {!gmailConfigured ? <div className="mt-4 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] p-4 text-sm text-[#B91C1C]">La connexion Gmail est temporairement indisponible.</div> : null}
-                {gmailConnection?.last_error ? <div className="mt-4 rounded-2xl border border-[#FED7AA] bg-[#FFF7ED] p-4 text-sm text-[#9A3412]">{gmailConnection.last_error}</div> : null}
-                <div className="mt-4"><GmailConnectionActions connected={gmailConnected} /></div>
+
+                {smtpConnection?.last_error ? (
+                  <div className="mt-4 rounded-2xl border border-[#FED7AA] bg-[#FFF7ED] p-4 text-sm text-[#9A3412]">
+                    {smtpConnection.last_error}
+                  </div>
+                ) : null}
+
+                {gmailConnection?.last_error && !smtpConnected ? (
+                  <div className="mt-4 rounded-2xl border border-[#FED7AA] bg-[#FFF7ED] p-4 text-sm text-[#9A3412]">
+                    {gmailConnection.last_error}
+                  </div>
+                ) : null}
+
+                <div className="mt-6 grid gap-5 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-[#E9D5FF] bg-[#FBF9FF] p-4">
+                    <p className="text-sm font-black text-[#211432]">
+                      Gmail
+                    </p>
+
+                    <p className="mt-1 mb-4 text-xs leading-5 text-[#6B617F]">
+                      Connexion rapide avec votre compte Google.
+                    </p>
+
+                    {!gmailConfigured ? (
+                      <div className="mb-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 text-xs text-[#B91C1C]">
+                        La connexion Gmail est temporairement indisponible.
+                      </div>
+                    ) : null}
+
+                    <GmailConnectionActions connected={gmailConnected} />
+                  </div>
+
+                  <div className="rounded-2xl border border-[#E9D5FF] bg-[#FBF9FF] p-4">
+                    <p className="text-sm font-black text-[#211432]">
+                      Adresse professionnelle
+                    </p>
+
+                    <p className="mt-1 mb-4 text-xs leading-5 text-[#6B617F]">
+                      Infomaniak, OVH, IONOS ou tout autre fournisseur SMTP.
+                    </p>
+
+                    <SmtpConnectionActions
+                      connected={smtpConnected}
+                      address={smtpConnection?.email_address}
+                      provider={smtpConnection?.provider}
+                    />
+                  </div>
+                </div>
+
+                <p className="mt-5 text-xs leading-5 text-[#8B7AA8]">
+                  AtriumOne utilise uniquement cette connexion pour envoyer vos campagnes. Il ne lit pas votre boîte de réception.
+                </p>
               </section>
             </div>
           </div>

@@ -1636,6 +1636,68 @@ export type Database = {
           }
         ];
       };
+      smtp_connections: {
+        Row: {
+          id: string;
+          merchant_id: string;
+          provider: string;
+          email_address: string;
+          from_name: string | null;
+          smtp_host: string;
+          smtp_port: number;
+          smtp_secure: boolean;
+          smtp_username: string;
+          smtp_password_encrypted: string;
+          status: string;
+          last_error: string | null;
+          last_checked_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          merchant_id: string;
+          provider?: string;
+          email_address: string;
+          from_name?: string | null;
+          smtp_host: string;
+          smtp_port?: number;
+          smtp_secure?: boolean;
+          smtp_username: string;
+          smtp_password_encrypted: string;
+          status?: string;
+          last_error?: string | null;
+          last_checked_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          merchant_id?: string;
+          provider?: string;
+          email_address?: string;
+          from_name?: string | null;
+          smtp_host?: string;
+          smtp_port?: number;
+          smtp_secure?: boolean;
+          smtp_username?: string;
+          smtp_password_encrypted?: string;
+          status?: string;
+          last_error?: string | null;
+          last_checked_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "smtp_connections_merchant_id_fkey";
+            columns: ["merchant_id"];
+            isOneToOne: false;
+            referencedRelation: "merchants";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       gmail_connections: {
         Row: {
           id: string;
@@ -1820,5 +1882,6 @@ export type GeneratedVisualRow = Database["public"]["Tables"]["generated_visuals
 export type GoogleConnectionRow = Database["public"]["Tables"]["google_connections"]["Row"];
 export type InstagramConnectionRow = Database["public"]["Tables"]["instagram_connections"]["Row"];
 export type GmailConnectionRow = Database["public"]["Tables"]["gmail_connections"]["Row"];
+export type SmtpConnectionRow = Database["public"]["Tables"]["smtp_connections"]["Row"];
 export type HansRecommendationRow = Database["public"]["Tables"]["hans_recommendations"]["Row"];
 export type NotificationRow = Database["public"]["Tables"]["notifications"]["Row"];
