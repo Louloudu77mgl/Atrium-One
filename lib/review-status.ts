@@ -1,4 +1,5 @@
 import type { Review } from "@/lib/mock-data";
+import { hasReviewComment, isNegativeRating } from "@/lib/review-rules";
 
 export const actionableReviewStatuses = ["a_traiter", "a-traiter", "generated", "ready_to_publish", "validation_required", "blocked_by_safety", "urgent"] as const;
 export const closedReviewStatuses = ["repondu", "ignored", "published", "published_auto", "published_manual"] as const;
@@ -22,7 +23,7 @@ export function isActionableReviewStatus(status: Review["status"] | string | nul
 }
 
 export function countActionableReviews(reviews: Review[]) {
-  return reviews.filter((review) => isActionableReviewStatus(review.status)).length;
+  return reviews.filter((review) => hasReviewComment(review.text) && isActionableReviewStatus(review.status)).length;
 }
 
 export function canGenerateReply(review: Review) {
@@ -30,7 +31,7 @@ export function canGenerateReply(review: Review) {
     Boolean(review.generatedReply || review.generatedReplyId) &&
     ["generated", "selected", "approved", "published"].includes(review.generatedReplyStatus ?? "generated");
 
-  return ["a_traiter", "a-traiter", "urgent", "validation_required", "blocked_by_safety"].includes(review.status) && !hasActiveReply;
+  return hasReviewComment(review.text) && ["a_traiter", "a-traiter", "urgent", "validation_required", "blocked_by_safety"].includes(review.status) && !hasActiveReply;
 }
 
 export function isClosedReviewStatus(status: Review["status"] | string | null | undefined) {
@@ -47,7 +48,11 @@ export function isUrgentReview(review: Pick<Review, "rating" | "sentiment" | "st
     return false;
   }
 
-  return review.rating <= 2 || review.sentiment === "negatif" || containsUrgentKeyword(review.text);
+  return hasReviewComment(review.text) && isNegativeRating(review.rating);
+}
+
+export function isNegativeReview(review: Pick<Review, "rating">) {
+  return isNegativeRating(review.rating);
 }
 
 export function analyzeReviewForTesting({
@@ -57,12 +62,10 @@ export function analyzeReviewForTesting({
   rating: number;
   text: string;
 }): Pick<Review, "sentiment" | "status"> {
-  const hasUrgentKeyword = containsUrgentKeyword(text);
-  const sentiment: Review["sentiment"] =
-    rating <= 2 || hasUrgentKeyword ? "negatif" : rating === 3 ? "neutre" : "positif";
+  const sentiment: Review["sentiment"] = isNegativeRating(rating) ? "negatif" : "positif";
 
   return {
     sentiment,
-    status: rating <= 2 || sentiment === "negatif" || hasUrgentKeyword ? "urgent" : "a_traiter"
+    status: isNegativeRating(rating) ? "urgent" : "a_traiter"
   };
 }

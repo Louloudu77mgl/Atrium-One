@@ -1,4 +1,5 @@
 import type { Review } from "@/lib/mock-data";
+import { isNegativeRating } from "@/lib/review-rules";
 
 type MonthPoint = {
   label: string;
@@ -44,8 +45,8 @@ function getMonthlyData(reviews: Review[]): MonthPoint[] {
     bucket.total += 1;
     bucket.ratingSum += review.rating;
 
-    if (review.sentiment === "positif") bucket.positive += 1;
-    if (review.sentiment === "negatif") bucket.negative += 1;
+    if (isNegativeRating(review.rating)) bucket.negative += 1;
+    else bucket.positive += 1;
   });
 
   return months.map((month) => ({

@@ -3,6 +3,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Review } from "@/lib/mock-data";
 import type { Database, GeneratedReplyRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
+import { cleanGoogleReviewText, getReviewSentimentFromRating } from "@/lib/review-rules";
 
 type ReviewListRow = Pick<
   ReviewRow,
@@ -35,17 +36,6 @@ function normalizeStatus(status: string | null | undefined): Review["status"] {
   }
 }
 
-function normalizeSentiment(sentiment: string | null | undefined): Review["sentiment"] {
-  switch (sentiment) {
-    case "positif":
-    case "neutre":
-    case "negatif":
-      return sentiment;
-    default:
-      return "neutre";
-  }
-}
-
 function initials(authorName: string) {
   return authorName
     .split(" ")
@@ -65,6 +55,7 @@ function dateLabel(createdAt: string) {
 
 export function mapReviewRow(row: ReviewListRow, index = 0, reply?: GeneratedReplyListRow): Review {
   const colors: Review["avatarColor"][] = ["red", "green", "amber", "gray", "navy"];
+  const reviewText = cleanGoogleReviewText(row.review_text) || "Avis sans commentaire";
 
   return {
     id: row.id,
@@ -76,8 +67,8 @@ export function mapReviewRow(row: ReviewListRow, index = 0, reply?: GeneratedRep
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
     status: normalizeStatus(row.status),
-    sentiment: normalizeSentiment(row.sentiment),
-    text: row.review_text,
+    sentiment: getReviewSentimentFromRating(row.rating),
+    text: reviewText,
     generatedReply: reply?.reply_text,
     generatedReplyId: reply?.id,
     generatedReplyStatus: reply?.status,
@@ -193,8 +184,8 @@ export async function getShellReviews(currentMerchant: MerchantRow): Promise<Rev
     rating: review.rating,
     date: "",
     status: normalizeStatus(review.status),
-    sentiment: normalizeSentiment(review.sentiment),
-    text: review.review_text,
+    sentiment: getReviewSentimentFromRating(review.rating),
+    text: cleanGoogleReviewText(review.review_text) || "Avis sans commentaire",
     generatedReplyId: review.generated_replies.find((reply) => activeReplyStatuses.has(reply.status))?.id
   }));
 }

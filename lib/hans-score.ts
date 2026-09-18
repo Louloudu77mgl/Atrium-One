@@ -1,5 +1,6 @@
 import type { Review } from "@/lib/mock-data";
 import { isUrgentReview } from "@/lib/review-status";
+import { isNegativeRating } from "@/lib/review-rules";
 
 const positiveFallback = ["accueil", "professionnalisme", "qualité"];
 const improvementFallback = ["délai", "prix", "disponibilité"];
@@ -47,7 +48,7 @@ export function getHansScore(reviews: Review[]): HansScore {
     4: reviews.filter((review) => review.rating === 4).length,
     5: reviews.filter((review) => review.rating === 5).length
   };
-  const negativeReviews = reviews.filter((review) => review.rating <= 2 || review.sentiment === "negatif").length;
+  const negativeReviews = reviews.filter((review) => isNegativeRating(review.rating)).length;
   const negativeShare = total > 0 ? negativeReviews / total : 0;
   const ratingComponent = total > 0 ? (averageRating / 5) * 70 : 0;
   const volumeComponent = total > 0 ? Math.min(15, Math.log10(total + 1) * 7.5) : 0;
@@ -71,7 +72,7 @@ export function getHansScore(reviews: Review[]): HansScore {
 
 function extractTerms(reviews: Review[], sentiment: Review["sentiment"], fallback: string[]) {
   const words = reviews
-    .filter((review) => review.sentiment === sentiment)
+    .filter((review) => sentiment === "negatif" ? isNegativeRating(review.rating) : sentiment === "positif" ? !isNegativeRating(review.rating) : false)
     .flatMap((review) => review.text.toLowerCase().split(/[^a-zàâçéèêëîïôûùüÿñæœ]+/i))
     .filter((word) => word.length > 4 && !stopWords.has(word));
 

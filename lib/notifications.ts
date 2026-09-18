@@ -1,6 +1,7 @@
 import type { Review } from "@/lib/mock-data";
 import type { GoogleConnectionRow } from "@/lib/supabase/types";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
+import { hasReviewComment } from "@/lib/review-rules";
 
 export type AppNotification = {
   id: string;
@@ -29,6 +30,7 @@ export function getAppNotifications(reviews: Review[], googleConnection?: Google
 
   const missingReplies = reviews.filter((review) =>
     ["a_traiter", "a-traiter", "urgent"].includes(review.status) &&
+    hasReviewComment(review.text) &&
     !review.generatedReply &&
     !review.generatedReplyId
   ).length;

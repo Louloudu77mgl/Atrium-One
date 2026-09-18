@@ -1,4 +1,5 @@
 import type { Review } from "@/lib/mock-data";
+import { isNegativeRating } from "@/lib/review-rules";
 import type { ReviewInsightRow } from "@/lib/supabase/types";
 
 export type InsightFrequency = "faible" | "moyenne" | "élevée";
@@ -287,9 +288,9 @@ export function validateReviewInsights(raw: unknown): ReviewInsightsAnalysis {
 export function getReviewSnapshotSummary(reviews: Review[]): NonNullable<ReviewInsightsAnalysis["reviewSnapshot"]> {
   return {
     reviewsCount: reviews.length,
-    positiveCount: reviews.filter((review) => review.sentiment === "positif").length,
-    neutralCount: reviews.filter((review) => review.sentiment === "neutre").length,
-    negativeCount: reviews.filter((review) => review.sentiment === "negatif").length
+    positiveCount: reviews.filter((review) => !isNegativeRating(review.rating)).length,
+    neutralCount: 0,
+    negativeCount: reviews.filter((review) => isNegativeRating(review.rating)).length
   };
 }
 
@@ -297,14 +298,14 @@ export function alignInsightsWithReviews(analysis: ReviewInsightsAnalysis, revie
   const painPoints = analysis.painPoints
     .map((point) => {
       const evidenceExamples = getEvidenceExamples(point.examples, reviews);
-      const titleSupported = reviews.some((review) => (review.rating <= 3 || review.sentiment === "negatif") && reviewMatchesTitleTokens(review, point.title));
+      const titleSupported = reviews.some((review) => isNegativeRating(review.rating) && reviewMatchesTitleTokens(review, point.title));
 
       return {
         ...point,
         examples: evidenceExamples.length > 0 ? evidenceExamples : point.examples
       };
     })
-    .filter((point) => point.examples.length > 0 || reviews.some((review) => (review.rating <= 3 || review.sentiment === "negatif") && reviewMatchesTitleTokens(review, point.title)))
+    .filter((point) => point.examples.length > 0 || reviews.some((review) => isNegativeRating(review.rating) && reviewMatchesTitleTokens(review, point.title)))
     .slice(0, 4);
 
   const strengths = analysis.strengths

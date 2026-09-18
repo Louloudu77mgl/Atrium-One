@@ -18,7 +18,8 @@ import { type Review } from "@/lib/mock-data";
 import { getAppNotifications } from "@/lib/notifications";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import { getDynamicHansRecommendations } from "@/lib/hans-dynamic-recommendations";
-import { isUrgentReview } from "@/lib/review-status";
+import { hasReviewComment, isNegativeRating } from "@/lib/review-rules";
+import { isNegativeReview, isUrgentReview } from "@/lib/review-status";
 import type { GoogleConnectionRow, MerchantAutomationSettingsRow, MerchantRow } from "@/lib/supabase/types";
 import { getUserErrorMessage } from "@/lib/user-feedback";
 
@@ -76,7 +77,7 @@ function getGraphVisibility(reviews: Review[]) {
 }
 
 function isPendingReview(review: Review) {
-  return ["urgent", "a_traiter", "a-traiter", "generated", "ready_to_publish", "validation_required", "blocked_by_safety"].includes(normalizeStatus(review.status));
+  return hasReviewComment(review.text) && ["urgent", "a_traiter", "a-traiter", "generated", "ready_to_publish", "validation_required", "blocked_by_safety"].includes(normalizeStatus(review.status));
 }
 
 function getReviewSortValue(review: Review) {
@@ -186,7 +187,7 @@ export function ReviewsPageClient({
       }
 
       if (activeFilter === "negative") {
-        return isUrgentReview(review);
+        return isNegativeReview(review);
       }
 
       if (activeFilter === "pending") {
@@ -231,6 +232,7 @@ export function ReviewsPageClient({
     () =>
       sortedReviews.filter((review) =>
         ["urgent", "a_traiter", "a-traiter"].includes(normalizeStatus(review.status)) &&
+        hasReviewComment(review.text) &&
         !review.generatedReply &&
         !review.generatedReplyId
       ),
@@ -376,10 +378,14 @@ export function ReviewsPageClient({
   }
 
   function shouldAutoProcessReview(review: Review) {
-    return autoReplyEnabled && ["urgent", "a_traiter", "a-traiter"].includes(normalizeStatus(review.status)) && !review.generatedReply && !review.generatedReplyId;
+    return autoReplyEnabled && hasReviewComment(review.text) && ["urgent", "a_traiter", "a-traiter"].includes(normalizeStatus(review.status)) && !review.generatedReply && !review.generatedReplyId;
   }
 
   async function requestHansReply(review: Review) {
+    if (!hasReviewComment(review.text)) {
+      throw new Error("Aucune réponse ne peut être générée pour un avis sans commentaire.");
+    }
+
     const response = await fetchWithTimeout("/api/hans/reply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -503,6 +509,11 @@ export function ReviewsPageClient({
   }
 
   async function generateHansReply(review: Review) {
+    if (!hasReviewComment(review.text)) {
+      showToast("Aucune réponse ne peut être générée pour un avis sans commentaire.", "error");
+      return;
+    }
+
     if (loadingReviewId === review.id) {
       return;
     }
@@ -887,6 +898,7 @@ export function ReviewsPageClient({
                       const hasReply = Boolean(review.generatedReply || review.generatedReplyId);
                       const replyReadyToPublish = ["approved", "selected", "validation_required"].includes(review.generatedReplyStatus ?? "");
                       const readyForReview = ["generated", "ready_to_publish", "validation_required", "blocked_by_safety"].includes(normalizeStatus(review.status)) || hasReply;
+                      const hasComment = hasReviewComment(review.text);
 
                       return (
                         <article key={review.id} className="mb-3 rounded-[20px] border border-[#ECE9F4] bg-white px-[18px] py-4 shadow-[0_1px_2px_rgba(24,12,48,0.04),0_8px_24px_rgba(24,12,48,0.05)]">
@@ -916,14 +928,18 @@ export function ReviewsPageClient({
                           <p lang="fr" translate="no" className="notranslate mb-3 ml-[46px] text-[13px] leading-[1.55] text-[#1E1B2E] max-sm:ml-0">{review.text}</p>
 
                           <div className="ml-[46px] flex flex-wrap gap-2 max-sm:ml-0">
-                            {!hasReply ? (
+                            {!hasReply && hasComment ? (
                               <button type="button" onClick={() => void generateHansReply(review)} disabled={busy} className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#4B2E83,#7C4DCB)] px-[14px] py-[8px] text-[12.6px] font-semibold text-white shadow-[0_6px_18px_rgba(75,46,131,0.28)] disabled:cursor-not-allowed disabled:opacity-60">
                                 {busy ? "Hans prépare..." : "Générer une réponse"}
                               </button>
-                            ) : (
+                            ) : hasReply ? (
                               <button type="button" onClick={() => void viewHansReply(review)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-[#ECE9F4] bg-white px-[13px] py-[7px] text-[12.6px] font-semibold text-[#1E1B2E] transition hover:border-[#7C4DCB] hover:text-[#4B2E83] disabled:cursor-not-allowed disabled:opacity-60">
                                 Voir la réponse
                               </button>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-[#F2F1F6] px-[13px] py-[7px] text-[12.6px] font-semibold text-[#6E6B80]">
+                                Sans commentaire · réponse indisponible
+                              </span>
                             )}
 
                             {replyReadyToPublish ? (
@@ -992,8 +1008,8 @@ export function ReviewsPageClient({
         selectedReview={selectedReview}
         reply={replyDraft}
         isGenerating={Boolean(selectedReview && loadingReviewId === selectedReview.id)}
-        onGenerate={selectedReview ? () => void generateHansReply(selectedReview) : undefined}
-        onRegenerate={selectedReview ? () => void generateHansReply(selectedReview) : undefined}
+        onGenerate={selectedReview && hasReviewComment(selectedReview.text) ? () => void generateHansReply(selectedReview) : undefined}
+        onRegenerate={selectedReview && hasReviewComment(selectedReview.text) ? () => void generateHansReply(selectedReview) : undefined}
         onPublish={publishHansReply}
         isPublishing={Boolean(selectedReview && publishingReviewId === selectedReview.id)}
         onSaveEdit={saveReplyEdit}
@@ -1057,7 +1073,7 @@ function getReviewBadges(review: Review) {
     badges.push({ label: "Réponse générée", className: "inline-flex rounded-full bg-[#F1EAFB] px-[10px] py-1 text-[11.5px] font-semibold text-[#4B2E83]" });
   }
 
-  if (review.sentiment === "negatif" || review.rating <= 2) {
+  if (isNegativeRating(review.rating)) {
     badges.push({ label: "Négatif", className: "inline-flex rounded-full bg-[#FBEAEA] px-[10px] py-1 text-[11.5px] font-semibold text-[#D64545]" });
   } else if (["published", "repondu", "published_auto", "published_manual"].includes(normalizeStatus(review.status))) {
     badges.push({ label: "Publié", className: "inline-flex rounded-full bg-[#EAF7EE] px-[10px] py-1 text-[11.5px] font-semibold text-[#2E9E5B]" });

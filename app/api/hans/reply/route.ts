@@ -3,6 +3,7 @@ import { getAutomationSettings } from "@/lib/automation-settings";
 import { getReviewAutomationDecision } from "@/lib/review-automation";
 import { HANS_REVIEW_REPLY_INSTRUCTIONS } from "@/lib/hans-review-reply-prompt";
 import { sanitizeHansHtml } from "@/lib/sanitize-hans-html";
+import { cleanGoogleReviewText, hasReviewComment } from "@/lib/review-rules";
 import { hasSupabaseEnv } from "@/lib/supabase/env";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -110,26 +111,62 @@ function extractReply(body: OpenAIResponseBody) {
 export async function POST(request: Request) {
   const openAiApiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
+  const payload = (await request.json()) as HansReplyRequest;
+  let reviewText = cleanGoogleReviewText(payload.review_text);
+  let rating = Number(payload.rating);
+  let authorName = payload.author_name?.trim();
+  const merchantName = payload.merchant_name?.trim() || "votre boutique";
+  const businessType = payload.business_type?.trim();
+  const responseTone = payload.response_tone?.trim() || "chaleureux";
+  let supabase: Awaited<ReturnType<typeof createServerSupabaseClient>> | null = null;
+
+  if (payload.review_id && hasSupabaseEnv()) {
+    supabase = await createServerSupabaseClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Utilisateur non connecté." }, { status: 401 });
+    }
+
+    const { data: storedReview, error: storedReviewError } = await supabase
+      .from("reviews")
+      .select("review_text, rating, author_name")
+      .eq("id", payload.review_id)
+      .maybeSingle();
+
+    if (storedReviewError) {
+      return NextResponse.json({ error: storedReviewError.message }, { status: 500 });
+    }
+
+    if (!storedReview) {
+      return NextResponse.json({ error: "Avis introuvable." }, { status: 404 });
+    }
+
+    reviewText = cleanGoogleReviewText(storedReview.review_text);
+    rating = Number(storedReview.rating);
+    authorName = storedReview.author_name?.trim();
+  }
+
+  if (!hasReviewComment(reviewText)) {
+    return NextResponse.json(
+      { error: "Aucune réponse ne peut être générée pour un avis sans commentaire." },
+      { status: 400 }
+    );
+  }
+
+  if (!rating || !businessType) {
+    return NextResponse.json(
+      { error: "rating et business_type sont requis." },
+      { status: 400 }
+    );
+  }
 
   if (!openAiApiKey) {
     return NextResponse.json(
       { error: "OPENAI_API_KEY manquante. Ajoutez-la dans .env.local." },
       { status: 500 }
-    );
-  }
-
-  const payload = (await request.json()) as HansReplyRequest;
-  const reviewText = payload.review_text?.trim();
-  const rating = Number(payload.rating);
-  const authorName = payload.author_name?.trim();
-  const merchantName = payload.merchant_name?.trim() || "votre boutique";
-  const businessType = payload.business_type?.trim();
-  const responseTone = payload.response_tone?.trim() || "chaleureux";
-
-  if (!reviewText || !rating || !businessType) {
-    return NextResponse.json(
-      { error: "review_text, rating et business_type sont requis." },
-      { status: 400 }
     );
   }
 
@@ -182,13 +219,7 @@ export async function POST(request: Request) {
   let persistedReplyStatus: string | undefined;
   let persistedReviewStatus: string | undefined;
 
-  if (payload.review_id && hasSupabaseEnv()) {
-    const supabase = await createServerSupabaseClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-
-    if (user) {
+  if (payload.review_id && supabase) {
       const settings = await getAutomationSettings();
       const decision = getReviewAutomationDecision({
         rating,
@@ -249,7 +280,6 @@ export async function POST(request: Request) {
           }
         }
       }
-    }
   }
 
   return NextResponse.json({

@@ -300,7 +300,7 @@ function evaluateCondition(node: AutomationNodeData, scenario: TestScenario) {
     case "review_content":
       return true;
     case "review_status":
-      return String(node.config.status ?? "Sensible") === "Positif" ? scenario.reviewRating >= 4 : scenario.reviewRating <= 2;
+      return String(node.config.status ?? "Sensible") === "Positif" ? scenario.reviewRating >= 4 : scenario.reviewRating <= 3;
     case "no_recent_message":
       return true;
     case "segment_match":

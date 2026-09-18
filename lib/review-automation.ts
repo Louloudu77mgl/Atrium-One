@@ -1,4 +1,5 @@
 import type { MerchantAutomationSettingsRow } from "@/lib/supabase/types";
+import { isNegativeRating } from "@/lib/review-rules";
 
 export const DEFAULT_SENSITIVE_KEYWORDS = [
   "remboursement",
@@ -120,7 +121,7 @@ export function getReviewAutomationDecision({
     };
   }
 
-  if (settings?.always_validate_negative_reviews === true && rating <= 2) {
+  if (settings?.always_validate_negative_reviews === true && isNegativeRating(rating)) {
     return {
       action: "validation",
       requiresValidation: true,

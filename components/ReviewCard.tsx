@@ -1,6 +1,7 @@
 "use client";
 
 import type { Review } from "@/lib/mock-data";
+import { hasReviewComment } from "@/lib/review-rules";
 import { isUrgentReview } from "@/lib/review-status";
 import { badgeStyles, buttonStyles, surfaceStyles, typographyStyles } from "@/lib/design-system";
 
@@ -73,6 +74,7 @@ export function ReviewCard({
   const isAnswered = ["repondu", "published", "published_auto", "published_manual"].includes(normalizedStatus);
   const hasReply = Boolean(review.generatedReply || review.generatedReplyId || isAnswered || ["generated", "ready_to_publish", "validation_required", "blocked_by_safety"].includes(normalizedStatus));
   const isUrgent = isUrgentReview(review);
+  const hasComment = hasReviewComment(review.text);
 
   return (
     <article className={`ao-card overflow-hidden border-l-4 ${status.border} transition hover:shadow-[var(--shadow-card-hover)]`}>
@@ -116,7 +118,7 @@ export function ReviewCard({
               </button>
             ) : null}
           </>
-        ) : (
+        ) : hasComment ? (
           <>
             <button
               type="button"
@@ -132,6 +134,8 @@ export function ReviewCard({
               </button>
             ) : null}
           </>
+        ) : (
+          <span className="text-xs font-semibold text-[var(--color-text-soft)]">Sans commentaire · réponse indisponible</span>
         )}
       </div>
     </article>

@@ -1,5 +1,6 @@
 import type { Review } from "@/lib/mock-data";
 import { isClosedReviewStatus, isUrgentReview } from "@/lib/review-status";
+import { hasReviewComment } from "@/lib/review-rules";
 
 export type ReviewCounters = {
   total: number;
@@ -32,7 +33,7 @@ export function getReviewCountersFromReviews(reviews: Review[]): ReviewCounters 
         counters.ignored += 1;
       }
 
-      if (!isClosedReviewStatus(review.status) && ["a_traiter", "a-traiter", "urgent", "generated", "ready_to_publish", "validation_required", "blocked_by_safety"].includes(review.status)) {
+      if (hasReviewComment(review.text) && !isClosedReviewStatus(review.status) && ["a_traiter", "a-traiter", "urgent", "generated", "ready_to_publish", "validation_required", "blocked_by_safety"].includes(review.status)) {
         counters.pending += 1;
       }
 

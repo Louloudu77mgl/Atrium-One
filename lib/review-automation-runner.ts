@@ -22,6 +22,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { EmailCampaignRecord } from "@/lib/emailing-types";
 import type { GoogleConnectionRow, MerchantRow, SocialPostRow } from "@/lib/supabase/types";
 import { hasBusinessFeatureAccessAdmin } from "@/lib/crm/access";
+import { cleanGoogleReviewText, getReviewSentimentFromRating, hasReviewComment, isNegativeRating } from "@/lib/review-rules";
 
 type GoogleReview = {
   name?: string;
@@ -233,7 +234,7 @@ async function processMerchantReviews({
 
   const reviews = await listGoogleReviews(accessToken, connection.google_location_id as string);
   const candidates = reviews
-    .filter((review) => !review.reviewReply?.comment && review.name && review.createTime)
+    .filter((review) => !review.reviewReply?.comment && review.name && review.createTime && hasReviewComment(review.comment))
     .sort((left, right) => new Date(left.createTime as string).getTime() - new Date(right.createTime as string).getTime())
     .slice(0, limit);
   const results: AutomationResult[] = [];
@@ -294,7 +295,10 @@ async function processGoogleReview({
 }): Promise<AutomationResult> {
   const supabase = createSupabaseAdminClient();
   const rating = ratings[review.starRating ?? ""] ?? 3;
-  const reviewText = review.comment?.trim() || "Avis sans commentaire";
+  const reviewText = cleanGoogleReviewText(review.comment);
+  if (!hasReviewComment(reviewText)) {
+    return { merchant_id: merchant.id, review_name: review.name, customer_name: getGoogleReviewerName(review), rating, status: "skipped", message: "Avis sans commentaire : aucune réponse ne sera générée.", flow_id: plan.flow.id, flow_title: plan.flow.title };
+  }
   const requiresHumanReview = mustKeepHumanValidation(rating, reviewText);
   const localReview = await findOrCreateReview({ merchant, review, rating, reviewText });
   const { data: existingReply, error: existingReplyError } = await supabase
@@ -680,7 +684,7 @@ async function processGoogleReview({
 }
 
 function mustKeepHumanValidation(rating: number, reviewText: string) {
-  if (rating <= 2) return true;
+  if (isNegativeRating(rating)) return true;
   return /avocat|juridique|justice|plainte|accident|bless|sant[ée]|malade|allerg|rembours|arnaque|discrimin|racis|harc[eè]l|agress|violence|menace|conflit|litige|danger|urgence/i.test(reviewText);
 }
 
@@ -752,7 +756,7 @@ function evaluateReviewCondition(node: StoredAutomationFlow["nodes"][number], re
   if (node.type === "review_status") {
     const status = String(node.config.status ?? "Sensible");
     if (status === "Positif") return rating >= 4;
-    if (status === "Négatif") return rating <= 2;
+    if (status === "Négatif") return isNegativeRating(rating);
     if (status === "Déjà répondu") return Boolean(review.reviewReply?.comment);
     return mustKeepHumanValidation(rating, review.comment ?? "");
   }
@@ -828,8 +832,8 @@ async function findOrCreateReview({
     author_name: review.reviewer?.isAnonymous ? "Client Google" : review.reviewer?.displayName ?? "Client Google",
     rating,
     review_text: reviewText,
-    status: rating <= 2 ? "urgent" as const : "a_traiter" as const,
-    sentiment: rating >= 4 ? "positif" as const : rating <= 2 ? "negatif" as const : "neutre" as const,
+    status: isNegativeRating(rating) ? "urgent" as const : "a_traiter" as const,
+    sentiment: getReviewSentimentFromRating(rating),
     created_at: createdAt
   };
   const { data: inserted, error: insertError } = await supabase.from("reviews").insert(payload).select("id, status, created_at").single();

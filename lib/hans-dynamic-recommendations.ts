@@ -1,6 +1,7 @@
 import type { Review } from "@/lib/mock-data";
 import { getReviewCountersFromReviews } from "@/lib/review-counters";
 import { isUrgentReview } from "@/lib/review-status";
+import { hasReviewComment } from "@/lib/review-rules";
 
 export type DynamicHansTask = {
   id: string;
@@ -16,7 +17,7 @@ export function getDynamicHansRecommendations(reviews: Review[], googleConnected
     : 0;
   const tasks: DynamicHansTask[] = [];
 
-  const firstUrgentReview = reviews.find(isUrgentReview);
+  const firstUrgentReview = reviews.find((review) => isUrgentReview(review) && hasReviewComment(review.text));
 
   if (firstUrgentReview) {
     tasks.push({
@@ -29,6 +30,7 @@ export function getDynamicHansRecommendations(reviews: Review[], googleConnected
 
   const missingReplies = reviews.filter((review) =>
     ["a_traiter", "a-traiter", "urgent"].includes(review.status) &&
+    hasReviewComment(review.text) &&
     !review.generatedReply &&
     !review.generatedReplyId
   ).length;

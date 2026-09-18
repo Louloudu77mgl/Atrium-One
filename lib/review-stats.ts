@@ -1,5 +1,6 @@
 import type { Kpi, Review } from "@/lib/mock-data";
 import { getHansScore } from "@/lib/hans-score";
+import { isNegativeRating } from "@/lib/review-rules";
 
 export function getReviewStats(reviews: Review[]) {
   const total = reviews.length;
@@ -8,9 +9,9 @@ export function getReviewStats(reviews: Review[]) {
   const generated = reviews.filter((review) => review.status === "generated" || review.generatedReplyStatus === "generated").length;
   const readyToPublish = reviews.filter((review) => review.status === "ready_to_publish" || review.generatedReplyStatus === "approved" || review.generatedReplyStatus === "selected").length;
   const averageRating = total > 0 ? reviews.reduce((sum, review) => sum + review.rating, 0) / total : 0;
-  const positive = reviews.filter((review) => review.sentiment === "positif").length;
-  const negative = reviews.filter((review) => review.sentiment === "negatif").length;
-  const neutral = reviews.filter((review) => review.sentiment === "neutre").length;
+  const positive = reviews.filter((review) => !isNegativeRating(review.rating)).length;
+  const negative = reviews.filter((review) => isNegativeRating(review.rating)).length;
+  const neutral = 0;
 
   return {
     total,

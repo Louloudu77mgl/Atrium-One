@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getFreshGoogleAccessToken } from "@/lib/google-tokens";
 import { upsertGoogleConnection } from "@/lib/google-connections";
 import { getStoredGoogleReviewIndex, saveStoredGoogleReviewIndex } from "@/lib/automation-execution-store";
+import { cleanGoogleReviewText, getReviewSentimentFromRating, isNegativeRating } from "@/lib/review-rules";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, GoogleConnectionRow, MerchantRow, ReviewRow } from "@/lib/supabase/types";
 
@@ -89,6 +90,13 @@ export async function syncGoogleBusinessReviews(
           createdAt: review.createTime
         });
       const reviewText = cleanGoogleReviewText(review.comment) || "Avis sans commentaire";
+      const hasGoogleReply = Boolean(review.reviewReply?.comment);
+      const existingStatus = existing?.status;
+      const syncedStatus = hasGoogleReply
+        ? "repondu" as const
+        : existingStatus && !["a_traiter", "urgent"].includes(existingStatus)
+          ? existingStatus
+          : isNegativeRating(rating) ? "urgent" as const : "a_traiter" as const;
       const fullPayload = {
         merchant_id: merchant.id,
         author_name: review.reviewer?.isAnonymous ? "Client Google" : review.reviewer?.displayName ?? "Client Google",
@@ -97,10 +105,8 @@ export async function syncGoogleBusinessReviews(
         content: reviewText === "Avis sans commentaire" ? null : reviewText,
         source: "google",
         source_review_id: review.name,
-        status: review.reviewReply?.comment
-          ? "repondu" as const
-          : existing?.status ?? (rating <= 2 ? "urgent" as const : "a_traiter" as const),
-        sentiment: rating >= 4 ? "positif" as const : rating <= 2 ? "negatif" as const : "neutre" as const,
+        status: syncedStatus,
+        sentiment: getReviewSentimentFromRating(rating),
         created_at: review.createTime ?? new Date().toISOString(),
         updated_at: review.updateTime ?? review.createTime ?? new Date().toISOString()
       };
@@ -115,7 +121,7 @@ export async function syncGoogleBusinessReviews(
         local_review_id: localReviewId,
         create_time: review.createTime ?? null,
         update_time: review.updateTime ?? review.createTime ?? null,
-        has_reply: Boolean(review.reviewReply?.comment)
+        has_reply: hasGoogleReply
       });
       if (!existing) imported += 1;
     }
@@ -240,14 +246,6 @@ async function writeGoogleReview({
     ? await reviewsTable.update(fallbackPayload).eq("id", reviewId).select("id").maybeSingle()
     : await reviewsTable.insert(fallbackPayload).select("id").single();
   return { id: fallback.data?.id ?? reviewId, error: fallback.error };
-}
-
-export function cleanGoogleReviewText(value?: string) {
-  if (!value) return "";
-  return value
-    .replace(/\n{2,}\s*\(?(?:translated by google|traduit par google)\)?[\s\S]*$/i, "")
-    .replace(/\n{2,}\s*(?:original|texte d’origine)\s*[:：][\s\S]*$/i, "")
-    .trim();
 }
 
 function isMissingColumnError(message: string) {

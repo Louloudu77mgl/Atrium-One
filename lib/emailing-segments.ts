@@ -1,4 +1,5 @@
 import type { EmailSegmentMode, EmailSegmentRule, EmailSegmentRuleId, EmailSubscriberProfile } from "@/lib/emailing-types";
+import { isNegativeRating } from "@/lib/review-rules";
 
 export type EmailSegmentDefinition = {
   id: EmailSegmentRuleId;
@@ -30,7 +31,7 @@ export const EMAIL_SEGMENT_DEFINITIONS: EmailSegmentDefinition[] = [
   { id: "registered_via_rcu", label: "Inscrits via le RCU", description: "Contacts collectés depuis une expérience RCU." },
   { id: "visited_this_month", label: "Venus ce mois-ci", description: "Au moins une visite pendant le mois en cours." },
   { id: "five_star_review", label: "Avis 5 étoiles", description: "Clients identifiés avec un avis 5 étoiles." },
-  { id: "negative_review", label: "Avis négatif", description: "Clients identifiés avec un avis de 1 ou 2 étoiles." }
+  { id: "negative_review", label: "Avis négatif", description: "Clients identifiés avec un avis de 1 à 3 étoiles." }
 ];
 
 function differenceInDays(from: Date, to: Date) { return Math.floor((to.getTime() - from.getTime()) / 86_400_000); }
@@ -64,7 +65,7 @@ export function matchesEmailSegmentRule(profile: EmailSubscriberProfile, rule: E
     case "dormant_customers": return absentDays > 60;
     case "lost_customers": return absentDays > 90;
     case "five_star_review": return profile.reviewRating === 5;
-    case "negative_review": return profile.reviewRating !== null && profile.reviewRating <= 2;
+    case "negative_review": return isNegativeRating(profile.reviewRating);
     case "minimum_visits": return profile.visits >= numericValue;
     case "visits_last_30_days": return profile.visitsLast30Days >= numericValue;
     case "visits_last_90_days": return profile.visitsLast90Days >= numericValue;
