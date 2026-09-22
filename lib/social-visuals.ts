@@ -3,6 +3,8 @@ import { buildStoryTemplate } from "@/lib/story-template";
 import { defaultStoryEditorial, type StoryEditorial, type StoryLayout } from "@/lib/story-editorial";
 import { randomUUID } from "node:crypto";
 import { emailImagePrompt } from "@/lib/emailing-image-prompt";
+import { createBrandedLocalVisualFallback, prepareFallbackPhoto } from "@/lib/local-visual-fallback";
+import { searchMediaAssetsForPost } from "@/lib/media-assets";
 import { createElement } from "react";
 import { ImageResponse } from "next/og";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -13,7 +15,7 @@ import type { Database, MerchantBrandSettingsRow, MerchantRow } from "@/lib/supa
 
 type OpenAIImageBody = {
   data?: { b64_json?: string }[];
-  error?: { message?: string };
+  error?: { code?: string; message?: string };
 };
 
 const socialFontDataCache = new Map<string, Promise<ArrayBuffer>>();
@@ -393,10 +395,6 @@ export async function generateAndStoreSocialVisual({
 }) {
   const apiKey = process.env.OPENAI_API_KEY;
 
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY manquante pour générer l'image IA.");
-  }
-
   const supabase = supabaseClient ?? await createServerSupabaseClient();
   const {
     data: { user }
@@ -438,32 +436,68 @@ export async function generateAndStoreSocialVisual({
     "L'image doit être cohérente avec l'identité du commerce, lisible sur mobile, esthétique, crédible et directement publiable."
   ].filter(Boolean).join("\n");
 
-  const response = await fetch("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    signal,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2",
-      prompt,
-      size: format === "email" ? "1536x1024" : format === "story" || format === "rcu" ? "1024x1536" : "1024x1024",
-      ...(format === "email" ? { quality: "medium", output_format: "png", n: 1 } : {})
-    })
-  });
-  const body = (await response.json()) as OpenAIImageBody;
-  const base64 = body.data?.[0]?.b64_json;
+  let imageBuffer: Buffer | null = null;
+  let generationSource: "openai" | "library" | "local" = "openai";
 
-  if (!response.ok || !base64) {
-    throw new Error(body.error?.message ?? "Génération d'image IA impossible.");
+  if (apiKey) {
+    try {
+      const openAiSignal = signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(50_000)])
+        : AbortSignal.timeout(50_000);
+      const response = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        signal: openAiSignal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2",
+          prompt,
+          size: format === "email" ? "1536x1024" : format === "story" || format === "rcu" ? "1024x1536" : "1024x1024",
+          ...(format === "email" ? { quality: "medium", output_format: "png", n: 1 } : {})
+        })
+      });
+      const body = await response.json().catch(() => ({})) as OpenAIImageBody;
+      const base64 = body.data?.[0]?.b64_json;
+      if (response.ok && base64) {
+        imageBuffer = Buffer.from(base64, "base64");
+      } else {
+        console.warn("Image OpenAI indisponible, utilisation du repli visuel.", {
+          status: response.status,
+          code: body.error?.code
+        });
+      }
+    } catch (error) {
+      signal?.throwIfAborted();
+      console.warn("Image OpenAI injoignable, utilisation du repli visuel.", {
+        reason: error instanceof Error ? error.name : "unknown"
+      });
+    }
+  }
+
+  if (!imageBuffer) {
+    const fallback = await createFallbackVisual({
+      merchant,
+      title,
+      caption,
+      visualPrompt,
+      source,
+      format,
+      brand,
+      signal
+    });
+    imageBuffer = fallback.buffer;
+    generationSource = fallback.source;
   }
 
   signal?.throwIfAborted();
-  const path = format === "email" ? `${user?.id ?? merchant.id}/email-campaigns/ai-${randomUUID()}.png` : `${user?.id ?? merchant.id}/${postId ?? format}/ai-${Date.now()}.png`;
+  const path = format === "email"
+    ? `${user?.id ?? merchant.id}/email-campaigns/${generationSource}-${randomUUID()}.png`
+    : `${user?.id ?? merchant.id}/${postId ?? format}/${generationSource}-${Date.now()}.png`;
   const { error: uploadError } = await supabase.storage
     .from("social-visuals")
-    .upload(path, Buffer.from(base64, "base64"), {
+    .upload(path, imageBuffer, {
       contentType: "image/png",
       upsert: format !== "email"
     });
@@ -480,13 +514,82 @@ export async function generateAndStoreSocialVisual({
     source_image_url: null,
     generated_image_url: publicUrl.publicUrl,
     style: styleOverride ?? brand?.visual_style ?? "premium",
-    prompt
+    prompt: generationSource === "openai" ? prompt : `[Repli visuel ${generationSource}] ${prompt}`
   });
 
   return {
     imageUrl: publicUrl.publicUrl,
     style: styleOverride ?? brand?.visual_style ?? "premium",
-    prompt
+    prompt,
+    generationSource
+  };
+}
+
+async function createFallbackVisual({
+  merchant,
+  title,
+  caption,
+  visualPrompt,
+  source,
+  format,
+  brand,
+  signal
+}: {
+  merchant: MerchantRow;
+  title: string;
+  caption: string;
+  visualPrompt?: string | null;
+  source?: string | null;
+  format: "social" | "story" | "email" | "rcu";
+  brand: MerchantBrandSettingsRow | null;
+  signal?: AbortSignal;
+}): Promise<{ buffer: Buffer; source: "library" | "local" }> {
+  const seed = [merchant.id, title, caption, visualPrompt, source, format].filter(Boolean).join("|");
+
+  try {
+    const assets = await searchMediaAssetsForPost({
+      businessType: merchant.business_type,
+      title,
+      caption,
+      source,
+      visualPrompt,
+      limit: 8
+    });
+    const candidates = assets.slice(0, 5);
+    const start = candidates.length ? Math.abs(hashText(seed)) % candidates.length : 0;
+
+    for (let offset = 0; offset < candidates.length; offset += 1) {
+      const asset = candidates[(start + offset) % candidates.length];
+      try {
+        const photoSignal = signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(12_000)])
+          : AbortSignal.timeout(12_000);
+        const response = await fetch(asset.url, { signal: photoSignal });
+        if (!response.ok) continue;
+        const buffer = await prepareFallbackPhoto({
+          input: Buffer.from(await response.arrayBuffer()),
+          format,
+          primaryColor: brand?.primary_color,
+          accentColor: brand?.accent_color
+        });
+        return { buffer, source: "library" };
+      } catch {
+        signal?.throwIfAborted();
+      }
+    }
+  } catch {
+    signal?.throwIfAborted();
+  }
+
+  return {
+    buffer: await createBrandedLocalVisualFallback({
+      format,
+      primaryColor: brand?.primary_color,
+      secondaryColor: brand?.secondary_color,
+      accentColor: brand?.accent_color,
+      seed
+    }),
+    source: "local"
   };
 }
 
