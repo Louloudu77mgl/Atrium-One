@@ -12,9 +12,11 @@ test("le repli personnalise un avis positif qui signale de l'attente", () => {
   });
 
   assert.match(reply, /Bonjour Charlotte D\./);
-  assert.match(reply, /qualité du soin/);
+  assert.match(reply, /le soin/);
   assert.match(reply, /attente d’environ 15 minutes/);
   assert.match(reply, /L’équipe Éclat Studio/);
+  assert.ok(reply.length < 400);
+  assert.doesNotMatch(reply, /votre remarque nous aide à nous améliorer/);
 });
 
 test("le repli propose un contact pour un avis négatif", () => {
@@ -26,7 +28,8 @@ test("le repli propose un contact pour un avis négatif", () => {
   });
 
   assert.match(reply, /attente de presque 25 minutes/);
-  assert.match(reply, /contacter directement/);
+  assert.match(reply, /contact.*directement/);
+  assert.ok(reply.length < 350);
 });
 
 test("le repli échappe les noms avant de produire le HTML", () => {

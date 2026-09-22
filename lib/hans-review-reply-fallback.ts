@@ -27,19 +27,19 @@ function includesAny(value: string, terms: string[]) {
 
 function positiveDetail(review: string) {
   if (includesAny(review, ["soin", "prestation", "massage", "ongle", "visage"])) {
-    return "la qualité du soin et de la prestation";
+    return "le soin";
   }
 
   if (includesAny(review, ["accueil", "agreable", "gentil", "souriant", "chaleureu"])) {
-    return "l’accueil et l’attention de l’équipe";
+    return "l’accueil";
   }
 
   if (includesAny(review, ["equipe", "personnel", "conseil", "professionnel"])) {
-    return "le professionnalisme de l’équipe";
+    return "l’équipe";
   }
 
   if (includesAny(review, ["ambiance", "cadre", "institut", "salon", "boutique"])) {
-    return "l’ambiance et le cadre";
+    return "l’ambiance";
   }
 
   return null;
@@ -58,22 +58,22 @@ function issueDetail(review: string, originalReview: string) {
   }
 
   if (includesAny(review, ["rendez-vous", "rendez vous", "rdv"])) {
-    return "ce problème lié à votre rendez-vous";
+    return "ce souci avec votre rendez-vous";
   }
 
   if (includesAny(review, ["prix", "tarif", "cher", "couteux"])) {
-    return "votre remarque sur le tarif";
+    return "votre déception concernant le tarif";
   }
 
   if (includesAny(review, ["livraison", "livre", "commande"])) {
-    return "ce problème de commande ou de livraison";
+    return "ce souci de commande ou de livraison";
   }
 
   if (includesAny(review, ["accueil", "personnel", "equipe", "service"])) {
     return "votre déception concernant l’accueil ou le service";
   }
 
-  return "le point d’amélioration que vous signalez";
+  return "ce qui n’a pas été à la hauteur";
 }
 
 export function generateHansReviewReplyFallback({
@@ -96,23 +96,21 @@ export function generateHansReviewReplyFallback({
   if (rating >= 4) {
     paragraphs.push(
       positive
-        ? `<p>Merci beaucoup pour votre retour. Nous sommes ravis que ${positive} vous ait plu.</p>`
-        : "<p>Merci beaucoup pour votre retour positif et pour votre confiance.</p>"
+        ? `<p>Merci pour votre retour. Nous sommes ravis que ${positive} vous ait plu.</p>`
+        : "<p>Merci beaucoup pour votre message. Ça nous fait très plaisir !</p>"
     );
 
     if (hasIssue) {
-      paragraphs.push(`<p>Nous sommes toutefois désolés pour ${issue}. Ce n’est pas l’expérience fluide que nous souhaitons offrir, et votre remarque nous aide à nous améliorer.</p>`);
+      paragraphs.push(`<p>Désolés pour ${issue}. Nous allons être plus attentifs à ce point.</p>`);
     }
 
-    paragraphs.push("<p>Au plaisir de vous accueillir de nouveau dans de meilleures conditions.</p>");
+    paragraphs.push(`<p>${hasIssue ? "Nous espérons vous revoir bientôt." : "À très bientôt !"}</p>`);
   } else if (rating === 3) {
-    paragraphs.push(`<p>Merci d’avoir pris le temps de partager votre expérience${positive ? ` et d’avoir souligné ${positive}` : ""}.</p>`);
-    paragraphs.push(`<p>Nous sommes désolés pour ${issue}. Votre retour est précieux et nous allons en tenir compte pour vous offrir une expérience plus satisfaisante.</p>`);
-    paragraphs.push("<p>Nous espérons avoir l’occasion de mieux vous accueillir lors d’une prochaine visite.</p>");
+    paragraphs.push(`<p>Merci pour votre retour${positive ? `. Nous sommes heureux que ${positive} vous ait plu` : ""}.</p>`);
+    paragraphs.push(`<p>Désolés pour ${issue}. Nous allons être plus attentifs à ce point.</p>`);
   } else {
-    paragraphs.push("<p>Merci d’avoir pris le temps de nous faire part de votre expérience.</p>");
-    paragraphs.push(`<p>Nous sommes sincèrement désolés pour ${issue}. Cette situation ne correspond pas au niveau de service que nous voulons offrir.</p>`);
-    paragraphs.push("<p>Nous vous invitons à nous contacter directement afin que nous puissions échanger avec vous et trouver une solution adaptée.</p>");
+    paragraphs.push(`<p>Merci d’avoir pris le temps de nous écrire. Nous sommes vraiment désolés pour ${issue}.</p>`);
+    paragraphs.push("<p>N’hésitez pas à nous contacter directement : nous aimerions en parler avec vous.</p>");
   }
 
   paragraphs.push(`<p>L’équipe ${merchant}</p>`);
