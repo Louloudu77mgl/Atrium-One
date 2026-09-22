@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAutomationSettings } from "@/lib/automation-settings";
 import { getReviewAutomationDecision } from "@/lib/review-automation";
+import { generateHansReviewReplyFallback } from "@/lib/hans-review-reply-fallback";
 import { HANS_REVIEW_REPLY_INSTRUCTIONS } from "@/lib/hans-review-reply-prompt";
 import { sanitizeHansHtml } from "@/lib/sanitize-hans-html";
 import { cleanGoogleReviewText, hasReviewComment } from "@/lib/review-rules";
@@ -90,6 +91,7 @@ type OpenAIResponseBody = {
   output_text?: string;
   output?: OpenAIResponseOutput[];
   error?: {
+    code?: string;
     message?: string;
   };
 };
@@ -163,13 +165,6 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!openAiApiKey) {
-    return NextResponse.json(
-      { error: "OPENAI_API_KEY manquante. Ajoutez-la dans .env.local." },
-      { status: 500 }
-    );
-  }
-
   const prompt = [
     `Commerce: ${merchantName}`,
     `Type de commerce: ${businessType}`,
@@ -179,39 +174,53 @@ export async function POST(request: Request) {
     `Avis client: ${reviewText}`
   ].join("\n");
 
-  const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openAiApiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model,
-      instructions: HANS_REVIEW_REPLY_INSTRUCTIONS,
-      input: prompt,
-      max_output_tokens: 300
-    })
-  });
+  let generatedReply = "";
+  let generationSource: "openai" | "fallback" = "openai";
 
-  const responseBody = (await openAiResponse.json()) as OpenAIResponseBody;
+  if (openAiApiKey) {
+    try {
+      const openAiResponse = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openAiApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          instructions: HANS_REVIEW_REPLY_INSTRUCTIONS,
+          input: prompt,
+          max_output_tokens: 300
+        }),
+        signal: AbortSignal.timeout(10_000)
+      });
 
-  if (!openAiResponse.ok) {
-    return NextResponse.json(
-      {
-        error: responseBody.error?.message ?? "OpenAI n'a pas pu générer la réponse."
-      },
-      { status: openAiResponse.status }
-    );
+      const responseBody = (await openAiResponse.json()) as OpenAIResponseBody;
+      if (openAiResponse.ok) {
+        generatedReply = extractReply(responseBody);
+      } else {
+        console.warn("Hans OpenAI indisponible, utilisation du repli local.", {
+          status: openAiResponse.status,
+          code: responseBody.error?.code
+        });
+      }
+    } catch (error) {
+      console.warn("Hans OpenAI injoignable, utilisation du repli local.", {
+        reason: error instanceof Error ? error.name : "unknown"
+      });
+    }
   }
 
-  const replyText = sanitizeHansHtml(extractReply(responseBody));
-
-  if (!replyText) {
-    return NextResponse.json(
-      { error: "OpenAI a retourné une réponse vide." },
-      { status: 502 }
-    );
+  if (!generatedReply) {
+    generationSource = "fallback";
+    generatedReply = generateHansReviewReplyFallback({
+      reviewText,
+      rating,
+      authorName,
+      merchantName
+    });
   }
+
+  const replyText = sanitizeHansHtml(generatedReply);
 
   let saved = false;
   let saveError: string | undefined;
@@ -288,6 +297,7 @@ export async function POST(request: Request) {
     reply_status: persistedReplyStatus,
     review_status: persistedReviewStatus,
     is_edited: false,
+    generation_source: generationSource,
     saved,
     save_error: saveError
   });
