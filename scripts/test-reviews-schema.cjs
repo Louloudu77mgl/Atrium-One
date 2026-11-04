@@ -1,10 +1,5 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { readFileSync } = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const ts = require("typescript");
-
 const merchant = { id: "merchant-test" };
 const row = {
   id: "review-test", author_name: "Camille", rating: 5, review_text: "Très bon accueil.",
@@ -12,20 +7,12 @@ const row = {
 };
 
 function loadReviews(client) {
-  const filename = path.join(__dirname, "../lib/reviews.ts");
-  const js = ts.transpileModule(readFileSync(filename, "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
-  }).outputText;
-  const mod = { exports: {} };
-  const mocks = {
+  const { load } = require("./emailing-test-loader.cjs");
+  return load("lib/reviews.ts", {
     "@/lib/merchants": { getMerchant: async () => merchant },
-    "@/lib/supabase/server": { createServerSupabaseClient: async () => client }
-  };
-  vm.runInThisContext(`(function(require, module, exports) { ${js}\n})`, { filename })(
-    (id) => { assert.ok(mocks[id], `Unexpected dependency: ${id}`); return mocks[id]; },
-    mod, mod.exports
-  );
-  return mod.exports;
+    "@/lib/supabase/server": { createServerSupabaseClient: async () => client },
+    "@/lib/review-rules": load("lib/review-rules.ts")
+  });
 }
 
 function setup({ legacy = false, failure = null, empty = false } = {}) {

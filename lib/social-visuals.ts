@@ -13,8 +13,13 @@ import type { Database, MerchantBrandSettingsRow, MerchantRow } from "@/lib/supa
 
 type OpenAIImageBody = {
   data?: { b64_json?: string }[];
-  error?: { message?: string };
+  error?: { code?: string; message?: string; type?: string };
 };
+
+const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-2";
+const RETIRED_OPENAI_IMAGE_MODELS = new Set(["gpt-image-1", "dall-e-2", "dall-e-3"]);
+const OPENAI_IMAGE_ATTEMPTS = 2;
+const OPENAI_IMAGE_TIMEOUT_MS = 70_000;
 
 const socialFontDataCache = new Map<string, Promise<ArrayBuffer>>();
 
@@ -198,7 +203,7 @@ export async function composeAndStoreSocialPostVisual({
     .composite(composites)
     .png()
     .toBuffer();
-  const path = `${user?.id ?? merchant.id}/${postId ?? "social-ready"}/ready-${Date.now()}.png`;
+  const path = `${merchant.user_id}/${postId ?? "social-ready"}/ready-${Date.now()}.png`;
   const { error: uploadError } = await supabase.storage
     .from("social-visuals")
     .upload(path, png, {
@@ -228,7 +233,6 @@ export async function composeAndStoreInstagramStoryVisual({
   supabaseClient?: SupabaseClient<Database>;
 }) {
   const supabase = supabaseClient ?? await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
   const response = await fetch(imageUrl, { signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw new Error("La photo choisie pour la Story est inaccessible.");
   const brand = await getBrandSettings(merchant, supabaseClient);
@@ -266,7 +270,7 @@ export async function composeAndStoreInstagramStoryVisual({
     ]
   });
   const ready = await sharp(Buffer.from(await rendered.arrayBuffer())).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
-  const path = `${user?.id ?? merchant.user_id}/${postId ?? "story"}/story-${randomUUID()}.jpg`;
+  const path = `${merchant.user_id}/${postId ?? "story"}/story-${randomUUID()}.jpg`;
   const { error } = await supabase.storage.from("social-visuals").upload(path, ready, { contentType: "image/jpeg", upsert: false });
   if (error) throw new Error(error.message);
   return supabase.storage.from("social-visuals").getPublicUrl(path).data.publicUrl;
@@ -438,29 +442,10 @@ export async function generateAndStoreSocialVisual({
     "L'image doit être cohérente avec l'identité du commerce, lisible sur mobile, esthétique, crédible et directement publiable."
   ].filter(Boolean).join("\n");
 
-  const response = await fetch("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    signal,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2",
-      prompt,
-      size: format === "email" ? "1536x1024" : format === "story" || format === "rcu" ? "1024x1536" : "1024x1024",
-      ...(format === "email" ? { quality: "medium", output_format: "png", n: 1 } : {})
-    })
-  });
-  const body = (await response.json()) as OpenAIImageBody;
-  const base64 = body.data?.[0]?.b64_json;
-
-  if (!response.ok || !base64) {
-    throw new Error(body.error?.message ?? "Génération d'image IA impossible.");
-  }
+  const base64 = await requestOpenAIImage({ apiKey, prompt, format, signal });
 
   signal?.throwIfAborted();
-  const path = format === "email" ? `${user?.id ?? merchant.id}/email-campaigns/ai-${randomUUID()}.png` : `${user?.id ?? merchant.id}/${postId ?? format}/ai-${Date.now()}.png`;
+  const path = format === "email" ? `${merchant.user_id}/email-campaigns/ai-${randomUUID()}.png` : `${merchant.user_id}/${postId ?? format}/ai-${Date.now()}.png`;
   const { error: uploadError } = await supabase.storage
     .from("social-visuals")
     .upload(path, Buffer.from(base64, "base64"), {
@@ -488,6 +473,78 @@ export async function generateAndStoreSocialVisual({
     style: styleOverride ?? brand?.visual_style ?? "premium",
     prompt
   };
+}
+
+async function requestOpenAIImage({
+  apiKey,
+  prompt,
+  format,
+  signal
+}: {
+  apiKey: string;
+  prompt: string;
+  format: "social" | "story" | "email" | "rcu";
+  signal?: AbortSignal;
+}) {
+  const configuredModel = process.env.OPENAI_IMAGE_MODEL?.trim();
+  const model = configuredModel && !RETIRED_OPENAI_IMAGE_MODELS.has(configuredModel)
+    ? configuredModel
+    : DEFAULT_OPENAI_IMAGE_MODEL;
+  const size = format === "email" ? "1536x1024" : format === "story" || format === "rcu" ? "1024x1536" : "1024x1024";
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= OPENAI_IMAGE_ATTEMPTS; attempt += 1) {
+    signal?.throwIfAborted();
+
+    try {
+      const requestSignal = signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(OPENAI_IMAGE_TIMEOUT_MS)])
+        : AbortSignal.timeout(OPENAI_IMAGE_TIMEOUT_MS);
+      const response = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        signal: requestSignal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          size,
+          quality: "medium",
+          output_format: "png",
+          n: 1
+        })
+      });
+      const body = await response.json().catch(() => ({})) as OpenAIImageBody;
+      const base64 = body.data?.[0]?.b64_json;
+
+      if (response.ok && base64) return base64;
+
+      lastError = new Error(body.error?.message ?? `Génération d'image IA impossible (${response.status}).`);
+      const retryable = response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500;
+      console.error("Échec de génération d'image OpenAI", {
+        attempt,
+        code: body.error?.code ?? null,
+        model,
+        status: response.status,
+        type: body.error?.type ?? null,
+        willRetry: retryable && attempt < OPENAI_IMAGE_ATTEMPTS
+      });
+      if (!retryable) break;
+    } catch (error) {
+      signal?.throwIfAborted();
+      lastError = error instanceof Error ? error : new Error("Génération d'image IA impossible.");
+      console.error("Appel de génération d'image OpenAI interrompu", {
+        attempt,
+        model,
+        reason: lastError.name,
+        willRetry: attempt < OPENAI_IMAGE_ATTEMPTS
+      });
+    }
+  }
+
+  throw lastError ?? new Error("Génération d'image IA impossible.");
 }
 
 function mapVisualStyleToPrompt(value: string) {

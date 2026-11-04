@@ -54,12 +54,13 @@ export async function POST(request: Request) {
     format: "social",
     supabaseClient: supabase
   });
-  const readyVisualUrl = visual.imageUrl ? await composeAndStoreSocialPostVisual({
+  if (!visual.imageUrl) return NextResponse.json({ error: "Ajoutez une photo à la médiathèque ou activez la génération IA." }, { status: 422 });
+  const readyVisualUrl = await composeAndStoreSocialPostVisual({
     merchant,
     imageUrl: visual.imageUrl,
     visualHook: draft.visualHook,
     subtitle: draft.visualSubtitle
-  }) : "";
+  });
 
   return NextResponse.json({ post: draft, imageUrl: readyVisualUrl } satisfies GeneratePostResponse);
 }

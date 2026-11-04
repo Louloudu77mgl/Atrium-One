@@ -37,7 +37,7 @@ export async function POST(
   }
 
   const extension = file.name.split(".").pop()?.toLowerCase() || "png";
-  const path = `${user.id}/gallery/${Date.now()}.${extension}`;
+  const path = `${merchant.user_id}/gallery/${Date.now()}.${extension}`;
   const { error: uploadError } = await supabase.storage
     .from("social-post-images")
     .upload(path, file, { contentType: file.type, upsert: true });

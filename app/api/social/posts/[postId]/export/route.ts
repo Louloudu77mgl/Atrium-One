@@ -70,7 +70,7 @@ export async function POST(
       .resize(dimensions.width, dimensions.height, { fit: "fill" })
       .png()
       .toBuffer();
-    const path = `${user.id}/${postId}/visual-${Date.now()}.png`;
+    const path = `${merchant.user_id}/${postId}/visual-${Date.now()}.png`;
     const { error: uploadError } = await supabase.storage
       .from("social-visuals")
       .upload(path, normalizedPng, {

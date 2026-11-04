@@ -130,38 +130,30 @@ export async function ensureAutomatedSocialDrafts({
 
     try {
       const { draft } = await generateDraftContent({ merchant, idea: draftIdea, supabaseClient: supabase });
-      let imageUrl: string | null = null;
+      const visual = await resolveHansVisual({
+        merchant,
+        title: draft.title,
+        caption: draft.caption,
+        visualPrompt: draft.visualPrompt,
+        subject: [idea.sourcePainPoint, idea.sourceStrength, idea.localEvent, idea.seasonalMoment, idea.angle, idea.visualDirection].filter(Boolean).join(" · ") || "Automatisation Hans",
+        preferredCategoryName: draft.mediaCategory,
+        styleOverride: brand?.visual_style ?? null,
+        format: "social",
+        supabaseClient: supabase
+      });
+      const { imageUrl, sourceAssetId } = visual;
+      if (!imageUrl) throw new Error("Aucune image disponible pour la publication automatique.");
       let visualUrl: string | null = null;
-      let sourceAssetId: string | null = null;
       try {
-        const visual = await resolveHansVisual({
+        visualUrl = await composeAndStoreSocialPostVisual({
           merchant,
-          title: draft.title,
-          caption: draft.caption,
-          visualPrompt: draft.visualPrompt,
-          subject: [idea.sourcePainPoint, idea.sourceStrength, idea.localEvent, idea.seasonalMoment, idea.angle, idea.visualDirection].filter(Boolean).join(" · ") || "Automatisation Hans",
-          preferredCategoryName: draft.mediaCategory,
-          styleOverride: brand?.visual_style ?? null,
-          format: "social",
+          imageUrl,
+          visualHook: draft.visualHook,
+          subtitle: draft.visualSubtitle,
           supabaseClient: supabase
         });
-        imageUrl = visual.imageUrl;
-        sourceAssetId = visual.sourceAssetId;
       } catch (error) {
         if (settings.social_auto_publish_live) throw error;
-      }
-      if (imageUrl) {
-        try {
-          visualUrl = await composeAndStoreSocialPostVisual({
-            merchant,
-            imageUrl,
-            visualHook: draft.visualHook,
-            subtitle: draft.visualSubtitle,
-            supabaseClient: supabase
-          });
-        } catch (error) {
-          if (settings.social_auto_publish_live) throw error;
-        }
       }
       const designDocument = createGeneratedDesignDocument({
         title: draft.title,
@@ -264,13 +256,14 @@ export async function createTriggeredSocialDraft({
     format: "social",
     supabaseClient
   });
-  const visualUrl = generated.imageUrl ? await composeAndStoreSocialPostVisual({
+  if (!generated.imageUrl) throw new Error("Aucune image disponible pour la publication automatique.");
+  const visualUrl = await composeAndStoreSocialPostVisual({
     merchant,
     imageUrl: generated.imageUrl,
     visualHook: draft.visualHook,
     subtitle: draft.visualSubtitle,
     supabaseClient
-  }) : null;
+  });
   const designDocument = createGeneratedDesignDocument({
     title: draft.title,
     caption: draft.caption,

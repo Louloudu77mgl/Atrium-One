@@ -53,19 +53,19 @@ type OpenAIResponseBody = {
   error?: { message?: string };
 };
 
-function getSocialVisualFallbackMessage(error: unknown) {
+function getSocialVisualGenerationMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const normalized = message.toLowerCase();
 
   if (normalized.includes("billing hard limit") || normalized.includes("hard limit") || normalized.includes("quota")) {
-    return "Visuel IA non généré : la limite de facturation OpenAI est atteinte. Vous pouvez continuer avec un brouillon sans image ou importer un visuel manuellement.";
+    return "La génération de l’image est temporairement indisponible car la limite OpenAI est atteinte. Réessayez dans quelques instants.";
   }
 
   if (normalized.includes("openai_api_key")) {
-    return "Visuel IA non généré : la clé OpenAI n’est pas configurée côté serveur.";
+    return "La génération de l’image n’est pas configurée côté serveur.";
   }
 
-  return "Visuel IA non généré pour le moment. Vous pouvez continuer avec un brouillon sans image ou importer un visuel manuellement.";
+  return "Hans n’a pas pu générer l’image du post. Réessayez dans quelques instants.";
 }
 
 function extractText(body: OpenAIResponseBody) {
@@ -252,7 +252,6 @@ export async function createSocialDraftFromIdea({
     let imageUrl: string | null = null;
     let visualUrl: string | null = null;
     let sourceAssetId: string | null = null;
-    let errorMessage: string | null = null;
 
     try {
       const resolvedVisual = await resolveHansVisual({
@@ -269,21 +268,24 @@ export async function createSocialDraftFromIdea({
       imageUrl = resolvedVisual.imageUrl;
       sourceAssetId = resolvedVisual.sourceAssetId;
     } catch (error) {
-      errorMessage = getSocialVisualFallbackMessage(error);
+      throw new Error(getSocialVisualGenerationMessage(error));
     }
 
-    if (imageUrl) {
-      try {
-        visualUrl = await composeAndStoreSocialPostVisual({
-          merchant: currentMerchant,
-          imageUrl,
-          visualHook: draft.visualHook,
-          subtitle: draft.visualSubtitle,
-          supabaseClient: supabase
-        });
-      } catch {
-        errorMessage = errorMessage ?? "Le visuel est disponible, mais sa version finale avec texte n’a pas pu être préparée.";
-      }
+    if (!imageUrl) {
+      throw new Error("Aucune image n’est disponible pour ce post. Ajoutez une photo dans la médiathèque ou choisissez la génération IA dans les réglages.");
+    }
+
+    try {
+      visualUrl = await composeAndStoreSocialPostVisual({
+        merchant: currentMerchant,
+        imageUrl,
+        visualHook: draft.visualHook,
+        subtitle: draft.visualSubtitle,
+        supabaseClient: supabase
+      });
+    } catch {
+      // L'image source reste exploitable dans l'éditeur même si la composition
+      // serveur avec le texte n'est pas disponible.
     }
 
     const designDocument = createGeneratedDesignDocument({
@@ -314,7 +316,7 @@ export async function createSocialDraftFromIdea({
         visual_text: draft.visualHook,
         visual_html: visualHtml,
         builder_state: withRecommendationOrigin(designDocument, idea),
-        error_message: errorMessage,
+        error_message: null,
         primary_color: brand?.primary_color ?? "#4C1D95",
         secondary_color: brand?.secondary_color ?? "#F3E8FF",
         accent_color: brand?.accent_color ?? "#A855F7",
