@@ -10,13 +10,14 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
   const returnTo = /^\/crm\/calendar\?view=(today|day|week|month)&day=\d{4}-\d{2}-\d{2}$/.test(query.returnTo ?? "") ? query.returnTo : undefined;
   const initialTab = query.tab === "access" ? "access" : "summary";
   const supabase = await createServerSupabaseClient() as any;
-  const [{ data: lead, error: leadError }, { data: notes }, { data: tasks }, { data: events }, { data: opportunities }, { data: activity }] = await Promise.all([
+  const [{ data: lead, error: leadError }, { data: notes }, { data: tasks }, { data: events }, { data: opportunities }, { data: activity }, { data: preOnboardings }] = await Promise.all([
     supabase.from("crm_leads").select("*").eq("id", id).is("deleted_at", null).maybeSingle(),
     supabase.from("crm_notes").select("*").eq("lead_id", id).order("created_at", { ascending: false }),
     supabase.from("crm_tasks").select("*").eq("lead_id", id).order("completed").order("due_date").order("due_time"),
     supabase.from("crm_events").select("*").eq("lead_id", id).order("event_date", { ascending: false }).order("event_time", { ascending: false }),
     supabase.from("crm_opportunities").select("*").eq("lead_id", id).order("created_at", { ascending: false }),
-    supabase.from("crm_activity").select("*").eq("lead_id", id).in("type", ["call_completed", "task_completed", "r1_completed", "r2_completed", "r3_completed", "followup_completed", "appointment_created"]).order("created_at", { ascending: false }).limit(100)
+    supabase.from("crm_activity").select("*").eq("lead_id", id).in("type", ["call_completed", "task_completed", "r1_completed", "r2_completed", "r3_completed", "followup_completed", "appointment_created"]).order("created_at", { ascending: false }).limit(100),
+    supabase.from("crm_pre_onboardings").select("*").eq("lead_id", id).order("submitted_at", { ascending: false })
   ]);
   if (leadError) throw new Error("La fiche client n’a pas pu être chargée. Réessayez.");
   if (!lead) notFound();
@@ -38,5 +39,5 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
       candidates = (merchants ?? []).flatMap((merchant: any) => { const email = userMap.get(merchant.user_id) ?? null; const strength = associationStrength({ leadEmail: lead.email, accountEmail: email, leadPhone: lead.phone, accountPhone: merchant.phone, leadWebsite: lead.website, accountWebsite: merchant.website_url }); const reason = strength === "exact_email" ? "Email exact" : strength === "phone" ? "Téléphone correspondant" : strength === "domain" ? "Domaine correspondant" : ""; return reason ? [{ businessId: merchant.id, userId: merchant.user_id, businessName: merchant.business_name, email, reason }] : []; });
     }
   }
-  return <LeadDetailWorkspace returnTo={returnTo} initialTab={initialTab} initial={{ lead, notes: notes ?? [], tasks: tasks ?? [], events: events ?? [], opportunities: opportunities ?? [], activity: activity ?? [], access, modules: modules ?? [], account, candidates }} />;
+  return <LeadDetailWorkspace returnTo={returnTo} initialTab={initialTab} initial={{ lead, notes: notes ?? [], tasks: tasks ?? [], events: events ?? [], opportunities: opportunities ?? [], activity: activity ?? [], preOnboardings: preOnboardings ?? [], access, modules: modules ?? [], account, candidates }} />;
 }

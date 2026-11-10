@@ -6,8 +6,9 @@ export async function proxy(request: NextRequest) {
   const isPublicRcuLanding = /^\/rcu\/[^/]+$/.test(pathname);
   const isPublicLoyaltyWallet = pathname.startsWith("/fidelite/");
   const isPublicRcuApi = pathname === "/api/rcu/qr" || /^\/api\/rcu\/forms\/[^/]+\/submit$/.test(pathname);
+  const isPublicPreOnboarding = pathname.startsWith("/pre-onboarding/") || pathname.startsWith("/api/public/pre-onboarding/");
 
-  if (isPublicRcuLanding || isPublicLoyaltyWallet || isPublicRcuApi) {
+  if (isPublicRcuLanding || isPublicLoyaltyWallet || isPublicRcuApi || isPublicPreOnboarding) {
     return NextResponse.next({ request });
   }
 

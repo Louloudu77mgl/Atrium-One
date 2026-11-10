@@ -2,11 +2,12 @@ import Link from "next/link";
 import { calculateConversionRate, sortCalendarTasks } from "@/lib/crm/logic";
 import { createSessionSupabaseClient as createServerSupabaseClient } from "@/lib/supabase/server";
 
-type LeadRow = { id: string; name: string; city: string | null; commercial_status: string; created_at: string };
+type LeadRow = { id: string; business_id: string | null; name: string; city: string | null; business_type: string | null; email: string | null; commercial_status: string; created_at: string };
 type RelatedLead = { id: string; name: string; deleted_at: string | null; archived_at: string | null };
 type TaskRow = { id: string; lead_id: string; title: string; due_date: string; due_time: string | null; crm_leads: RelatedLead | RelatedLead[] | null };
 type EventRow = { id: string; lead_id: string; title: string; type: string; event_date: string; event_time: string | null; crm_leads: RelatedLead | RelatedLead[] | null };
 type OpportunityRow = { id: string; status: string; mrr: number | string; arr: number | string; closed_at: string | null; crm_leads: RelatedLead | RelatedLead[] | null };
+type ActiveAccessRow = { business_id: string; enabled_at: string | null; onboarding_status: string };
 
 function dateKeyInParis(date = new Date()) {
   const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
@@ -21,17 +22,20 @@ export default async function CrmHomePage() {
   const supabase = await createServerSupabaseClient() as any;
   const today = dateKeyInParis();
   const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const [leadsResult, tasksResult, eventsResult, opportunitiesResult] = await Promise.all([
-    supabase.from("crm_leads").select("id,name,city,commercial_status,created_at").is("deleted_at", null).is("archived_at", null),
+  const [leadsResult, tasksResult, eventsResult, opportunitiesResult, activeAccessResult] = await Promise.all([
+    supabase.from("crm_leads").select("id,business_id,name,city,business_type,email,commercial_status,created_at").is("deleted_at", null).is("archived_at", null),
     supabase.from("crm_tasks").select("id,lead_id,title,due_date,due_time,crm_leads!inner(id,name,deleted_at,archived_at)").eq("completed", false).eq("due_date", today).is("crm_leads.deleted_at", null).is("crm_leads.archived_at", null),
     supabase.from("crm_events").select("id,lead_id,title,type,event_date,event_time,crm_leads!inner(id,name,deleted_at,archived_at)").is("crm_leads.deleted_at", null).is("crm_leads.archived_at", null),
-    supabase.from("crm_opportunities").select("id,status,mrr,arr,closed_at,crm_leads!inner(id,name,deleted_at,archived_at)").is("crm_leads.deleted_at", null).is("crm_leads.archived_at", null)
+    supabase.from("crm_opportunities").select("id,status,mrr,arr,closed_at,crm_leads!inner(id,name,deleted_at,archived_at)").is("crm_leads.deleted_at", null).is("crm_leads.archived_at", null),
+    supabase.from("business_access").select("business_id,enabled_at,onboarding_status").eq("account_enabled", true).order("enabled_at", { ascending: false })
   ]);
 
   const leads = (leadsResult.data ?? []) as LeadRow[];
   const todayTasks = sortCalendarTasks((tasksResult.data ?? []) as TaskRow[]);
   const events = (eventsResult.data ?? []) as EventRow[];
   const opportunities = (opportunitiesResult.data ?? []) as OpportunityRow[];
+  const activeAccess = (activeAccessResult.data ?? []) as ActiveAccessRow[];
+  const leadByBusinessId = new Map(leads.filter((lead) => lead.business_id).map((lead) => [lead.business_id!, lead]));
   const openOpportunities = opportunities.filter((item) => !["Gagnée", "Perdue"].includes(item.status));
   const won = opportunities.filter((item) => item.status === "Gagnée");
   const lost = opportunities.filter((item) => item.status === "Perdue");
@@ -45,7 +49,7 @@ export default async function CrmHomePage() {
   const completedCalls = eventCount("Appel effectué");
   const firstAppointments = eventCount("R1");
   const callToAppointmentRate = calculateConversionRate(firstAppointments, completedCalls);
-  const hasError = [leadsResult, tasksResult, eventsResult, opportunitiesResult].some((result) => result.error);
+  const hasError = [leadsResult, tasksResult, eventsResult, opportunitiesResult, activeAccessResult].some((result) => result.error);
 
   return <div>
     <header className="border-b border-[#E8E4DB] bg-white px-5 py-5 lg:px-8">
@@ -68,6 +72,11 @@ export default async function CrmHomePage() {
         <KpiCard label="Pipeline ARR" value={money(pipelineArr)} detail={`${openOpportunities.length} opportunités actives`} />
         <KpiCard label="MRR signé" value={money(signedMrr)} detail={`${won.length} affaires gagnées`} tone="green" />
         <KpiCard label="ARR signé" value={money(signedArr)} detail="Revenus annuels gagnés" tone="green" />
+      </section>
+
+      <section className="rounded-xl border border-[#E8E4DB] bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-black">Comptes AtriumOne actifs</h2><p className="mt-0.5 text-[11px] font-semibold text-[#8B7AA8]">Clients dont l’accès global à l’application est activé.</p></div><span className="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black text-emerald-700">{activeAccess.length} actif{activeAccess.length > 1 ? "s" : ""}</span></div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{activeAccess.map((access) => { const lead = leadByBusinessId.get(access.business_id); return lead ? <Link key={access.business_id} href={`/crm/leads/${lead.id}?tab=access`} className="rounded-xl border border-[#E8E4DB] bg-[#FCFBF8] p-4 transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-black">{lead.name}</h3><p className="mt-1 truncate text-[11px] font-semibold text-[#6B617F]">{[lead.business_type, lead.city].filter(Boolean).join(" · ") || lead.email || "Compte AtriumOne"}</p></div><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-100" /></div><div className="mt-4 flex items-center justify-between text-[10px] font-black"><span className="text-emerald-700">Compte actif</span><span className="text-[#6D28D9]">Gérer →</span></div></Link> : <article key={access.business_id} className="rounded-xl border border-[#E8E4DB] bg-[#FCFBF8] p-4"><h3 className="text-sm font-black">Compte actif</h3><p className="mt-1 text-[11px] font-semibold text-[#8B7AA8]">Fiche CRM non associée</p></article>; })}{!activeAccess.length ? <div className="rounded-xl border border-dashed border-[#D9D1C3] p-5 text-center text-xs font-semibold text-[#8B7AA8] sm:col-span-2 xl:col-span-4">Aucun compte actif.</div> : null}</div>
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,.8fr)]">
